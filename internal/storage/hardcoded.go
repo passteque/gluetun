@@ -20,7 +20,8 @@ func parseHardcodedServers() (allServers models.AllServers) {
 		filename := provider + ".json"
 		providerFile, err := serversmodule.Files.Open(filename)
 		if err != nil {
-			panic(fmt.Sprintf("reading embedded provider file %s for %s: %s", filename, provider, err))
+			const rootURL = "https://github.com/qdm12/gluetun-servers/blob/main/pkg/servers"
+			panic(fmt.Sprintf("reading embedded provider file defined at %s/%s.json: %s", rootURL, filename, err))
 		}
 		defer providerFile.Close() // no-op
 

@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
@@ -122,6 +123,10 @@ func filterServer(server models.Server,
 		return true
 	}
 
+	if filterByPorts(selection, server.PortsTCP) {
+		return true
+	}
+
 	// TODO filter port forward server for PIA
 
 	return false
@@ -164,4 +169,22 @@ func filterByProtocol(selection settings.ServerSelection,
 		wantUDP := !wantTCP
 		return (wantTCP && !serverTCP) || (wantUDP && !serverUDP)
 	}
+}
+
+func filterByPorts(selection settings.ServerSelection,
+	serverPorts []uint16,
+) (filtered bool) {
+	if len(serverPorts) == 0 {
+		return false
+	}
+
+	customPort := *selection.OpenVPN.CustomPort
+	if selection.VPN == vpn.Wireguard {
+		customPort = *selection.Wireguard.EndpointPort
+	}
+	if customPort == 0 {
+		return false
+	}
+
+	return !slices.Contains(serverPorts, customPort)
 }

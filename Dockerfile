@@ -186,7 +186,7 @@ ENV VPN_SERVICE_PROVIDER=pia \
     # # ProtonVPN only:
     SECURE_CORE_ONLY= \
     TOR_ONLY= \
-    # # Surfshark only:
+    # # Surfshark and ovpn only:
     MULTIHOP_ONLY= \
     # # VPN Secure only:
     PREMIUM_ONLY= \

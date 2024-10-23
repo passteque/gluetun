@@ -36,6 +36,8 @@ type Server struct {
 	PortForward bool         `json:"port_forward,omitempty"`
 	Keep        bool         `json:"keep,omitempty"`
 	IPs         []netip.Addr `json:"ips,omitempty"`
+	PortsTCP    []uint16     `json:"ports_tcp,omitempty"`
+	PortsUDP    []uint16     `json:"ports_udp,omitempty"`
 }
 
 func (s *Server) HasMinimumInformation() (err error) {

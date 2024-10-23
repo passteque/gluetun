@@ -13,9 +13,10 @@ require (
 	github.com/klauspost/pgzip v1.2.6
 	github.com/mdlayher/genetlink v1.4.0
 	github.com/mdlayher/netlink v1.9.0
+	github.com/miekg/dns v1.1.62
 	github.com/pelletier/go-toml/v2 v2.2.4
 	github.com/qdm12/dns/v2 v2.0.0-rc9.0.20260421173011-9de8e7fdbe3a
-	github.com/qdm12/gluetun-servers v0.1.0
+	github.com/qdm12/gluetun-servers v0.1.1-0.20260521235724-060a16d4b34c
 	github.com/qdm12/goservices v0.1.1-0.20251104135713-6bee97bd4978
 	github.com/qdm12/gosettings v0.4.4
 	github.com/qdm12/goshutdown v0.3.0
@@ -47,7 +48,6 @@ require (
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mdlayher/socket v0.6.0 // indirect
-	github.com/miekg/dns v1.1.62 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
