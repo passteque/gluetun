@@ -30,6 +30,9 @@
   "nordvpn": {
     "filepath": "/gluetun/servers/nordvpn.json"
   },
+  "ovpn": {
+    "filepath": "/gluetun/servers/ovpn.json"
+  },
   "perfect privacy": {
     "filepath": "/gluetun/servers/perfect privacy.json"
   },
