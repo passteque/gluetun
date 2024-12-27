@@ -27,7 +27,6 @@ func (p *Provider) OpenVPNConfig(connection models.Connection,
 		TLSAuth:      "81782767e4d59c4464cc5d1896f1cf6015017d53ac62e2e3b94b889e00b2c69ddc01944fe1c6d895b4d80540502eb71910b8d785c9efa9e3182343532adffe1cfbb7bb6eae39c502da2748edf0fb89b8a20b0a1085cc1f06135037881bc0c4ad8f2c0f4f72d2ab466fb54af3d8264c5fddeb0f21aa0ca41863678f5fc4c44de4ca0926b36dfddc42c6f2fabd1694bdc8215b2d223b9c21dc6734c2c778093187afb8c33403b228b9af68b540c284f6d183bcc88bd41d47bd717996e499ce1cbbfa768a9723c19c58314c4d19cfed82e543ee92e73d38ad26d4fbec231c0f9f3b30773a5c87792e9bc7c34e8d7611002ebedd044e48a0f1f96527bfdcc940aa09", //nolint:lll
 		KeyDirection: "1",
 		ExtraLines: []string{
-			"allow-compression asym",
 			"replay-window 256",
 		},
 	}
