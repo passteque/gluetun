@@ -54,12 +54,12 @@ jobs:
           SELECTED_PROVIDER="${{ github.event.inputs.provider || 'all' }}"
 
           if [ "$SELECTED_PROVIDER" = "all" ]; then
-            FLAGS="-all"
+            set -- -all
           else
-            FLAGS="-providers $SELECTED_PROVIDER"
+            set -- -providers "$SELECTED_PROVIDER"
           fi
 
-          go run ./cmd/gluetun/main.go update $FLAGS \
+          go run ./cmd/gluetun/main.go update "$@" \
             -maintainer \
             -proton-email "${{ secrets.PROTON_EMAIL }}" \
             -proton-password "${{ secrets.PROTON_PASSWORD }}"

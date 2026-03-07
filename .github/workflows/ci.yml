@@ -169,7 +169,7 @@ jobs:
 
       - name: Short commit
         id: shortcommit
-        run: echo "::set-output name=value::$(git rev-parse --short HEAD)"
+        run: echo "value=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Build and push final image
         uses: docker/build-push-action@v7
