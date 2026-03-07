@@ -15,7 +15,7 @@ func newHandler(ctx context.Context, logger Logger, logging bool,
 	authSettings auth.Settings,
 	buildInfo models.BuildInformation,
 	vpnLooper VPNLooper,
-	pfGetter PortForwardedGetter,
+	pf PortForwarding,
 	dnsLooper DNSLoop,
 	updaterLooper UpdaterLooper,
 	publicIPLooper PublicIPLoop,
@@ -29,7 +29,7 @@ func newHandler(ctx context.Context, logger Logger, logging bool,
 	dns := newDNSHandler(ctx, dnsLooper, logger)
 	updater := newUpdaterHandler(ctx, updaterLooper, logger)
 	publicip := newPublicIPHandler(publicIPLooper, logger)
-	portForward := newPortForwardHandler(ctx, pfGetter, logger)
+	portForward := newPortForwardHandler(ctx, pf, logger)
 
 	handler.v0 = newHandlerV0(ctx, logger, vpnLooper, dnsLooper, updaterLooper)
 	handler.v1 = newHandlerV1(logger, buildInfo, vpn, openvpn, dns, updater, publicip, portForward)

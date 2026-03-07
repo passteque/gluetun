@@ -2,7 +2,6 @@ package settings
 
 import (
 	"fmt"
-	"net/netip"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings/helpers"
 	"github.com/qdm12/gluetun/internal/constants/providers"
@@ -28,6 +27,7 @@ type Settings struct {
 	Version       Version
 	VPN           VPN
 	Pprof         pprof.Settings
+	BoringPoll    BoringPoll
 }
 
 type FilterChoicesGetter interface {
@@ -57,6 +57,7 @@ func (s *Settings) Validate(filterChoicesGetter FilterChoicesGetter, ipv6Support
 		"VPN": func() error {
 			return s.VPN.Validate(filterChoicesGetter, ipv6Supported, warner)
 		},
+		"boring poll": s.BoringPoll.validate,
 	}
 
 	for name, validation := range nameToValidation {
@@ -85,6 +86,7 @@ func (s *Settings) copy() (copied Settings) {
 		Version:       s.Version.copy(),
 		VPN:           s.VPN.Copy(),
 		Pprof:         s.Pprof.Copy(),
+		BoringPoll:    s.BoringPoll.Copy(),
 	}
 }
 
@@ -106,6 +108,7 @@ func (s *Settings) OverrideWith(other Settings,
 	patchedSettings.Version.overrideWith(other.Version)
 	patchedSettings.VPN.OverrideWith(other.VPN)
 	patchedSettings.Pprof.OverrideWith(other.Pprof)
+	patchedSettings.BoringPoll.overrideWith(other.BoringPoll)
 	err = patchedSettings.Validate(filterChoicesGetter, ipv6Supported, warner)
 	if err != nil {
 		return err
@@ -129,6 +132,7 @@ func (s *Settings) SetDefaults() {
 	s.VPN.setDefaults()
 	s.Updater.SetDefaults(s.VPN.Provider.Name)
 	s.Pprof.SetDefaults()
+	s.BoringPoll.setDefaults()
 }
 
 func (s Settings) String() string {
@@ -152,6 +156,7 @@ func (s Settings) toLinesNode() (node *gotree.Node) {
 	node.AppendNode(s.Updater.toLinesNode())
 	node.AppendNode(s.Version.toLinesNode())
 	node.AppendNode(s.Pprof.ToLinesNode())
+	node.AppendNode(s.BoringPoll.toLinesNode())
 
 	return node
 }
@@ -174,13 +179,11 @@ func (s Settings) Warnings() (warnings []string) {
 			"by creating an issue, attaching the new certificate and we will update Gluetun.")
 	}
 
-	// TODO remove in v4
-	if s.DNS.ServerAddress.Unmap().Compare(netip.AddrFrom4([4]byte{127, 0, 0, 1})) != 0 {
-		warnings = append(warnings, "DNS address is set to "+s.DNS.ServerAddress.String()+
-			" so the local forwarding DNS server will not be used."+
-			" The default value changed to 127.0.0.1 so it uses the internal DNS server."+
-			" If this server fails to start, the IPv4 address of the first plaintext DNS server"+
-			" corresponding to the first DNS provider chosen is used.")
+	for _, upstreamAddress := range s.DNS.UpstreamPlainAddresses {
+		if upstreamAddress.Addr().IsPrivate() {
+			warnings = append(warnings, "DNS upstream address "+upstreamAddress.String()+" is private: "+
+				"DNS traffic might leak out of the VPN tunnel to that address.")
+		}
 	}
 
 	return warnings
@@ -209,6 +212,7 @@ func (s *Settings) Read(r *reader.Reader, warner Warner) (err error) {
 		"version":     s.Version.read,
 		"VPN":         s.VPN.read,
 		"profiling":   s.Pprof.Read,
+		"boring poll": s.BoringPoll.read,
 	}
 
 	for name, read := range readFunctions {

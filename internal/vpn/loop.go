@@ -33,6 +33,7 @@ type Loop struct {
 	portForward PortForward
 	publicip    PublicIPLoop
 	dnsLooper   DNSLoop
+	boringPoll  Service
 	// Other objects
 	starter CmdStarter // for OpenVPN
 	logger  log.LoggerInterface
@@ -52,9 +53,9 @@ const (
 )
 
 func NewLoop(vpnSettings settings.VPN, ipv6Supported bool, vpnInputPorts []uint16,
-	providers Providers, storage Storage, healthSettings settings.Health,
-	healthChecker HealthChecker, healthServer HealthServer, openvpnConf OpenVPN,
-	netLinker NetLinker, fw Firewall, routing Routing,
+	providers Providers, storage Storage, boringPoll Service,
+	healthSettings settings.Health, healthChecker HealthChecker, healthServer HealthServer,
+	openvpnConf OpenVPN, netLinker NetLinker, fw Firewall, routing Routing,
 	portForward PortForward, starter CmdStarter,
 	publicip PublicIPLoop, dnsLooper DNSLoop,
 	logger log.LoggerInterface, client *http.Client,
@@ -80,6 +81,7 @@ func NewLoop(vpnSettings settings.VPN, ipv6Supported bool, vpnInputPorts []uint1
 		versionInfo:    versionInfo,
 		ipv6Supported:  ipv6Supported,
 		vpnInputPorts:  vpnInputPorts,
+		boringPoll:     boringPoll,
 		openvpnConf:    openvpnConf,
 		netLinker:      netLinker,
 		fw:             fw,

@@ -3,11 +3,12 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 )
 
 func newPortForwardHandler(ctx context.Context,
-	portForward PortForwardedGetter, warner warner,
+	portForward PortForwarding, warner warner,
 ) http.Handler {
 	return &portForwardHandler{
 		ctx:         ctx,
@@ -18,7 +19,7 @@ func newPortForwardHandler(ctx context.Context,
 
 type portForwardHandler struct {
 	ctx         context.Context //nolint:containedctx
-	portForward PortForwardedGetter
+	portForward PortForwarding
 	warner      warner
 }
 
@@ -26,6 +27,8 @@ func (h *portForwardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		h.getPortForwarded(w)
+	case http.MethodPut:
+		h.setPortForwarded(w, r)
 	default:
 		errMethodNotSupported(w, r.Method)
 	}
@@ -49,4 +52,25 @@ func (h *portForwardHandler) getPortForwarded(w http.ResponseWriter) {
 		h.warner.Warn(err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 	}
+}
+
+func (h *portForwardHandler) setPortForwarded(w http.ResponseWriter, r *http.Request) {
+	var data portsWrapper
+
+	decoder := json.NewDecoder(r.Body)
+	err := decoder.Decode(&data)
+	if err != nil {
+		h.warner.Warn(fmt.Sprintf("failed setting forwarded ports: %s", err))
+		http.Error(w, "failed setting forwarded ports", http.StatusBadRequest)
+		return
+	}
+
+	err = h.portForward.SetPortsForwarded(data.Ports)
+	if err != nil {
+		h.warner.Warn(fmt.Sprintf("failed setting forwarded ports: %s", err))
+		http.Error(w, "failed setting forwarded ports", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

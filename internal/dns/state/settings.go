@@ -40,8 +40,6 @@ func (s *State) SetSettings(ctx context.Context, settings settings.DNS) (
 
 	// Restart
 	_, _ = s.statusApplier.ApplyStatus(ctx, constants.Stopped)
-	if *settings.ServerEnabled {
-		outcome, _ = s.statusApplier.ApplyStatus(ctx, constants.Running)
-	}
+	outcome, _ = s.statusApplier.ApplyStatus(ctx, constants.Running)
 	return outcome
 }

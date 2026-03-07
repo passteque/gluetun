@@ -108,7 +108,6 @@ func hardcodedServers() (servers []models.Server) {
 		{Country: "New Zealand", Hostname: "newzealand-ca-version-2.expressnetw.com"},
 		{Country: "North Macedonia", Hostname: "macedonia-ca-version-2.expressnetw.com"},
 		{Country: "Norway", Hostname: "norway-ca-version-2.expressnetw.com"},
-		{Country: "Pakistan", Hostname: "pakistan-ca-version-2.expressnetw.com"},
 		{Country: "Panama", Hostname: "panama-ca-version-2.expressnetw.com"},
 		{Country: "Peru", Hostname: "peru-ca-version-2.expressnetw.com"},
 		{Country: "Philippines (via Singapore)", Hostname: "ph-via-sing-ca-version-2.expressnetw.com"},

@@ -156,6 +156,7 @@ var validRoutes = map[string]struct{}{ //nolint:gochecknoglobals
 	http.MethodPut + " /v1/updater/status":        {},
 	http.MethodGet + " /v1/publicip/ip":           {},
 	http.MethodGet + " /v1/portforward":           {},
+	http.MethodPut + " /v1/portforward":           {},
 }
 
 func (r Role) ToLinesNode() (node *gotree.Node) {

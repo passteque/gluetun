@@ -115,3 +115,8 @@ type HealthChecker interface {
 type HealthServer interface {
 	SetError(err error)
 }
+
+type Service interface {
+	Start() (runError <-chan error, err error)
+	Stop() error
+}

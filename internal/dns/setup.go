@@ -3,16 +3,15 @@ package dns
 import (
 	"context"
 	"fmt"
-	"net/netip"
 
 	"github.com/qdm12/dns/v2/pkg/check"
 	"github.com/qdm12/dns/v2/pkg/middlewares/filter/update"
 	"github.com/qdm12/dns/v2/pkg/nameserver"
 	"github.com/qdm12/dns/v2/pkg/server"
+	"github.com/qdm12/gluetun/internal/configuration/settings"
 )
 
-func (l *Loop) setupServer(ctx context.Context) (runError <-chan error, err error) {
-	settings := l.GetSettings()
+func (l *Loop) setupServer(ctx context.Context, settings settings.DNS) (runError <-chan error, err error) {
 	var updateSettings update.Settings
 	updateSettings.SetRebindingProtectionExempt(settings.Blacklist.RebindingProtectionExemptHostnames)
 	err = l.filter.Update(updateSettings)
@@ -20,7 +19,7 @@ func (l *Loop) setupServer(ctx context.Context) (runError <-chan error, err erro
 		return nil, fmt.Errorf("updating filter for rebinding protection: %w", err)
 	}
 
-	serverSettings, err := buildServerSettings(settings, l.filter, l.localResolvers, l.logger)
+	serverSettings, err := buildServerSettings(settings, l.filter, l.localResolvers, l.localSubnets, l.logger)
 	if err != nil {
 		return nil, fmt.Errorf("building server settings: %w", err)
 	}
@@ -37,12 +36,8 @@ func (l *Loop) setupServer(ctx context.Context) (runError <-chan error, err erro
 	l.server = server
 
 	// use internal DNS server
-	const defaultDNSPort = 53
-	nameserver.UseDNSInternally(nameserver.SettingsInternalDNS{
-		AddrPort: netip.AddrPortFrom(settings.ServerAddress, defaultDNSPort),
-	})
+	nameserver.UseDNSInternally(nameserver.SettingsInternalDNS{})
 	err = nameserver.UseDNSSystemWide(nameserver.SettingsSystemDNS{
-		IPs:        []netip.Addr{settings.ServerAddress},
 		ResolvPath: l.resolvConf,
 	})
 	if err != nil {

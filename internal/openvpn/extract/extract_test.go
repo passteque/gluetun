@@ -105,7 +105,7 @@ func Test_extractDataFromLine(t *testing.T) {
 		},
 		"tcp-client": {
 			line:     "proto tcp-client",
-			protocol: "tcp-client",
+			protocol: constants.TCP,
 		},
 		"extract remote error": {
 			line:  "remote bad",
@@ -239,7 +239,7 @@ func Test_extractRemote(t *testing.T) {
 		},
 		"invalid protocol": {
 			line: "remote 1.2.3.4 8000 bad",
-			err:  errors.New("network protocol not supported: bad"),
+			err:  errors.New("parsing protocol from remote line: network protocol not supported: bad"),
 		},
 		"IP host and port and protocol": {
 			line:     "remote 1.2.3.4 8000 udp",

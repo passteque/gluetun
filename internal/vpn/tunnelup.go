@@ -6,8 +6,8 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/qdm12/dns/v2/pkg/check"
 	"github.com/qdm12/gluetun/internal/constants"
+	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/qdm12/gluetun/internal/pmtud"
 	pconstants "github.com/qdm12/gluetun/internal/pmtud/constants"
 	"github.com/qdm12/gluetun/internal/pmtud/tcp"
@@ -90,14 +90,7 @@ func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
 	// to start monitoring health and auto-healing.
 	go l.collectHealthErrors(ctx, loopCtx, healthErrCh)
 
-	if *l.dnsLooper.GetSettings().ServerEnabled {
-		_, _ = l.dnsLooper.ApplyStatus(ctx, constants.Running)
-	} else {
-		err := check.WaitForDNS(ctx, check.Settings{})
-		if err != nil {
-			l.logger.Error("waiting for DNS to be ready: " + err.Error())
-		}
-	}
+	_, _ = l.dnsLooper.ApplyStatus(ctx, constants.Running)
 
 	err = l.publicip.RunOnce(ctx)
 	if err != nil {
@@ -117,6 +110,11 @@ func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
 	err = l.startPortForwarding(data)
 	if err != nil {
 		l.logger.Error(err.Error())
+	}
+
+	_, err = l.boringPoll.Start()
+	if err != nil {
+		l.logger.Error("cannot start boring poll: " + err.Error())
 	}
 }
 
@@ -166,6 +164,11 @@ func updateToMaxMTU(ctx context.Context, vpnInterface string,
 		return fmt.Errorf("getting VPN gateway IP address: %w", err)
 	}
 
+	vpnRoute, err := routing.VPNRoute(vpnInterface)
+	if err != nil {
+		return fmt.Errorf("getting VPN route: %w", err)
+	}
+
 	link, err := netlinker.LinkByName(vpnInterface)
 	if err != nil {
 		return fmt.Errorf("getting VPN interface by name: %w", err)
@@ -195,27 +198,23 @@ func updateToMaxMTU(ctx context.Context, vpnInterface string,
 		logger.Infof("setting VPN interface %s MTU to maximum valid MTU %d", vpnInterface, vpnLinkMTU)
 	}
 
+	err = setTCPMSSOnVPNRoute(vpnLinkMTU, vpnRoute, netlinker)
+	if err != nil {
+		err = fmt.Errorf("setting safe TCP MSS for MTU %d: %w", vpnLinkMTU, err)
+		vpnLinkMTU = originalMTU
+		logger.Infof("reverting VPN interface %s MTU to %d (due to: %s)",
+			vpnInterface, originalMTU, err)
+	}
+
 	err = netlinker.LinkSetMTU(link.Index, vpnLinkMTU)
 	if err != nil {
 		return fmt.Errorf("setting VPN interface %s MTU to %d: %w", vpnInterface, vpnLinkMTU, err)
 	}
 
-	err = setTCPMSSOnVPNRoute(vpnInterface, vpnLinkMTU, routing, netlinker)
-	if err != nil {
-		return fmt.Errorf("setting safe TCP MSS for MTU %d: %w", vpnLinkMTU, err)
-	}
-
 	return nil
 }
 
-func setTCPMSSOnVPNRoute(vpnIntf string, mtu uint32,
-	routing Routing, netlinker NetLinker,
-) error {
-	route, err := routing.VPNRoute(vpnIntf)
-	if err != nil {
-		return fmt.Errorf("getting VPN route: %w", err)
-	}
-
+func setTCPMSSOnVPNRoute(mtu uint32, route netlink.Route, netlinker NetLinker) error {
 	ipHeaderLength := pconstants.IPv4HeaderLength
 	if route.Dst.Addr().Is6() {
 		ipHeaderLength = pconstants.IPv6HeaderLength
@@ -224,9 +223,5 @@ func setTCPMSSOnVPNRoute(vpnIntf string, mtu uint32,
 	overhead := ipHeaderLength + pconstants.BaseTCPHeaderLength + mysteriousOverhead
 	mss := mtu - overhead
 	route.AdvMSS = mss
-	err = netlinker.RouteReplace(route)
-	if err != nil {
-		return fmt.Errorf("replacing VPN route with MSS changed to %d: %w", mss, err)
-	}
-	return nil
+	return netlinker.RouteReplace(route)
 }

@@ -151,9 +151,6 @@ func (c *Config) AcceptOutputTrafficToVPN(ctx context.Context,
 	defaultInterface string, connection models.Connection, remove bool,
 ) error {
 	protocol := connection.Protocol
-	if protocol == "tcp-client" {
-		protocol = "tcp"
-	}
 	instruction := fmt.Sprintf("%s OUTPUT -d %s -o %s -p %s -m %s --dport %d -j ACCEPT",
 		appendOrDelete(remove), connection.IP, defaultInterface, protocol,
 		protocol, connection.Port)

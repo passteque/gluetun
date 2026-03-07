@@ -22,6 +22,7 @@ type Loop struct {
 	server         *server.Server
 	filter         *mapfilter.Filter
 	localResolvers []netip.Addr
+	localSubnets   []netip.Prefix
 	resolvConf     string
 	client         *http.Client
 	logger         Logger
@@ -39,7 +40,7 @@ type Loop struct {
 const defaultBackoffTime = 10 * time.Second
 
 func NewLoop(settings settings.DNS,
-	client *http.Client, logger Logger,
+	client *http.Client, logger Logger, localSubnets []netip.Prefix,
 ) (loop *Loop, err error) {
 	start := make(chan struct{})
 	running := make(chan models.LoopStatus)
@@ -62,6 +63,7 @@ func NewLoop(settings settings.DNS,
 		state:         state,
 		server:        nil,
 		filter:        filter,
+		localSubnets:  localSubnets,
 		resolvConf:    "/etc/resolv.conf",
 		client:        client,
 		logger:        logger,

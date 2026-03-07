@@ -11,9 +11,9 @@ type Parallel struct {
 	repeatResolver *Repeat
 }
 
-func NewParallelResolver(resolverAddress string) *Parallel {
+func NewParallelResolver(dialer Dialer) *Parallel {
 	return &Parallel{
-		repeatResolver: NewRepeat(resolverAddress),
+		repeatResolver: NewRepeat(dialer),
 	}
 }
 

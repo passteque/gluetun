@@ -25,4 +25,9 @@ func (l *Loop) cleanup() {
 			l.logger.Error("stopping port forwarding: " + err.Error())
 		}
 	}
+
+	err = l.boringPoll.Stop()
+	if err != nil {
+		l.logger.Error("stopping boring poll: " + err.Error())
+	}
 }

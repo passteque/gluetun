@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/qdm12/dns/v2/pkg/doh"
+	dnsprovider "github.com/qdm12/dns/v2/pkg/provider"
 	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/constants"
 	"github.com/qdm12/gluetun/internal/constants/providers"
@@ -38,12 +40,12 @@ type UpdaterLogger interface {
 func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) error {
 	options := settings.Updater{}
 	var endUserMode, maintainerMode, updateAll bool
-	var csvProviders, ipToken, protonUsername, protonEmail, protonPassword string
+	var dnsServer, csvProviders, ipToken, protonUsername, protonEmail, protonPassword string
 	flagSet := flag.NewFlagSet("update", flag.ExitOnError)
 	flagSet.BoolVar(&endUserMode, "enduser", false, "Write results to /gluetun/servers.json (for end users)")
 	flagSet.BoolVar(&maintainerMode, "maintainer", false,
 		"Write results to ./internal/storage/servers.json to modify the program (for maintainers)")
-	flagSet.StringVar(&options.DNSAddress, "dns", "8.8.8.8", "DNS resolver address to use")
+	flagSet.StringVar(&dnsServer, "dns", "", "no longer used, your DNS will use DoH with Cloudflare and Google")
 	const defaultMinRatio = 0.8
 	flagSet.Float64Var(&options.MinRatio, "minratio", defaultMinRatio,
 		"Minimum ratio of servers to find for the update to succeed")
@@ -56,6 +58,10 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 	flagSet.StringVar(&protonPassword, "proton-password", "", "Password to use to authenticate with Proton")
 	if err := flagSet.Parse(args); err != nil {
 		return err
+	}
+
+	if dnsServer != "" {
+		logger.Warn("The -dns flag is no longer used, your DNS will use DoH with Cloudflare and Google")
 	}
 
 	if !endUserMode && !maintainerMode {
@@ -97,10 +103,21 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 		return fmt.Errorf("creating servers storage: %w", err)
 	}
 
+	dohSettings := doh.Settings{
+		UpstreamResolvers: []dnsprovider.Provider{
+			dnsprovider.Cloudflare(),
+			dnsprovider.Google(),
+		},
+	}
+	dnsDialer, err := doh.New(dohSettings)
+	if err != nil {
+		return fmt.Errorf("creating DoH dialer: %w", err)
+	}
+
 	const clientTimeout = 10 * time.Second
 	httpClient := &http.Client{Timeout: clientTimeout}
 	unzipper := unzip.New(httpClient)
-	parallelResolver := resolver.NewParallelResolver(options.DNSAddress)
+	parallelResolver := resolver.NewParallelResolver(dnsDialer)
 	nameTokenPairs := []api.NameToken{
 		{Name: string(api.IPInfo), Token: ipToken},
 		{Name: string(api.IP2Location)},

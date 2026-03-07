@@ -14,8 +14,12 @@ jobs:
           token: ${{ github.token }}
           issue-number: ${{ github.event.issue.number }}
           body: |
-            Closed issues are **NOT** monitored, so commenting here is likely to be not seen.
-            If you think this is *still unresolved* and have **more information** to bring, please create another issue.
+            Closed issues are **NOT** monitored, so commenting here will likely NOT be seen.
+            If you think this is *still unresolved* and have **more information** to bring, please either
+            re-open this issue or create another issue.
+
+            ❤️😠 temporarily help the Gluetun community and fight the AI slop scam website `gluetun[dot]com` by setting `BORINGPOLL_GLUETUNCOM=on` on the latest image.
+            See [the option in the wiki for more information](https://github.com/qdm12/gluetun-wiki/blob/main/setup/options/others.md)
 
             This is an automated comment setup because @qdm12 is the sole maintainer of this project
-            which became too popular to monitor issues closed.
+            which became too popular to monitor closed issues.

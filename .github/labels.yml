@@ -126,6 +126,8 @@
   color: "ffc7ea"
 - name: "Category: Firewall ⛓️"
   color: "ffc7ea"
+- name: "Category: MTU discovery 🔦"
+  color: "ffc7ea"
 - name: "Category: Routing 🛤️"
   color: "ffc7ea"
 - name: "Category: IPv6 🛰️"

@@ -14,9 +14,9 @@ type Repeat struct {
 	resolver *net.Resolver
 }
 
-func NewRepeat(resolverAddress string) *Repeat {
+func NewRepeat(dialer Dialer) *Repeat {
 	return &Repeat{
-		resolver: newResolver(resolverAddress),
+		resolver: newResolver(dialer),
 	}
 }
 

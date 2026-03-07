@@ -21,8 +21,9 @@ type DNSLoop interface {
 	GetStatus() (status models.LoopStatus)
 }
 
-type PortForwardedGetter interface {
+type PortForwarding interface {
 	GetPortsForwarded() (ports []uint16)
+	SetPortsForwarded(ports []uint16) (err error)
 }
 
 type PublicIPLoop interface {

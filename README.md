@@ -2,6 +2,8 @@
 
 ⚠️ This and [gluetun-wiki](https://github.com/qdm12/gluetun-wiki) are the only websites for Gluetun, other websites claiming to be official are scams ⚠️
 
+💁 You can optionally set `BORINGPOLL_GLUETUNCOM=on` to... [poll](./internal/boringpoll/boringpoll.go) that **scammy AI slop** website every few minutes so it costs them too much to keep it up. My gentle email reminders to take it down are being grossly ignored 🤷 This would make me very happy and serve this community.
+
 Lightweight swiss-army-knife-like VPN client to multiple VPN service providers
 
 ![Title image](https://raw.githubusercontent.com/qdm12/gluetun/master/title.svg)

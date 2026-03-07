@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: DavidAnson/markdownlint-cli2-action@v21
+      - uses: DavidAnson/markdownlint-cli2-action@v22
         with:
           globs: "**.md"
           config: .markdownlint-cli2.jsonc
@@ -37,7 +37,7 @@ jobs:
           use-quiet-mode: yes
           config-file: .github/workflows/configs/mlc-config.json
 
-      - uses: peter-evans/dockerhub-description@v4
+      - uses: peter-evans/dockerhub-description@v5
         if: github.repository == 'qdm12/gluetun' && github.event_name == 'push'
         with:
           username: qmcgaw

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"slices"
 
 	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/qdm12/gluetun/internal/provider/utils"
@@ -47,38 +48,12 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 		return nil, fmt.Errorf("port forwarding for the first time: %w", err)
 	}
 
-	s.logger.Info(portsToString(ports))
-
-	for _, port := range ports {
-		err = s.portAllower.SetAllowedPort(ctx, port, s.settings.Interface)
-		if err != nil {
-			return nil, fmt.Errorf("allowing port in firewall: %w", err)
-		}
-
-		if s.settings.ListeningPort != 0 {
-			err = s.portAllower.RedirectPort(ctx, s.settings.Interface, port, s.settings.ListeningPort)
-			if err != nil {
-				return nil, fmt.Errorf("redirecting port in firewall: %w", err)
-			}
-		}
-	}
-
-	err = s.writePortForwardedFile(ports)
-	if err != nil {
-		_ = s.cleanup()
-		return nil, fmt.Errorf("writing port file: %w", err)
-	}
-
 	s.portMutex.Lock()
-	s.ports = ports
-	s.portMutex.Unlock()
+	defer s.portMutex.Unlock()
 
-	if s.settings.UpCommand != "" {
-		err = runCommand(ctx, s.cmder, s.logger, s.settings.UpCommand, ports, s.settings.Interface)
-		if err != nil {
-			err = fmt.Errorf("running up command: %w", err)
-			s.logger.Error(err.Error())
-		}
+	err = s.onNewPorts(ctx, ports)
+	if err != nil {
+		return nil, err
 	}
 
 	keepPortCtx, keepPortCancel := context.WithCancel(context.Background())
@@ -101,10 +76,51 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 		}
 		s.startStopMutex.Lock()
 		defer s.startStopMutex.Unlock()
+		s.portMutex.Lock()
+		defer s.portMutex.Unlock()
 		_ = s.cleanup()
 		runError <- err
 	}(keepPortCtx, s.settings.PortForwarder, obj, readyCh, runErrorCh, keepPortDoneCh)
 	<-readyCh
 
 	return runErrorCh, nil
+}
+
+func (s *Service) onNewPorts(ctx context.Context, ports []uint16) (err error) {
+	slices.Sort(ports)
+
+	s.logger.Info(portsToString(ports))
+
+	for _, port := range ports {
+		err = s.portAllower.SetAllowedPort(ctx, port, s.settings.Interface)
+		if err != nil {
+			return fmt.Errorf("allowing port in firewall: %w", err)
+		}
+
+		if s.settings.ListeningPort != 0 {
+			err = s.portAllower.RedirectPort(ctx, s.settings.Interface, port, s.settings.ListeningPort)
+			if err != nil {
+				return fmt.Errorf("redirecting port in firewall: %w", err)
+			}
+		}
+	}
+
+	err = s.writePortForwardedFile(ports)
+	if err != nil {
+		_ = s.cleanup()
+		return fmt.Errorf("writing port file: %w", err)
+	}
+
+	s.ports = make([]uint16, len(ports))
+	copy(s.ports, ports)
+
+	if s.settings.UpCommand != "" {
+		err = runCommand(ctx, s.cmder, s.logger, s.settings.UpCommand, ports, s.settings.Interface)
+		if err != nil {
+			err = fmt.Errorf("running up command: %w", err)
+			s.logger.Error(err.Error())
+		}
+	}
+
+	return nil
 }

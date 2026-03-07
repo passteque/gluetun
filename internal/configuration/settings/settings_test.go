@@ -51,9 +51,6 @@ func Test_Settings_String(t *testing.T) {
 |           ├── [2606:4700:4700::1111]:443
 |           └── [2001:4860:4860::8888]:443
 ├── DNS settings:
-|   ├── Keep existing nameserver(s): no
-|   ├── DNS server address to use: 127.0.0.1
-|   ├── DNS forwarder server enabled: yes
 |   ├── Upstream resolver type: dot
 |   ├── Upstream resolvers:
 |   |   └── Cloudflare

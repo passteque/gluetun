@@ -17,14 +17,8 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		return
 	}
 
-	if *l.GetSettings().KeepNameserver {
-		l.logger.Warn("⚠️⚠️⚠️  keeping the default container nameservers, " +
-			"this will likely leak DNS traffic outside the VPN " +
-			"and go through your container network DNS outside the VPN tunnel!")
-	} else {
-		const fallback = false
-		l.useUnencryptedDNS(fallback)
-	}
+	const fallback = false
+	l.useUnencryptedDNS(fallback)
 
 	select {
 	case <-l.start:
@@ -37,13 +31,13 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		// Their values are to be used if DOT=off
 		var runError <-chan error
 
-		settings := l.GetSettings()
-		for !*settings.KeepNameserver && *settings.ServerEnabled {
+		for {
+			settings := l.GetSettings()
 			var err error
-			runError, err = l.setupServer(ctx)
+			runError, err = l.setupServer(ctx, settings)
 			if err == nil {
 				l.backoffTime = defaultBackoffTime
-				l.logger.Info("ready and using DNS server at address " + settings.ServerAddress.String())
+				l.logger.Infof("ready and using DNS server with %s upstream resolvers", settings.UpstreamType)
 
 				err = l.updateFiles(ctx, settings)
 				if err != nil {
@@ -58,15 +52,8 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 				return
 			}
 			l.logAndWait(ctx, err)
-			settings = l.GetSettings()
 		}
 		l.signalOrSetStatus(constants.Running)
-
-		settings = l.GetSettings()
-		if !*settings.KeepNameserver && !*settings.ServerEnabled {
-			const fallback = false
-			l.useUnencryptedDNS(fallback)
-		}
 
 		l.userTrigger = false
 
@@ -81,21 +68,15 @@ func (l *Loop) runWait(ctx context.Context, runError <-chan error) (exitLoop boo
 	for {
 		select {
 		case <-ctx.Done():
-			settings := l.GetSettings()
-			if !*settings.KeepNameserver && *settings.ServerEnabled {
-				l.stopServer()
-				// TODO revert OS and Go nameserver when exiting
-			}
+			l.stopServer()
+			// TODO revert OS and Go nameserver when exiting
 			return true
 		case <-l.stop:
 			l.userTrigger = true
 			l.logger.Info("stopping")
-			settings := l.GetSettings()
-			if !*settings.KeepNameserver && *settings.ServerEnabled {
-				const fallback = false
-				l.useUnencryptedDNS(fallback)
-				l.stopServer()
-			}
+			const fallback = false
+			l.useUnencryptedDNS(fallback)
+			l.stopServer()
 			l.stopped <- struct{}{}
 		case <-l.start:
 			l.userTrigger = true

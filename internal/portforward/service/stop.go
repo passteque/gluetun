@@ -27,9 +27,6 @@ func (s *Service) Stop() (err error) {
 }
 
 func (s *Service) cleanup() (err error) {
-	s.portMutex.Lock()
-	defer s.portMutex.Unlock()
-
 	if s.settings.DownCommand != "" {
 		const downTimeout = 60 * time.Second
 		ctx, cancel := context.WithTimeout(context.Background(), downTimeout)

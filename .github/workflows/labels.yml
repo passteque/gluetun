@@ -12,6 +12,6 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - uses: crazy-max/ghaction-github-labeler@v5
+      - uses: crazy-max/ghaction-github-labeler@v6
         with:
           yaml-file: .github/labels.yml

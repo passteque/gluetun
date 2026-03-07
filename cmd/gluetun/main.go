@@ -16,7 +16,10 @@ import (
 	_ "time/tzdata"
 
 	_ "github.com/breml/rootcerts"
+	"github.com/qdm12/dns/v2/pkg/doh"
+	dnsprovider "github.com/qdm12/dns/v2/pkg/provider"
 	"github.com/qdm12/gluetun/internal/alpine"
+	"github.com/qdm12/gluetun/internal/boringpoll"
 	"github.com/qdm12/gluetun/internal/cli"
 	"github.com/qdm12/gluetun/internal/command"
 	"github.com/qdm12/gluetun/internal/configuration/settings"
@@ -168,7 +171,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 
 	defer fmt.Println(gluetunLogo)
 
-	announcementExp, err := time.Parse(time.RFC3339, "2026-04-01T00:00:00Z")
+	announcementExp, err := time.Parse(time.RFC3339, "2026-04-30T00:00:00Z")
 	if err != nil {
 		return err
 	}
@@ -179,7 +182,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		Version:      buildInfo.Version,
 		Commit:       buildInfo.Commit,
 		Created:      buildInfo.Created,
-		Announcement: "All control server routes are now private by default",
+		Announcement: "Set BORINGPOLL_GLUETUNCOM=on to help combat AI slop and shutdown that scam website",
 		AnnounceExp:  announcementExp,
 		// Sponsor information
 		PaypalUser:    "qmcgaw",
@@ -399,7 +402,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 
 	dnsLogger := logger.New(log.SetComponent("dns"))
 	dnsLooper, err := dns.NewLoop(allSettings.DNS, httpClient,
-		dnsLogger)
+		dnsLogger, localNetworksToPrefixes(localNetworks))
 	if err != nil {
 		return fmt.Errorf("creating DNS loop: %w", err)
 	}
@@ -432,20 +435,31 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	go healthcheckServer.Run(healthServerCtx, healthServerDone)
 	healthChecker := healthcheck.NewChecker(healthLogger)
 
+	// Note: we use a separate DoH dialer for the VPN servers data updater, separate from the
+	// main DNS local server to make sure no request is blocked by filters.
+	dohDialer, err := doh.New(doh.Settings{
+		UpstreamResolvers: []dnsprovider.Provider{dnsprovider.Cloudflare(), dnsprovider.Google()},
+	})
+	if err != nil {
+		return fmt.Errorf("creating updater DoH dialer: %w", err)
+	}
 	updaterLogger := logger.New(log.SetComponent("updater"))
 
 	unzipper := unzip.New(httpClient)
-	parallelResolver := resolver.NewParallelResolver(allSettings.Updater.DNSAddress)
+	parallelResolver := resolver.NewParallelResolver(dohDialer)
 	openvpnFileExtractor := extract.New()
 	providers := provider.NewProviders(storage, time.Now, updaterLogger,
 		httpClient, unzipper, parallelResolver, publicIPLooper.Fetcher(),
 		openvpnFileExtractor, allSettings.Updater)
 
+	boringPollLogger := logger.New(log.SetComponent("boring poll"))
+	boringPoll := boringpoll.New(httpClient, boringPollLogger, allSettings.BoringPoll)
+
 	vpnLogger := logger.New(log.SetComponent("vpn"))
 	vpnLooper := vpn.NewLoop(allSettings.VPN, ipv6Supported, allSettings.Firewall.VPNInputPorts,
-		providers, storage, allSettings.Health, healthChecker, healthcheckServer, ovpnConf, netLinker, firewallConf,
-		routingConf, portForwardLooper, cmder, publicIPLooper, dnsLooper, vpnLogger, httpClient,
-		buildInfo, *allSettings.Version.Enabled)
+		providers, storage, boringPoll, allSettings.Health, healthChecker, healthcheckServer,
+		ovpnConf, netLinker, firewallConf, routingConf, portForwardLooper, cmder, publicIPLooper,
+		dnsLooper, vpnLogger, httpClient, buildInfo, *allSettings.Version.Enabled)
 	vpnHandler, vpnCtx, vpnDone := goshutdown.NewGoRoutineHandler(
 		"vpn", goroutine.OptionTimeout(time.Second))
 	go vpnLooper.Run(vpnCtx, vpnDone)
@@ -551,6 +565,14 @@ func printVersions(ctx context.Context, logger infoer,
 	}
 
 	return nil
+}
+
+func localNetworksToPrefixes(localNetworks []routing.LocalNetwork) (prefixes []netip.Prefix) {
+	prefixes = make([]netip.Prefix, len(localNetworks))
+	for i, localNetwork := range localNetworks {
+		prefixes[i] = localNetwork.IPNet
+	}
+	return prefixes
 }
 
 type netLinker interface {

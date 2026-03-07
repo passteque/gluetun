@@ -10,9 +10,7 @@ import (
 // It first tries to locate the modules directory in [getModulesPath].
 // If it fails (like on WSL), it then only checks for the kernel feature
 // in /proc/config.gz with [checkProcConfig].
-// Otherwise, it first checks if the modules directory modules.builtin
-// file contains the given module name in [checkModulesBuiltin].
-// If the module is not found, it then runs the classic [modProbe] behavior,
+// Otherwise, it then runs the classic [modProbe] behavior,
 // trying to load the module in the kernel.
 // If this fails, it does one final try running [checkProcConfig].
 func Probe(moduleName string) error {
@@ -28,14 +26,11 @@ func Probe(moduleName string) error {
 		return fmt.Errorf("getting modules path: %w", err)
 	}
 
-	err = checkModulesBuiltin(modulesPath, moduleName)
+	err = modProbe(modulesPath, moduleName)
 	if err != nil {
-		err = modProbe(modulesPath, moduleName)
+		err = checkProcConfig(moduleName)
 		if err != nil {
-			err = checkProcConfig(moduleName)
-			if err != nil {
-				return fmt.Errorf("checking /proc/config.gz: %w", err)
-			}
+			return fmt.Errorf("checking /proc/config.gz: %w", err)
 		}
 	}
 	return nil
