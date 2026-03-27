@@ -1,4 +1,4 @@
-package utils
+package vpn
 
 import (
 	"net/netip"
@@ -11,9 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func ptrTo[T any](x T) *T { return &x }
-
-func Test_BuildWireguardSettings(t *testing.T) {
+func Test_buildWireguardSettings(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {
@@ -58,7 +56,7 @@ func Test_BuildWireguardSettings(t *testing.T) {
 				},
 				PersistentKeepaliveInterval: time.Hour,
 				RulePriority:                101,
-				IPv6:                        boolPtr(false),
+				IPv6:                        ptrTo(false),
 				MTU:                         1000,
 			},
 		},
@@ -68,7 +66,7 @@ func Test_BuildWireguardSettings(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			settings := BuildWireguardSettings(testCase.connection,
+			settings := buildWireguardSettings(testCase.connection,
 				testCase.userSettings, testCase.ipv6Supported)
 
 			assert.Equal(t, testCase.settings, settings)

@@ -61,6 +61,10 @@ linters:
           - lll
         source: "^// https://.+$"
       - linters:
+          - mnd
+        source: "^	cleanups\\.Add.+$"
+        path: internal\/(wireguard|amneziawg)\/run\.go
+      - linters:
           - err113
           - mnd
         path: ci\/.+\.go

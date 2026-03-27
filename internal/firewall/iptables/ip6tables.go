@@ -24,8 +24,8 @@ func findIP6tablesSupported(ctx context.Context, runner CmdRunner) (
 }
 
 func (c *Config) runIP6tablesInstructions(ctx context.Context, instructions []string) error {
-	c.ip6tablesMutex.Lock() // only one ip6tables command at once
-	defer c.ip6tablesMutex.Unlock()
+	c.iptablesMutex.Lock() // only one iptables command at once
+	defer c.iptablesMutex.Unlock()
 
 	restore, err := c.saveAndRestoreIPv6(ctx)
 	if err != nil {
@@ -48,8 +48,8 @@ func (c *Config) runIP6tablesInstructionsNoSave(ctx context.Context, instruction
 }
 
 func (c *Config) runIP6tablesInstruction(ctx context.Context, instruction string) error {
-	c.ip6tablesMutex.Lock() // only one ip6tables command at once
-	defer c.ip6tablesMutex.Unlock()
+	c.iptablesMutex.Lock() // only one iptables command at once
+	defer c.iptablesMutex.Unlock()
 
 	restore, err := c.saveAndRestoreIPv6(ctx)
 	if err != nil {

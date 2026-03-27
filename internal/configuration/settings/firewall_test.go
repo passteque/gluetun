@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"testing"
 
+	"github.com/qdm12/log"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -15,7 +16,10 @@ func Test_Firewall_validate(t *testing.T) {
 		errWrapped error
 		errMessage string
 	}{
-		"empty": {},
+		"empty": {
+			errWrapped: log.ErrLevelNotRecognized,
+			errMessage: "iptables settings: log level: level is not recognized: ",
+		},
 		"zero_vpn_input_port": {
 			firewall: Firewall{
 				VPNInputPorts: []uint16{0},
@@ -41,6 +45,7 @@ func Test_Firewall_validate(t *testing.T) {
 		},
 		"public_outbound_subnet": {
 			firewall: Firewall{
+				Iptables: Iptables{LogLevel: log.LevelInfo.String()},
 				OutboundSubnets: []netip.Prefix{
 					netip.MustParsePrefix("1.2.3.4/32"),
 				},
@@ -48,6 +53,7 @@ func Test_Firewall_validate(t *testing.T) {
 		},
 		"valid_settings": {
 			firewall: Firewall{
+				Iptables:      Iptables{LogLevel: log.LevelInfo.String()},
 				VPNInputPorts: []uint16{100, 101},
 				InputPorts:    []uint16{200, 201},
 				OutboundSubnets: []netip.Prefix{

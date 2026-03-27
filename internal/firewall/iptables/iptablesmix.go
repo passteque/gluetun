@@ -6,9 +6,7 @@ import (
 
 func (c *Config) runMixedIptablesInstructions(ctx context.Context, instructions []string) error {
 	c.iptablesMutex.Lock()
-	c.ip6tablesMutex.Lock()
 	defer c.iptablesMutex.Unlock()
-	defer c.ip6tablesMutex.Unlock()
 
 	restore, err := c.saveAndRestore(ctx)
 	if err != nil {
@@ -26,9 +24,7 @@ func (c *Config) runMixedIptablesInstructions(ctx context.Context, instructions 
 
 func (c *Config) runMixedIptablesInstruction(ctx context.Context, instruction string) error {
 	c.iptablesMutex.Lock()
-	c.ip6tablesMutex.Lock()
 	defer c.iptablesMutex.Unlock()
-	defer c.ip6tablesMutex.Unlock()
 
 	restore, err := c.saveAndRestore(ctx)
 	if err != nil {

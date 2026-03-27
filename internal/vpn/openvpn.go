@@ -14,7 +14,7 @@ import (
 // It returns a serverName for port forwarding (PIA) and an error if it fails.
 func setupOpenVPN(ctx context.Context, fw Firewall,
 	openvpnConf OpenVPN, providerConf provider.Provider,
-	settings settings.VPN, ipv6Supported bool, starter CmdStarter,
+	settings settings.VPN, ipv6Supported bool, starter Cmder,
 	logger openvpn.Logger) (runner *openvpn.Runner, connection models.Connection, err error,
 ) {
 	connection, err = providerConf.GetConnection(settings.Provider.ServerSelection, ipv6Supported)

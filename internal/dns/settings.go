@@ -120,22 +120,23 @@ func buildServerSettings(userSettings settings.DNS,
 func buildProviders(userSettings settings.DNS, localSubnets []netip.Prefix,
 	logger Logger,
 ) (providers []provider.Provider) {
-	providersCount := len(userSettings.Providers)
-	if userSettings.UpstreamType == settings.DNSUpstreamTypePlain {
-		providersCount += len(userSettings.UpstreamPlainAddresses)
-	}
-	providers = make([]provider.Provider, 0, providersCount)
-
-	providersData := provider.NewProviders()
-	for _, providerName := range userSettings.Providers {
-		provider, err := providersData.Get(providerName)
-		if err != nil {
-			panic(err) // this should already had been checked
+	userDefinedPlainAddresses := userSettings.UpstreamType == settings.DNSUpstreamTypePlain &&
+		len(userSettings.UpstreamPlainAddresses) > 0
+	if !userDefinedPlainAddresses {
+		providers = make([]provider.Provider, len(userSettings.Providers))
+		providersData := provider.NewProviders()
+		for i, providerName := range userSettings.Providers {
+			var err error
+			providers[i], err = providersData.Get(providerName)
+			if err != nil {
+				panic(err) // this should already had been checked
+			}
 		}
-		providers = append(providers, provider)
+		return providers
 	}
 
-	for _, addrPort := range userSettings.UpstreamPlainAddresses {
+	providers = make([]provider.Provider, len(userSettings.UpstreamPlainAddresses))
+	for i, addrPort := range userSettings.UpstreamPlainAddresses {
 		addr := addrPort.Addr()
 		if addr.IsPrivate() && !addr.IsLoopback() &&
 			!slices.ContainsFunc(localSubnets, func(prefix netip.Prefix) bool {
@@ -146,15 +147,14 @@ func buildProviders(userSettings settings.DNS, localSubnets []netip.Prefix,
 				addr, netip.PrefixFrom(addr, addr.BitLen()))
 		}
 
-		provider := provider.Provider{
+		providers[i] = provider.Provider{
 			Name: addrPort.String(),
 		}
 		if addr.Is4() {
-			provider.Plain.IPv4 = []netip.AddrPort{addrPort}
+			providers[i].Plain.IPv4 = []netip.AddrPort{addrPort}
 		} else {
-			provider.Plain.IPv6 = []netip.AddrPort{addrPort}
+			providers[i].Plain.IPv6 = []netip.AddrPort{addrPort}
 		}
-		providers = append(providers, provider)
 	}
 
 	return providers

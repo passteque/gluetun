@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_Wireguard_addRule(t *testing.T) {
+func Test_AddRule(t *testing.T) {
 	t.Parallel()
 
 	const rulePriority uint32 = 987
@@ -68,13 +68,11 @@ func Test_Wireguard_addRule(t *testing.T) {
 			ctrl := gomock.NewController(t)
 
 			netLinker := NewMockNetLinker(ctrl)
-			wg := Wireguard{
-				netlink: netLinker,
-			}
 
 			netLinker.EXPECT().RuleAdd(testCase.expectedRule).
 				Return(testCase.ruleAddErr)
-			cleanup, err := wg.addRule(rulePriority, firewallMark, family)
+			cleanup, err := AddRule(rulePriority, firewallMark, family,
+				netLinker, nil)
 			if testCase.err != nil {
 				require.Error(t, err)
 				assert.Equal(t, testCase.err.Error(), err.Error())

@@ -9,13 +9,13 @@ import (
 )
 
 var (
-	ErrCommandEmpty            = errors.New("command is empty")
-	ErrSingleQuoteUnterminated = errors.New("unterminated single-quoted string")
-	ErrDoubleQuoteUnterminated = errors.New("unterminated double-quoted string")
-	ErrEscapeUnterminated      = errors.New("unterminated backslash-escape")
+	errCommandEmpty            = errors.New("command is empty")
+	errSingleQuoteUnterminated = errors.New("unterminated single-quoted string")
+	errDoubleQuoteUnterminated = errors.New("unterminated double-quoted string")
+	errEscapeUnterminated      = errors.New("unterminated backslash-escape")
 )
 
-// Split splits a command string into a slice of arguments.
+// split splits a command string into a slice of arguments.
 // This is especially important for commands such as:
 // /bin/sh -c "echo hello"
 // which should be split into: ["/bin/sh", "-c", "echo hello"]
@@ -23,9 +23,9 @@ var (
 // It does not support:
 // - the $" quoting style.
 // - expansion (brace, shell or pathname).
-func Split(command string) (words []string, err error) {
+func split(command string) (words []string, err error) {
 	if command == "" {
-		return nil, fmt.Errorf("%w", ErrCommandEmpty)
+		return nil, fmt.Errorf("%w", errCommandEmpty)
 	}
 
 	const bufferSize = 1024
@@ -42,7 +42,7 @@ func Split(command string) (words []string, err error) {
 		case character == '\\':
 			// Look ahead to eventually skip an escaped newline
 			if command[startIndex+runeSize:] == "" {
-				return nil, fmt.Errorf("%w: %q", ErrEscapeUnterminated, command)
+				return nil, fmt.Errorf("%w: %q", errEscapeUnterminated, command)
 			}
 			character, runeSize := utf8.DecodeRuneInString(command[startIndex+runeSize:])
 			if character == '\n' {
@@ -119,7 +119,7 @@ func handleDoubleQuoted(input string, startIndex int, buffer *bytes.Buffer) (
 			startIndex = cursor
 		}
 	}
-	return "", 0, fmt.Errorf("%w", ErrDoubleQuoteUnterminated)
+	return "", 0, fmt.Errorf("%w", errDoubleQuoteUnterminated)
 }
 
 func handleSingleQuoted(input string, startIndex int, buffer *bytes.Buffer) (
@@ -127,7 +127,7 @@ func handleSingleQuoted(input string, startIndex int, buffer *bytes.Buffer) (
 ) {
 	closingQuoteIndex := strings.IndexRune(input[startIndex:], '\'')
 	if closingQuoteIndex == -1 {
-		return "", 0, fmt.Errorf("%w", ErrSingleQuoteUnterminated)
+		return "", 0, fmt.Errorf("%w", errSingleQuoteUnterminated)
 	}
 	buffer.WriteString(input[startIndex : startIndex+closingQuoteIndex])
 	const singleQuoteRuneLength = 1
@@ -139,7 +139,7 @@ func handleEscaped(input string, startIndex int, buffer *bytes.Buffer) (
 	word string, newStartIndex int, err error,
 ) {
 	if input[startIndex:] == "" {
-		return "", 0, fmt.Errorf("%w", ErrEscapeUnterminated)
+		return "", 0, fmt.Errorf("%w", errEscapeUnterminated)
 	}
 	character, runeLength := utf8.DecodeRuneInString(input[startIndex:])
 	if character != '\n' { // backslash-escaped newline is ignored

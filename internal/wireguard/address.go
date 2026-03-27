@@ -5,15 +5,16 @@ import (
 	"net/netip"
 )
 
-func (w *Wireguard) addAddresses(linkIndex uint32,
-	addresses []netip.Prefix,
+func AddAddresses(linkIndex uint32,
+	addresses []netip.Prefix, ipv6 bool,
+	netlink NetLinker,
 ) (err error) {
 	for _, address := range addresses {
-		if !*w.settings.IPv6 && address.Addr().Is6() {
+		if !ipv6 && address.Addr().Is6() {
 			continue
 		}
 
-		err = w.netlink.AddrReplace(linkIndex, address)
+		err = netlink.AddrReplace(linkIndex, address)
 		if err != nil {
 			return fmt.Errorf("%w: when adding address %s to link with index %d",
 				err, address, linkIndex)

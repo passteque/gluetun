@@ -29,7 +29,7 @@ func MaxTheoreticalVPNMTU(vpnType, network string, vpnGateway netip.Addr) uint32
 		panic("unknown network protocol: " + network)
 	}
 	switch vpnType {
-	case vpn.Wireguard:
+	case vpn.Wireguard, vpn.AmneziaWg:
 		vpnLinkMTU -= pconstants.WireguardHeaderLength
 	case vpn.OpenVPN:
 		vpnLinkMTU -= pconstants.OpenVPNHeaderMaxLength

@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/qdm12/dns/v2/pkg/check"
 	"github.com/qdm12/dns/v2/pkg/middlewares/filter/update"
 	"github.com/qdm12/dns/v2/pkg/nameserver"
 	"github.com/qdm12/dns/v2/pkg/server"
@@ -42,12 +41,6 @@ func (l *Loop) setupServer(ctx context.Context, settings settings.DNS) (runError
 	})
 	if err != nil {
 		l.logger.Error(err.Error())
-	}
-
-	err = check.WaitForDNS(ctx, check.Settings{})
-	if err != nil {
-		l.stopServer()
-		return nil, err
 	}
 
 	return runError, nil

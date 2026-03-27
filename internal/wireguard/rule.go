@@ -7,8 +7,8 @@ import (
 	"github.com/qdm12/gluetun/internal/netlink"
 )
 
-func (w *Wireguard) addRule(rulePriority, firewallMark uint32,
-	family uint8,
+func AddRule(rulePriority, firewallMark uint32, family uint8,
+	netlinker NetLinker, logger Logger,
 ) (cleanup func() error, err error) {
 	rule := netlink.Rule{
 		Priority: &rulePriority,
@@ -18,16 +18,16 @@ func (w *Wireguard) addRule(rulePriority, firewallMark uint32,
 		Flags:    netlink.FlagInvert,
 		Action:   netlink.ActionToTable,
 	}
-	if err := w.netlink.RuleAdd(rule); err != nil {
+	if err := netlinker.RuleAdd(rule); err != nil {
 		if strings.HasSuffix(err.Error(), "file exists") {
-			w.logger.Info("if you are using Kubernetes, this may fix the error below: " +
+			logger.Info("if you are using Kubernetes, this may fix the error below: " +
 				"https://github.com/qdm12/gluetun-wiki/blob/main/setup/advanced/kubernetes.md#adding-ipv6-rule--file-exists")
 		}
 		return nil, fmt.Errorf("adding %s: %w", rule, err)
 	}
 
 	cleanup = func() error {
-		err := w.netlink.RuleDel(rule)
+		err := netlinker.RuleDel(rule)
 		if err != nil {
 			return fmt.Errorf("deleting rule %s: %w", rule, err)
 		}

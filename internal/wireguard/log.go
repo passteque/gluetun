@@ -11,7 +11,11 @@ type Logger interface {
 	Debugf(format string, args ...interface{})
 	Info(s string)
 	Error(s string)
-	Errorf(format string, args ...interface{})
+	Erroer
+}
+
+type Erroer interface {
+	Errorf(format string, args ...any)
 }
 
 func makeDeviceLogger(logger Logger) (deviceLogger *device.Logger) {

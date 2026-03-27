@@ -21,7 +21,7 @@ func (n noopDebugLogger) Error(_ string)            {}
 func (n noopDebugLogger) Errorf(_ string, _ ...any) {}
 func (n noopDebugLogger) Patch(_ ...log.Option)     {}
 
-func Test_netlink_Wireguard_addAddresses(t *testing.T) {
+func Test_AddAddresses_Integration(t *testing.T) {
 	t.Parallel()
 
 	netlinker := netlink.New(&noopDebugLogger{})
@@ -55,7 +55,7 @@ func Test_netlink_Wireguard_addAddresses(t *testing.T) {
 
 	const addIterations = 2 // initial + replace
 	for range addIterations {
-		err = wg.addAddresses(link.Index, addresses)
+		err = AddAddresses(link.Index, addresses, *wg.settings.IPv6, wg.netlink)
 		require.NoError(t, err)
 
 		ipPrefixes, err := netlinker.AddrList(link.Index, netlink.FamilyAll)
@@ -67,22 +67,19 @@ func Test_netlink_Wireguard_addAddresses(t *testing.T) {
 	}
 }
 
-func Test_netlink_Wireguard_addRule(t *testing.T) {
+func Test_AddRule_Integration(t *testing.T) {
 	t.Parallel()
 
-	netlinker := netlink.New(&noopDebugLogger{})
-	wg := &Wireguard{
-		netlink: netlinker,
-		logger:  &noopDebugLogger{},
-	}
+	logger := &noopDebugLogger{}
+	netlinker := netlink.New(logger)
 
 	// Unique combination for this test
 	const rulePriority uint32 = 10000
 	const firewallMark uint32 = 12345
 	const family = netlink.FamilyV4
 
-	cleanup, err := wg.addRule(rulePriority,
-		firewallMark, family)
+	cleanup, err := AddRule(rulePriority,
+		firewallMark, family, netlinker, logger)
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		err := cleanup()
@@ -110,8 +107,8 @@ func Test_netlink_Wireguard_addRule(t *testing.T) {
 	require.True(t, ruleFound)
 
 	// Existing rule cannot be added
-	nilCleanup, err := wg.addRule(rulePriority,
-		firewallMark, family)
+	nilCleanup, err := AddRule(rulePriority,
+		firewallMark, family, netlinker, logger)
 	if nilCleanup != nil {
 		_ = nilCleanup() // in case it succeeds
 	}

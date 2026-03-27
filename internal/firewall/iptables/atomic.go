@@ -11,9 +11,7 @@ import (
 // returns a restore function that can be called to restore the saved rules.
 func (c *Config) SaveAndRestore(ctx context.Context) (restore func(context.Context), err error) {
 	c.iptablesMutex.Lock()
-	c.ip6tablesMutex.Lock()
 	defer c.iptablesMutex.Unlock()
-	defer c.ip6tablesMutex.Unlock()
 
 	return c.saveAndRestore(ctx)
 }
@@ -54,7 +52,7 @@ func (c *Config) saveAndRestoreIPv4(ctx context.Context) (restore func(context.C
 		cmd.Stdin = strings.NewReader(data)
 		output, err := c.runner.Run(cmd)
 		if err != nil {
-			c.logger.Warn(fmt.Sprintf("restoring IPv4 iptables failed: %v: %s", err, output))
+			c.logger.Warn(fmt.Sprintf("restoring IPv4 iptables failed: %s", makeRestoreErrorMessage(err, output, data)))
 		}
 	}
 	return restore, nil
@@ -78,8 +76,12 @@ func (c *Config) saveAndRestoreIPv6(ctx context.Context) (restore func(context.C
 		cmd.Stdin = strings.NewReader(data)
 		output, err := c.runner.Run(cmd)
 		if err != nil {
-			c.logger.Warn(fmt.Sprintf("restoring IPv6 iptables failed: %v: %s", err, output))
+			c.logger.Warn(fmt.Sprintf("restoring IPv6 iptables failed: %s", makeRestoreErrorMessage(err, output, data)))
 		}
 	}
 	return restore, nil
+}
+
+func makeRestoreErrorMessage(err error, output, data string) string {
+	return fmt.Sprintf("%s: %s: restoring from data:\n%s", err, output, data)
 }

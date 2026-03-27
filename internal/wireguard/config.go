@@ -10,7 +10,7 @@ import (
 	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
-func configureDevice(client *wgctrl.Client, settings Settings) (err error) {
+func ConfigureDevice(client *wgctrl.Client, settings Settings) (err error) {
 	deviceConfig, err := makeDeviceConfig(settings)
 	if err != nil {
 		return fmt.Errorf("making device configuration: %w", err)

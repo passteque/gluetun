@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 
+	"github.com/qdm12/gluetun/internal/cleanup"
 	"github.com/qdm12/gluetun/internal/netlink"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
@@ -14,28 +15,20 @@ import (
 )
 
 var (
-	ErrDetectKernel      = errors.New("cannot detect Kernel support")
-	ErrCreateTun         = errors.New("cannot create TUN device")
-	ErrAddLink           = errors.New("cannot add Wireguard link")
-	ErrFindLink          = errors.New("cannot find link")
-	ErrFindDevice        = errors.New("cannot find Wireguard device")
-	ErrUAPISocketOpening = errors.New("cannot open UAPI socket")
-	ErrWgctrlOpen        = errors.New("cannot open wgctrl")
-	ErrUAPIListen        = errors.New("cannot listen on UAPI socket")
-	ErrAddAddress        = errors.New("cannot add address to wireguard interface")
-	ErrConfigure         = errors.New("cannot configure wireguard interface")
-	ErrDeviceInfo        = errors.New("cannot get wireguard device information")
-	ErrIfaceUp           = errors.New("cannot set the interface to UP")
-	ErrRouteAdd          = errors.New("cannot add route for interface")
-	ErrDeviceWaited      = errors.New("device waited for")
-	ErrKernelSupport     = errors.New("kernel does not support Wireguard")
+	errKernelSupport   = errors.New("kernel does not support Wireguard")
+	errTunNameMismatch = errors.New("TUN device name is mismatching")
+	errDeviceWaited    = errors.New("device waited for")
 )
 
+// Run runs the wireguard interface and waits until the context is done, then it cleans up the
+// interface and returns any error that occurred during setup or waiting. It sends an error to
+// waitError if any error occurs during setup or waiting, otherwise it sends nil when the context
+// is done. It sends a signal to ready when the setup is complete and the interface is ready to use.
 // See https://git.zx2c4.com/wireguard-go/tree/main.go
 func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<- struct{}) {
 	kernelSupported, err := w.netlink.IsWireguardSupported()
 	if err != nil {
-		waitError <- fmt.Errorf("%w: %s", ErrDetectKernel, err)
+		waitError <- fmt.Errorf("detecting wireguard kernel support: %w", err)
 		return
 	}
 
@@ -51,7 +44,7 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 	case "userspace":
 	case "kernelspace":
 		if !kernelSupported {
-			waitError <- fmt.Errorf("%w", ErrKernelSupport)
+			waitError <- fmt.Errorf("%w", errKernelSupport)
 			return
 		}
 		setupFunction = setupKernelSpace
@@ -59,85 +52,97 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 		panic(fmt.Sprintf("unknown implementation %q", w.settings.Implementation))
 	}
 
+	setup := func(ctx context.Context, cleanups *cleanup.Cleanups) (
+		linkIndex uint32, waitAndCleanup func() error, err error,
+	) {
+		return setupFunction(ctx,
+			w.settings.InterfaceName, w.netlink, w.settings.MTU, cleanups, w.logger)
+	}
+
+	Run(ctx, waitError, ready, setup, w.settings, w.netlink, w.logger)
+}
+
+func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
+	setup func(ctx context.Context, cleanups *cleanup.Cleanups) (
+		linkIndex uint32, waitAndCleanup func() error, err error),
+	settings Settings, netlinker NetLinker, logger Logger,
+) {
 	client, err := wgctrl.New()
 	if err != nil {
-		waitError <- fmt.Errorf("%w: %s", ErrWgctrlOpen, err)
+		waitError <- fmt.Errorf("opening wgctrl: %w", err)
 		return
 	}
 
-	var closers closers
-	closers.add("closing controller client", stepOne, client.Close)
+	var cleanups cleanup.Cleanups
+	cleanups.Add("closing controller client", 1, client.Close)
 
-	defer closers.cleanup(w.logger)
+	defer cleanups.Cleanup(logger)
 
-	linkIndex, waitAndCleanup, err := setupFunction(ctx,
-		w.settings.InterfaceName, w.netlink, w.settings.MTU, &closers, w.logger)
+	linkIndex, waitAndCleanup, err := setup(ctx, &cleanups)
 	if err != nil {
 		waitError <- err
 		return
 	}
 
-	err = w.addAddresses(linkIndex, w.settings.Addresses)
+	err = AddAddresses(linkIndex, settings.Addresses, *settings.IPv6, netlinker)
 	if err != nil {
-		waitError <- fmt.Errorf("%w: %s", ErrAddAddress, err)
+		waitError <- fmt.Errorf("adding addresses to interface: %w", err)
 		return
 	}
 
-	w.logger.Info("Connecting to " + w.settings.Endpoint.String())
-	err = configureDevice(client, w.settings)
+	logger.Info("Connecting to " + settings.Endpoint.String())
+	err = ConfigureDevice(client, settings)
 	if err != nil {
-		waitError <- fmt.Errorf("%w: %s", ErrConfigure, err)
+		waitError <- fmt.Errorf("configuring interface: %w", err)
 		return
 	}
 
-	err = w.netlink.LinkSetUp(linkIndex)
+	err = netlinker.LinkSetUp(linkIndex)
 	if err != nil {
-		waitError <- fmt.Errorf("%w: %s", ErrIfaceUp, err)
+		waitError <- fmt.Errorf("setting the interface UP: %w", err)
 		return
 	}
-	closers.add("shutting down link", stepFour, func() error {
-		return w.netlink.LinkSetDown(linkIndex)
+	cleanups.Add("shutting down link", 4, func() error {
+		return netlinker.LinkSetDown(linkIndex)
 	})
 
-	err = w.addRoutes(linkIndex, w.settings.AllowedIPs, w.settings.FirewallMark)
+	err = AddRoutes(linkIndex, settings.AllowedIPs, settings.FirewallMark,
+		netlinker, logger)
 	if err != nil {
-		waitError <- fmt.Errorf("%w: %s", ErrRouteAdd, err)
+		waitError <- fmt.Errorf("adding routes for interface: %w", err)
 		return
 	}
 
-	if *w.settings.IPv6 {
+	if *settings.IPv6 {
 		// requires net.ipv6.conf.all.disable_ipv6=0
-		ruleCleanup6, err := w.addRule(w.settings.RulePriority,
-			w.settings.FirewallMark, netlink.FamilyV6)
+		ruleCleanup6, err := AddRule(settings.RulePriority,
+			settings.FirewallMark, netlink.FamilyV6,
+			netlinker, logger)
 		if err != nil {
 			waitError <- fmt.Errorf("adding IPv6 rule: %w", err)
 			return
 		}
-		closers.add("removing IPv6 rule", stepOne, ruleCleanup6)
+		cleanups.Add("removing IPv6 rule", 1, ruleCleanup6)
 	}
 
-	ruleCleanup, err := w.addRule(w.settings.RulePriority,
-		w.settings.FirewallMark, netlink.FamilyV4)
+	ruleCleanup, err := AddRule(settings.RulePriority,
+		settings.FirewallMark, netlink.FamilyV4,
+		netlinker, logger)
 	if err != nil {
 		waitError <- fmt.Errorf("adding IPv4 rule: %w", err)
 		return
 	}
 
-	closers.add("removing IPv4 rule", stepOne, ruleCleanup)
-	w.logger.Info("Wireguard setup is complete. " +
-		"Note Wireguard is a silent protocol and it may or may not work, without giving any error message. " +
-		"Typically i/o timeout errors indicate the Wireguard connection is not working.")
+	cleanups.Add("removing IPv4 rule", 1, ruleCleanup)
 	ready <- struct{}{}
 
 	waitError <- waitAndCleanup()
 }
 
-type waitAndCleanupFunc func() error
-
 func setupKernelSpace(ctx context.Context,
 	interfaceName string, netLinker NetLinker, mtu uint32,
-	closers *closers, logger Logger) (
-	linkIndex uint32, waitAndCleanup waitAndCleanupFunc, err error,
+	cleanups *cleanup.Cleanups, logger Logger) (
+	linkIndex uint32, waitAndCleanup func() error, err error,
 ) {
 	links, err := netLinker.LinkList()
 	if err != nil {
@@ -163,15 +168,15 @@ func setupKernelSpace(ctx context.Context,
 	}
 	linkIndex, err = netLinker.LinkAdd(link)
 	if err != nil {
-		return 0, nil, fmt.Errorf("%w: %s", ErrAddLink, err)
+		return 0, nil, fmt.Errorf("adding link: %w", err)
 	}
-	closers.add("deleting link", stepFive, func() error {
+	cleanups.Add("deleting link", 5, func() error {
 		return netLinker.LinkDel(linkIndex)
 	})
 
 	waitAndCleanup = func() error {
 		<-ctx.Done()
-		closers.cleanup(logger)
+		cleanups.Cleanup(logger)
 		return ctx.Err()
 	}
 
@@ -180,57 +185,57 @@ func setupKernelSpace(ctx context.Context,
 
 func setupUserSpace(ctx context.Context,
 	interfaceName string, netLinker NetLinker, mtu uint32,
-	closers *closers, logger Logger) (
-	linkIndex uint32, waitAndCleanup waitAndCleanupFunc, err error,
+	cleanups *cleanup.Cleanups, logger Logger) (
+	linkIndex uint32, waitAndCleanup func() error, err error,
 ) {
 	tun, err := tun.CreateTUN(interfaceName, int(mtu))
 	if err != nil {
-		return 0, nil, fmt.Errorf("%w: %s", ErrCreateTun, err)
+		return 0, nil, fmt.Errorf("creating TUN device: %w", err)
 	}
 
-	closers.add("closing TUN device", stepSeven, tun.Close)
+	cleanups.Add("closing TUN device", 7, tun.Close)
 
 	tunName, err := tun.Name()
 	if err != nil {
-		return 0, nil, fmt.Errorf("%w: cannot get TUN name: %s", ErrCreateTun, err)
+		return 0, nil, fmt.Errorf("getting created TUN device name: %w", err)
 	} else if tunName != interfaceName {
-		return 0, nil, fmt.Errorf("%w: names don't match: expected %q and got %q",
-			ErrCreateTun, interfaceName, tunName)
+		return 0, nil, fmt.Errorf("%w: expected %q and got %q",
+			errTunNameMismatch, interfaceName, tunName)
 	}
 
 	link, err := netLinker.LinkByName(interfaceName)
 	if err != nil {
-		return 0, nil, fmt.Errorf("%w: %s: %s", ErrFindLink, interfaceName, err)
+		return 0, nil, fmt.Errorf("finding link %s: %w", interfaceName, err)
 	}
-	closers.add("deleting link", stepFive, func() error {
+	cleanups.Add("deleting link", 5, func() error {
 		return netLinker.LinkDel(link.Index)
 	})
 
 	bind := conn.NewDefaultBind()
 
-	closers.add("closing bind", stepSeven, bind.Close)
+	cleanups.Add("closing bind", 7, bind.Close)
 
 	deviceLogger := makeDeviceLogger(logger)
 	device := device.NewDevice(tun, bind, deviceLogger)
 
-	closers.add("closing Wireguard device", stepSix, func() error {
+	cleanups.Add("closing Wireguard device", 6, func() error {
 		device.Close()
 		return nil
 	})
 
-	uapiFile, err := uapiOpen(interfaceName)
+	uapiFile, err := UAPIOpen(interfaceName)
 	if err != nil {
-		return 0, nil, fmt.Errorf("%w: %s", ErrUAPISocketOpening, err)
+		return 0, nil, fmt.Errorf("opening UAPI socket: %w", err)
 	}
 
-	closers.add("closing UAPI file", stepThree, uapiFile.Close)
+	cleanups.Add("closing UAPI file", 3, uapiFile.Close)
 
-	uapiListener, err := uapiListen(interfaceName, uapiFile)
+	uapiListener, err := UAPIListen(interfaceName, uapiFile)
 	if err != nil {
-		return 0, nil, fmt.Errorf("%w: %s", ErrUAPIListen, err)
+		return 0, nil, fmt.Errorf("listening on UAPI socket: %w", err)
 	}
 
-	closers.add("closing UAPI listener", stepTwo, uapiListener.Close)
+	cleanups.Add("closing UAPI listener", 2, uapiListener.Close)
 
 	// acceptAndHandle exits when uapiListener is closed
 	uapiAcceptErrorCh := make(chan error)
@@ -242,10 +247,10 @@ func setupUserSpace(ctx context.Context,
 		case err = <-uapiAcceptErrorCh:
 			close(uapiAcceptErrorCh)
 		case <-device.Wait():
-			err = ErrDeviceWaited
+			err = errDeviceWaited
 		}
 
-		closers.cleanup(logger)
+		cleanups.Cleanup(logger)
 
 		<-uapiAcceptErrorCh // wait for acceptAndHandle to exit
 

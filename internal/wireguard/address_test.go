@@ -10,7 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_Wireguard_addAddresses(t *testing.T) {
+func Test_AddAddresses(t *testing.T) {
 	t.Parallel()
 
 	ipNetOne := netip.PrefixFrom(netip.AddrFrom4([4]byte{1, 2, 3, 4}), 32)
@@ -19,15 +19,17 @@ func Test_Wireguard_addAddresses(t *testing.T) {
 	errDummy := errors.New("dummy")
 
 	testCases := map[string]struct {
-		linkIndex uint32
-		addrs     []netip.Prefix
-		wgBuilder func(ctrl *gomock.Controller, linkIndex uint32) *Wireguard
-		err       error
+		linkIndex      uint32
+		addrs          []netip.Prefix
+		ipv6           bool
+		netlinkBuilder func(ctrl *gomock.Controller, linkIndex uint32) *MockNetLinker
+		err            error
 	}{
 		"success": {
 			linkIndex: 1,
 			addrs:     []netip.Prefix{ipNetOne, ipNetTwo},
-			wgBuilder: func(ctrl *gomock.Controller, linkIndex uint32) *Wireguard {
+			ipv6:      true,
+			netlinkBuilder: func(ctrl *gomock.Controller, linkIndex uint32) *MockNetLinker {
 				netLinker := NewMockNetLinker(ctrl)
 				firstCall := netLinker.EXPECT().
 					AddrReplace(linkIndex, ipNetOne).
@@ -35,35 +37,27 @@ func Test_Wireguard_addAddresses(t *testing.T) {
 				netLinker.EXPECT().
 					AddrReplace(linkIndex, ipNetTwo).
 					Return(nil).After(firstCall)
-				return &Wireguard{
-					netlink: netLinker,
-					settings: Settings{
-						IPv6: ptrTo(true),
-					},
-				}
+				return netLinker
 			},
 		},
 		"first add error": {
 			linkIndex: 1,
 			addrs:     []netip.Prefix{ipNetOne, ipNetTwo},
-			wgBuilder: func(ctrl *gomock.Controller, linkIndex uint32) *Wireguard {
+			ipv6:      true,
+			netlinkBuilder: func(ctrl *gomock.Controller, linkIndex uint32) *MockNetLinker {
 				netLinker := NewMockNetLinker(ctrl)
 				netLinker.EXPECT().
 					AddrReplace(linkIndex, ipNetOne).
 					Return(errDummy)
-				return &Wireguard{
-					netlink: netLinker,
-					settings: Settings{
-						IPv6: ptrTo(true),
-					},
-				}
+				return netLinker
 			},
 			err: errors.New("dummy: when adding address 1.2.3.4/32 to link with index 1"),
 		},
 		"second add error": {
 			linkIndex: 1,
 			addrs:     []netip.Prefix{ipNetOne, ipNetTwo},
-			wgBuilder: func(ctrl *gomock.Controller, linkIndex uint32) *Wireguard {
+			ipv6:      true,
+			netlinkBuilder: func(ctrl *gomock.Controller, linkIndex uint32) *MockNetLinker {
 				netLinker := NewMockNetLinker(ctrl)
 				firstCall := netLinker.EXPECT().
 					AddrReplace(linkIndex, ipNetOne).
@@ -71,23 +65,14 @@ func Test_Wireguard_addAddresses(t *testing.T) {
 				netLinker.EXPECT().
 					AddrReplace(linkIndex, ipNetTwo).
 					Return(errDummy).After(firstCall)
-				return &Wireguard{
-					netlink: netLinker,
-					settings: Settings{
-						IPv6: ptrTo(true),
-					},
-				}
+				return netLinker
 			},
 			err: errors.New("dummy: when adding address ::1234/64 to link with index 1"),
 		},
 		"ignore IPv6": {
 			addrs: []netip.Prefix{ipNetTwo},
-			wgBuilder: func(_ *gomock.Controller, _ uint32) *Wireguard {
-				return &Wireguard{
-					settings: Settings{
-						IPv6: ptrTo(false),
-					},
-				}
+			netlinkBuilder: func(_ *gomock.Controller, _ uint32) *MockNetLinker {
+				return NewMockNetLinker(nil)
 			},
 		},
 	}
@@ -97,9 +82,9 @@ func Test_Wireguard_addAddresses(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 
-			wg := testCase.wgBuilder(ctrl, testCase.linkIndex)
+			netlink := testCase.netlinkBuilder(ctrl, testCase.linkIndex)
 
-			err := wg.addAddresses(testCase.linkIndex, testCase.addrs)
+			err := AddAddresses(testCase.linkIndex, testCase.addrs, testCase.ipv6, netlink)
 
 			if testCase.err != nil {
 				require.Error(t, err)

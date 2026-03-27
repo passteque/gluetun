@@ -7,7 +7,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qdm12/gluetun/internal/configuration/settings/helpers"
 	"github.com/qdm12/gluetun/internal/constants/providers"
 	"github.com/qdm12/gosettings"
 	"github.com/qdm12/gosettings/reader"
@@ -51,23 +50,8 @@ type Wireguard struct {
 var regexpInterfaceName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
 // Validate validates Wireguard settings.
-// It should only be ran if the VPN type chosen is Wireguard.
-func (w Wireguard) validate(vpnProvider string, ipv6Supported bool) (err error) {
-	if !helpers.IsOneOf(vpnProvider,
-		providers.Airvpn,
-		providers.Custom,
-		providers.Fastestvpn,
-		providers.Ivpn,
-		providers.Mullvad,
-		providers.Nordvpn,
-		providers.Protonvpn,
-		providers.Surfshark,
-		providers.Windscribe,
-	) {
-		// do not validate for VPN provider not supporting Wireguard
-		return nil
-	}
-
+// It should only be ran if the VPN type chosen is Wireguard or AmneziaWg.
+func (w Wireguard) validate(vpnProvider string, ipv6Supported, amneziawg bool) (err error) {
 	// Validate PrivateKey
 	if *w.PrivateKey == "" {
 		return fmt.Errorf("%w", ErrWireguardPrivateKeyNotSet)
@@ -136,9 +120,11 @@ func (w Wireguard) validate(vpnProvider string, ipv6Supported bool) (err error) 
 			ErrWireguardInterfaceNotValid, w.Interface, regexpInterfaceName)
 	}
 
-	validImplementations := []string{"auto", "userspace", "kernelspace"}
-	if err := validate.IsOneOf(w.Implementation, validImplementations...); err != nil {
-		return fmt.Errorf("%w: %w", ErrWireguardImplementationNotValid, err)
+	if !amneziawg { // amneziawg should have its own Implementation field and ignore this one
+		validImplementations := []string{"auto", "userspace", "kernelspace"}
+		if err := validate.IsOneOf(w.Implementation, validImplementations...); err != nil {
+			return fmt.Errorf("%w: %w", ErrWireguardImplementationNotValid, err)
+		}
 	}
 
 	return nil
@@ -238,14 +224,21 @@ func (w Wireguard) toLinesNode() (node *gotree.Node) {
 	return node
 }
 
-func (w *Wireguard) read(r *reader.Reader) (err error) {
-	w.PrivateKey = r.Get("WIREGUARD_PRIVATE_KEY", reader.ForceLowercase(false))
-	w.PreSharedKey = r.Get("WIREGUARD_PRESHARED_KEY", reader.ForceLowercase(false))
+func (w *Wireguard) read(r *reader.Reader, amneziaWG bool) (err error) {
+	prefix := "WIREGUARD"
+	if amneziaWG {
+		prefix = "AMNEZIAWG"
+	}
+	w.PrivateKey = r.Get(prefix+"_PRIVATE_KEY", reader.ForceLowercase(false))
+	w.PreSharedKey = r.Get(prefix+"_PRESHARED_KEY", reader.ForceLowercase(false))
 	w.Interface = r.String("VPN_INTERFACE",
-		reader.RetroKeys("WIREGUARD_INTERFACE"), reader.ForceLowercase(false))
-	w.Implementation = r.String("WIREGUARD_IMPLEMENTATION")
+		reader.RetroKeys(prefix+"_INTERFACE"), reader.ForceLowercase(false))
 
-	addressStrings := r.CSV("WIREGUARD_ADDRESSES", reader.RetroKeys("WIREGUARD_ADDRESS"))
+	if !amneziaWG {
+		w.Implementation = r.String("WIREGUARD_IMPLEMENTATION")
+	}
+
+	addressStrings := r.CSV(prefix+"_ADDRESSES", reader.RetroKeys(prefix+"_ADDRESS"))
 	// WARNING: do not initialize w.Addresses to an empty slice
 	// or the defaults for nordvpn will not work.
 	for _, addressString := range addressStrings {
@@ -260,17 +253,17 @@ func (w *Wireguard) read(r *reader.Reader) (err error) {
 		w.Addresses = append(w.Addresses, address)
 	}
 
-	w.AllowedIPs, err = r.CSVNetipPrefixes("WIREGUARD_ALLOWED_IPS")
+	w.AllowedIPs, err = r.CSVNetipPrefixes(prefix + "_ALLOWED_IPS")
 	if err != nil {
 		return err // already wrapped
 	}
 
-	w.PersistentKeepaliveInterval, err = r.DurationPtr("WIREGUARD_PERSISTENT_KEEPALIVE_INTERVAL")
+	w.PersistentKeepaliveInterval, err = r.DurationPtr(prefix + "_PERSISTENT_KEEPALIVE_INTERVAL")
 	if err != nil {
 		return err
 	}
 
-	w.MTU, err = r.Uint32Ptr("WIREGUARD_MTU")
+	w.MTU, err = r.Uint32Ptr(prefix + "_MTU")
 	if err != nil {
 		return err
 	}

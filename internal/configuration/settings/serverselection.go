@@ -87,7 +87,7 @@ func (ss *ServerSelection) validate(vpnServiceProvider string,
 	filterChoicesGetter FilterChoicesGetter, warner Warner,
 ) (err error) {
 	switch ss.VPN {
-	case vpn.OpenVPN, vpn.Wireguard:
+	case vpn.AmneziaWg, vpn.OpenVPN, vpn.Wireguard:
 	default:
 		return fmt.Errorf("%w: %s", ErrVPNTypeNotValid, ss.VPN)
 	}
@@ -518,7 +518,8 @@ func (ss *ServerSelection) read(r *reader.Reader,
 		return err
 	}
 
-	err = ss.Wireguard.read(r)
+	amneziawg := ss.VPN == vpn.AmneziaWg
+	err = ss.Wireguard.read(r, amneziawg)
 	if err != nil {
 		return err
 	}

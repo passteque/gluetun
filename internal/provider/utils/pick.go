@@ -30,7 +30,7 @@ func pickConnection(connections []models.Connection,
 	switch selection.VPN {
 	case vpn.OpenVPN:
 		targetIP = selection.OpenVPN.EndpointIP
-	case vpn.Wireguard:
+	case vpn.Wireguard, vpn.AmneziaWg:
 		targetIP = selection.Wireguard.EndpointIP
 	default:
 		panic("unknown VPN type: " + selection.VPN)

@@ -8,9 +8,9 @@ import (
 
 func parallelResolverSettings(hosts []string) (settings resolver.ParallelSettings) {
 	const (
-		maxFailRatio = 0.1
+		maxFailRatio = 0.4
 		maxNoNew     = 1
-		maxFails     = 2
+		maxFails     = 4
 	)
 	return resolver.ParallelSettings{
 		Hosts:        hosts,

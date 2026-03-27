@@ -3,8 +3,8 @@ package service
 import (
 	"context"
 	"net/netip"
-	"os/exec"
 
+	"github.com/qdm12/gluetun/internal/command"
 	"github.com/qdm12/gluetun/internal/provider/utils"
 )
 
@@ -35,6 +35,5 @@ type PortForwarder interface {
 }
 
 type Cmder interface {
-	Start(cmd *exec.Cmd) (stdoutLines, stderrLines <-chan string,
-		waitError <-chan error, startErr error)
+	RunAndLog(ctx context.Context, command string, logger command.Logger) (err error)
 }

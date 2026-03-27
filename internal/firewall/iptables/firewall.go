@@ -6,10 +6,9 @@ import (
 )
 
 type Config struct {
-	runner         CmdRunner
-	logger         Logger
-	iptablesMutex  sync.Mutex
-	ip6tablesMutex sync.Mutex
+	runner        CmdRunner
+	logger        Logger
+	iptablesMutex sync.Mutex
 
 	// Fixed state
 	ipTables  string

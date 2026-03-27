@@ -30,7 +30,10 @@ type Provider struct {
 func (p *Provider) validate(vpnType string, filterChoicesGetter FilterChoicesGetter, warner Warner) (err error) {
 	// Validate Name
 	var validNames []string
-	if vpnType == vpn.OpenVPN {
+	switch vpnType {
+	case vpn.AmneziaWg:
+		validNames = []string{providers.Custom}
+	case vpn.OpenVPN:
 		validNames = providers.AllWithCustom()
 		validNames = append(validNames, "pia") // Retro-compatibility
 		// Remove Mullvad since it no longer supports OpenVPN as of January 15th, 2026
@@ -38,7 +41,7 @@ func (p *Provider) validate(vpnType string, filterChoicesGetter FilterChoicesGet
 		validNames[mullvadIndex], validNames[len(validNames)-1] = validNames[len(validNames)-1], validNames[mullvadIndex]
 		validNames = validNames[:len(validNames)-1]
 		sort.Strings(validNames)
-	} else { // Wireguard
+	case vpn.Wireguard:
 		validNames = []string{
 			providers.Airvpn,
 			providers.Custom,
@@ -52,7 +55,7 @@ func (p *Provider) validate(vpnType string, filterChoicesGetter FilterChoicesGet
 		}
 	}
 	if err = validate.IsOneOf(p.Name, validNames...); err != nil {
-		return fmt.Errorf("%w for Wireguard: %w", ErrVPNProviderNameNotValid, err)
+		return fmt.Errorf("%w for %s: %w", ErrVPNProviderNameNotValid, vpnType, err)
 	}
 
 	err = p.ServerSelection.validate(p.Name, filterChoicesGetter, warner)

@@ -152,18 +152,22 @@ func (w WireguardSelection) toLinesNode() (node *gotree.Node) {
 	return node
 }
 
-func (w *WireguardSelection) read(r *reader.Reader) (err error) {
-	w.EndpointIP, err = r.NetipAddr("WIREGUARD_ENDPOINT_IP", reader.RetroKeys("VPN_ENDPOINT_IP"))
+func (w *WireguardSelection) read(r *reader.Reader, amneziaWG bool) (err error) {
+	prefix := "WIREGUARD"
+	if amneziaWG {
+		prefix = "AMNEZIAWG"
+	}
+	w.EndpointIP, err = r.NetipAddr(prefix+"_ENDPOINT_IP", reader.RetroKeys("VPN_ENDPOINT_IP"))
 	if err != nil {
 		return fmt.Errorf("%w - note this MUST be an IP address, "+
 			"see https://github.com/qdm12/gluetun/issues/788", err)
 	}
 
-	w.EndpointPort, err = r.Uint16Ptr("WIREGUARD_ENDPOINT_PORT", reader.RetroKeys("VPN_ENDPOINT_PORT"))
+	w.EndpointPort, err = r.Uint16Ptr(prefix+"_ENDPOINT_PORT", reader.RetroKeys("VPN_ENDPOINT_PORT"))
 	if err != nil {
 		return err
 	}
 
-	w.PublicKey = r.String("WIREGUARD_PUBLIC_KEY", reader.ForceLowercase(false))
+	w.PublicKey = r.String(prefix+"_PUBLIC_KEY", reader.ForceLowercase(false))
 	return nil
 }

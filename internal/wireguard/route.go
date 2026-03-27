@@ -8,17 +8,17 @@ import (
 	"github.com/qdm12/gluetun/internal/netlink"
 )
 
-func (w *Wireguard) addRoutes(linkIndex uint32, destinations []netip.Prefix,
-	firewallMark uint32,
+func AddRoutes(linkIndex uint32, destinations []netip.Prefix,
+	firewallMark uint32, netlinker NetLinker, logger Erroer,
 ) (err error) {
 	for _, dst := range destinations {
-		err = w.addRoute(linkIndex, dst, firewallMark)
+		err = addRoute(linkIndex, dst, firewallMark, netlinker)
 		if err == nil {
 			continue
 		}
 
 		if dst.Addr().Is6() && strings.Contains(err.Error(), "permission denied") {
-			w.logger.Errorf("cannot add route for IPv6 due to a permission denial. "+
+			logger.Errorf("cannot add route for IPv6 due to a permission denial. "+
 				"Ignoring and continuing execution; "+
 				"Please report to https://github.com/qdm12/gluetun/issues/998 if you find a fix. "+
 				"Full error string: %s", err)
@@ -29,8 +29,8 @@ func (w *Wireguard) addRoutes(linkIndex uint32, destinations []netip.Prefix,
 	return nil
 }
 
-func (w *Wireguard) addRoute(linkIndex uint32, dst netip.Prefix,
-	firewallMark uint32,
+func addRoute(linkIndex uint32, dst netip.Prefix,
+	firewallMark uint32, netlinker NetLinker,
 ) (err error) {
 	family := netlink.FamilyV4
 	if dst.Addr().Is6() {
@@ -46,7 +46,7 @@ func (w *Wireguard) addRoute(linkIndex uint32, dst netip.Prefix,
 		Proto:     netlink.ProtoStatic,
 	}
 
-	err = w.netlink.RouteAdd(route)
+	err = netlinker.RouteAdd(route)
 	if err != nil {
 		return fmt.Errorf(
 			"adding route for link with index %d, destination %s and table %d: %w",

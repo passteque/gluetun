@@ -19,7 +19,7 @@ func (p *Provider) GetConnection(selection settings.ServerSelection, _ bool) (
 	switch selection.VPN {
 	case vpn.OpenVPN:
 		return getOpenVPNConnection(p.extractor, selection)
-	case vpn.Wireguard:
+	case vpn.Wireguard, vpn.AmneziaWg:
 		return getWireguardConnection(selection), nil
 	default:
 		return connection, fmt.Errorf("%w: %s", ErrVPNTypeNotSupported, selection.VPN)

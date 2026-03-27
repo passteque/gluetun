@@ -33,20 +33,28 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		var connection models.Connection
 		var err error
 		subLogger := l.logger.New(log.SetComponent(settings.Type))
-		if settings.Type == vpn.OpenVPN {
+		switch settings.Type {
+		case vpn.AmneziaWg:
+			vpnInterface = settings.AmneziaWg.Wireguard.Interface
+			vpnRunner, connection, err = setupAmneziaWg(ctx, l.netLinker, l.fw,
+				providerConf, settings, l.ipv6Supported, subLogger)
+		case vpn.OpenVPN:
 			vpnInterface = settings.OpenVPN.Interface
 			vpnRunner, connection, err = setupOpenVPN(ctx, l.fw,
-				l.openvpnConf, providerConf, settings, l.ipv6Supported, l.starter, subLogger)
-		} else { // Wireguard
+				l.openvpnConf, providerConf, settings, l.ipv6Supported, l.cmder, subLogger)
+		case vpn.Wireguard:
 			vpnInterface = settings.Wireguard.Interface
 			vpnRunner, connection, err = setupWireguard(ctx, l.netLinker, l.fw,
 				providerConf, settings, l.ipv6Supported, subLogger)
+		default:
+			panic("vpn type not implemented: " + settings.Type)
 		}
 		if err != nil {
 			l.crashed(ctx, err)
 			continue
 		}
 		tunnelUpData := tunnelUpData{
+			upCommand: *settings.UpCommand,
 			pmtud: tunnelUpPMTUDData{
 				enabled:   settings.Type != vpn.Wireguard || *settings.Wireguard.MTU == 0,
 				vpnType:   settings.Type,

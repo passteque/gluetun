@@ -229,9 +229,7 @@ func (c *Config) RedirectPort(ctx context.Context, intf string,
 	}
 
 	c.iptablesMutex.Lock()
-	c.ip6tablesMutex.Lock()
 	defer c.iptablesMutex.Unlock()
-	defer c.ip6tablesMutex.Unlock()
 
 	restore, err := c.saveAndRestore(ctx)
 	if err != nil {
@@ -297,9 +295,7 @@ func (c *Config) RunUserPostRules(ctx context.Context, filepath string) error {
 	lines := strings.Split(string(b), "\n")
 
 	c.iptablesMutex.Lock()
-	c.ip6tablesMutex.Lock()
 	defer c.iptablesMutex.Unlock()
-	defer c.ip6tablesMutex.Unlock()
 
 	restore, err := c.saveAndRestore(ctx)
 	if err != nil {

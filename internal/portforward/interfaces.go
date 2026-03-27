@@ -4,6 +4,8 @@ import (
 	"context"
 	"net/netip"
 	"os/exec"
+
+	"github.com/qdm12/gluetun/internal/command"
 )
 
 type Service interface {
@@ -35,4 +37,5 @@ type Logger interface {
 type Cmder interface {
 	Start(cmd *exec.Cmd) (stdoutLines, stderrLines <-chan string,
 		waitError <-chan error, startErr error)
+	RunAndLog(ctx context.Context, commandString string, logger command.Logger) (err error)
 }

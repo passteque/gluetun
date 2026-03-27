@@ -34,11 +34,11 @@ type Config struct {
 
 // NewConfig creates a new Config instance and returns an error
 // if no iptables implementation is available.
-func NewConfig(ctx context.Context, logger Logger,
+func NewConfig(ctx context.Context, logger, iptablesLogger Logger,
 	runner CmdRunner, defaultRoutes []routing.DefaultRoute,
 	localNetworks []routing.LocalNetwork,
 ) (config *Config, err error) {
-	impl, err := iptables.New(ctx, runner, logger)
+	impl, err := iptables.New(ctx, runner, iptablesLogger)
 	if err != nil {
 		return nil, fmt.Errorf("creating iptables firewall: %w", err)
 	}

@@ -84,30 +84,6 @@ func (mr *MockLoggerMockRecorder) Debug(arg0 interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Debug", reflect.TypeOf((*MockLogger)(nil).Debug), arg0)
 }
 
-// Error mocks base method.
-func (m *MockLogger) Error(arg0 string) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Error", arg0)
-}
-
-// Error indicates an expected call of Error.
-func (mr *MockLoggerMockRecorder) Error(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Error", reflect.TypeOf((*MockLogger)(nil).Error), arg0)
-}
-
-// Info mocks base method.
-func (m *MockLogger) Info(arg0 string) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Info", arg0)
-}
-
-// Info indicates an expected call of Info.
-func (mr *MockLoggerMockRecorder) Info(arg0 interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Info", reflect.TypeOf((*MockLogger)(nil).Info), arg0)
-}
-
 // Warn mocks base method.
 func (m *MockLogger) Warn(arg0 string) {
 	m.ctrl.T.Helper()

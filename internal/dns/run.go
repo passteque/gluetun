@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/qdm12/dns/v2/pkg/nameserver"
+	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/constants"
 )
 
@@ -17,9 +18,6 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		return
 	}
 
-	const fallback = false
-	l.useUnencryptedDNS(fallback)
-
 	select {
 	case <-l.start:
 	case <-ctx.Done():
@@ -31,31 +29,39 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		// Their values are to be used if DOT=off
 		var runError <-chan error
 
+		var settings settings.DNS
 		for {
-			settings := l.GetSettings()
+			settings = l.GetSettings()
 			var err error
 			runError, err = l.setupServer(ctx, settings)
 			if err == nil {
-				l.backoffTime = defaultBackoffTime
-				l.logger.Infof("ready and using DNS server with %s upstream resolvers", settings.UpstreamType)
-
-				err = l.updateFiles(ctx, settings)
-				if err != nil {
-					l.logger.Warn("downloading block lists failed, skipping: " + err.Error())
-				}
 				break
 			}
 
 			l.signalOrSetStatus(constants.Crashed)
-
 			if ctx.Err() != nil {
 				return
 			}
 			l.logAndWait(ctx, err)
 		}
+
+		l.backoffTime = defaultBackoffTime
+		l.logger.Infof("ready and using DNS server with %s upstream resolvers", settings.UpstreamType)
+
+		err = l.updateFiles(ctx, settings)
+		if err != nil {
+			l.logger.Warn("downloading block lists failed, skipping: " + err.Error())
+		}
 		l.signalOrSetStatus(constants.Running)
 
 		l.userTrigger = false
+
+		report, err := leakCheck(ctx, l.client)
+		if err != nil {
+			l.logger.Warnf("running leak check: %s", err)
+		} else {
+			l.logger.Infof("leak check report: %s", report)
+		}
 
 		exitLoop := l.runWait(ctx, runError)
 		if exitLoop {
@@ -74,8 +80,6 @@ func (l *Loop) runWait(ctx context.Context, runError <-chan error) (exitLoop boo
 		case <-l.stop:
 			l.userTrigger = true
 			l.logger.Info("stopping")
-			const fallback = false
-			l.useUnencryptedDNS(fallback)
 			l.stopServer()
 			l.stopped <- struct{}{}
 		case <-l.start:
@@ -84,8 +88,6 @@ func (l *Loop) runWait(ctx context.Context, runError <-chan error) (exitLoop boo
 			return false
 		case err := <-runError: // unexpected error
 			l.statusManager.SetStatus(constants.Crashed)
-			const fallback = true
-			l.useUnencryptedDNS(fallback)
 			l.logAndWait(ctx, err)
 			return false
 		}

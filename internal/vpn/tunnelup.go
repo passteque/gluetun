@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/qdm12/gluetun/internal/constants"
+	"github.com/qdm12/gluetun/internal/constants/vpn"
 	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/qdm12/gluetun/internal/pmtud"
 	pconstants "github.com/qdm12/gluetun/internal/pmtud/constants"
@@ -16,6 +18,7 @@ import (
 )
 
 type tunnelUpData struct {
+	upCommand string
 	// Healthcheck
 	serverIP netip.Addr
 	pmtud    tunnelUpPMTUDData
@@ -46,6 +49,14 @@ type tunnelUpPMTUDData struct {
 }
 
 func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
+	switch vpnType := l.GetSettings().Type; vpnType {
+	case vpn.Wireguard, vpn.AmneziaWg:
+		l.logger.Infof("%s setup is complete. "+
+			"Note %s is a silent protocol and it may or may not work, without giving any error message. "+
+			"Typically i/o timeout errors indicate the %s connection is not working.",
+			vpnType, vpnType, vpnType)
+	}
+
 	l.client.CloseIdleConnections()
 
 	for _, vpnPort := range l.vpnInputPorts {
@@ -64,6 +75,8 @@ func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
 			mtuLogger.Error(err.Error())
 		}
 	}
+
+	_, _ = l.dnsLooper.ApplyStatus(ctx, constants.Running)
 
 	icmpTargetIPs := l.healthSettings.ICMPTargetIPs
 	if len(icmpTargetIPs) == 1 && icmpTargetIPs[0].IsUnspecified() {
@@ -90,8 +103,6 @@ func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
 	// to start monitoring health and auto-healing.
 	go l.collectHealthErrors(ctx, loopCtx, healthErrCh)
 
-	_, _ = l.dnsLooper.ApplyStatus(ctx, constants.Running)
-
 	err = l.publicip.RunOnce(ctx)
 	if err != nil {
 		l.logger.Error("getting public IP address information: " + err.Error())
@@ -104,6 +115,14 @@ func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
 			l.logger.Error("cannot get version information: " + err.Error())
 		} else {
 			l.logger.Info(message)
+		}
+	}
+
+	if data.upCommand != "" {
+		commandString := strings.ReplaceAll(data.upCommand, "{{VPN_INTERFACE}}", data.vpnIntf)
+		err := l.cmder.RunAndLog(context.Background(), commandString, l.logger)
+		if err != nil {
+			l.logger.Error("failed to run VPN up command: " + err.Error())
 		}
 	}
 
@@ -164,9 +183,9 @@ func updateToMaxMTU(ctx context.Context, vpnInterface string,
 		return fmt.Errorf("getting VPN gateway IP address: %w", err)
 	}
 
-	vpnRoute, err := routing.VPNRoute(vpnInterface)
+	vpnRoutes, err := routing.VPNRoutes(vpnInterface)
 	if err != nil {
-		return fmt.Errorf("getting VPN route: %w", err)
+		return fmt.Errorf("getting VPN routes: %w", err)
 	}
 
 	link, err := netlinker.LinkByName(vpnInterface)
@@ -198,7 +217,7 @@ func updateToMaxMTU(ctx context.Context, vpnInterface string,
 		logger.Infof("setting VPN interface %s MTU to maximum valid MTU %d", vpnInterface, vpnLinkMTU)
 	}
 
-	err = setTCPMSSOnVPNRoute(vpnLinkMTU, vpnRoute, netlinker)
+	err = setTCPMSSOnVPNRoutes(vpnLinkMTU, vpnRoutes, netlinker)
 	if err != nil {
 		err = fmt.Errorf("setting safe TCP MSS for MTU %d: %w", vpnLinkMTU, err)
 		vpnLinkMTU = originalMTU
@@ -214,14 +233,20 @@ func updateToMaxMTU(ctx context.Context, vpnInterface string,
 	return nil
 }
 
-func setTCPMSSOnVPNRoute(mtu uint32, route netlink.Route, netlinker NetLinker) error {
-	ipHeaderLength := pconstants.IPv4HeaderLength
-	if route.Dst.Addr().Is6() {
-		ipHeaderLength = pconstants.IPv6HeaderLength
+func setTCPMSSOnVPNRoutes(mtu uint32, routes []netlink.Route, netlinker NetLinker) error {
+	for _, route := range routes {
+		ipHeaderLength := pconstants.IPv4HeaderLength
+		if route.Dst.Addr().Is6() {
+			ipHeaderLength = pconstants.IPv6HeaderLength
+		}
+		const mysteriousOverhead = 20 // most likely TCP options, such as the 12B of timestamps
+		overhead := ipHeaderLength + pconstants.BaseTCPHeaderLength + mysteriousOverhead
+		mss := mtu - overhead
+		route.AdvMSS = mss
+		err := netlinker.RouteReplace(route)
+		if err != nil {
+			return fmt.Errorf("replacing route %v: %w", route, err)
+		}
 	}
-	const mysteriousOverhead = 20 // most likely TCP options, such as the 12B of timestamps
-	overhead := ipHeaderLength + pconstants.BaseTCPHeaderLength + mysteriousOverhead
-	mss := mtu - overhead
-	route.AdvMSS = mss
-	return netlinker.RouteReplace(route)
+	return nil
 }

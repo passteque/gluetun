@@ -47,7 +47,7 @@ func (i *ip2Location) FetchInfo(ctx context.Context, ip netip.Addr) (
 ) {
 	// Define a timeout since the default client has a large timeout and we don't
 	// want to wait too long.
-	const timeout = 5 * time.Second
+	const timeout = 15 * time.Second
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 

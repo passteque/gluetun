@@ -45,7 +45,7 @@ jobs:
           level: error
           exclude: |
             ./internal/storage/servers.json
-            ./golangci.yml
+            ./.golangci.yml
             *.md
 
       - name: Linting
@@ -138,7 +138,7 @@ jobs:
       # https://github.com/docker/metadata-action
       - name: Extract Docker metadata
         id: meta
-        uses: docker/metadata-action@v5
+        uses: docker/metadata-action@v6
         with:
           flavor: |
             latest=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
@@ -153,8 +153,8 @@ jobs:
             type=semver,pattern=v{{major}},enable=${{ !startsWith(github.ref, 'refs/tags/v0.') }}
             type=raw,value=latest,enable=${{ github.ref == format('refs/heads/{0}', github.event.repository.default_branch) }}
 
-      - uses: docker/setup-qemu-action@v3
-      - uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-qemu-action@v4
+      - uses: docker/setup-buildx-action@v4
 
       - uses: docker/login-action@v4
         with:
@@ -169,7 +169,11 @@ jobs:
 
       - name: Short commit
         id: shortcommit
-        run: echo "value=$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          # Use the PR head SHA if it exists, otherwise fallback to GITHUB_SHA
+          FULL_SHA="${{ github.event.pull_request.head.sha || github.sha }}"
+          SHORT_SHA=
+          echo "value=$(echo $FULL_SHA | cut -c1-7)" >> $GITHUB_OUTPUT
 
       - name: Build and push final image
         uses: docker/build-push-action@v7

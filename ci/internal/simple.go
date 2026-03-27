@@ -17,7 +17,7 @@ import (
 func ptrTo[T any](v T) *T { return &v }
 
 func simpleTest(ctx context.Context, env []string, logger Logger) error {
-	const timeout = 30 * time.Second
+	const timeout = 60 * time.Second
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 

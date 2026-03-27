@@ -120,10 +120,10 @@ func (s *Settings) OverrideWith(other Settings,
 func (s *Settings) SetDefaults() {
 	s.ControlServer.setDefaults()
 	s.DNS.setDefaults()
-	s.Firewall.setDefaults()
+	s.Log.setDefaults()
+	s.Firewall.setDefaults(s.Log.Level)
 	s.Health.SetDefaults()
 	s.HTTPProxy.setDefaults()
-	s.Log.setDefaults()
 	s.PublicIP.setDefaults()
 	s.Shadowsocks.setDefaults()
 	s.Storage.setDefaults()

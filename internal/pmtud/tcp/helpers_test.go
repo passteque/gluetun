@@ -35,7 +35,7 @@ func getFirewall(t *testing.T) *firewall.Config {
 		noopLogger := &noopLogger{}
 		cmder := command.New()
 		var err error
-		testFirewall, err = firewall.NewConfig(t.Context(), noopLogger, cmder, nil, nil)
+		testFirewall, err = firewall.NewConfig(t.Context(), noopLogger, noopLogger, cmder, nil, nil)
 		if errors.Is(err, iptables.ErrNotSupported) {
 			t.Skip("iptables not installed, skipping TCP PMTUD tests")
 		}
