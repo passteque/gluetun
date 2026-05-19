@@ -91,14 +91,14 @@ func encodeBindData(addrType addrType, address string, port uint16) (
 	return data, nil
 }
 
-func bindDataLength(addrType addrType, address string) (maxLength int) {
+func bindDataLength(addrType addrType, address string) (maxLength uint) {
 	maxLength++ // address type
 	switch addrType {
 	case ipv4:
 		maxLength += net.IPv4len
 	case domainName:
 		maxLength++ // domain name length
-		maxLength += len([]byte(address))
+		maxLength += uint(len([]byte(address)))
 	case ipv6:
 		maxLength += net.IPv6len
 	default:

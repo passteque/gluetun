@@ -132,7 +132,8 @@ func (c *socksConn) handleRequest(ctx context.Context) error {
 		return fmt.Errorf("writing successful %s response: %w", request.command, err)
 	}
 
-	errc := make(chan error)
+	const capacity = 2 // if one goroutine fails, we don't want to leak the other one
+	errc := make(chan error, capacity)
 	go func() {
 		_, err := io.Copy(c.clientConn, destinationConn)
 		if err != nil {

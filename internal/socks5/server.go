@@ -8,7 +8,7 @@ import (
 	"sync/atomic"
 )
 
-type Server struct {
+type server struct {
 	username string
 	password string
 	address  string
@@ -23,8 +23,8 @@ type Server struct {
 	stopping        atomic.Bool
 }
 
-func newServer(settings Settings) *Server {
-	return &Server{
+func newServer(settings Settings) *server {
+	return &server{
 		username: settings.Username,
 		password: settings.Password,
 		address:  settings.Address,
@@ -32,7 +32,7 @@ func newServer(settings Settings) *Server {
 	}
 }
 
-func (s *Server) Start(ctx context.Context) (runErr <-chan error, err error) {
+func (s *server) Start(ctx context.Context) (runErr <-chan error, err error) {
 	s.socksConnCtx, s.socksConnCancel = context.WithCancel(context.Background())
 	config := &net.ListenConfig{}
 	s.listener, err = config.Listen(s.socksConnCtx, "tcp", s.address)
@@ -56,7 +56,7 @@ func (s *Server) Start(ctx context.Context) (runErr <-chan error, err error) {
 	return runErr, nil
 }
 
-func (s *Server) runServer(ready chan<- struct{},
+func (s *server) runServer(ready chan<- struct{},
 	runErrCh chan<- error, done chan<- struct{},
 ) {
 	close(ready)
@@ -69,7 +69,7 @@ func (s *Server) runServer(ready chan<- struct{},
 		connection, err := s.listener.Accept()
 		if err != nil {
 			if !s.stopping.Load() {
-				_ = s.Stop()
+				_ = s.stop()
 				runErrCh <- fmt.Errorf("accepting connection: %w", err)
 			}
 			return
@@ -94,17 +94,22 @@ func (s *Server) runServer(ready chan<- struct{},
 	}
 }
 
-func (s *Server) Stop() (err error) {
+func (s *server) Stop() (err error) {
 	s.stopping.Store(true)
-	s.listening.Store(false)
-	err = s.listener.Close()
-	s.socksConnCancel() // stop ongoing socks connections
-	<-s.done            // wait for run goroutine to finish
+	err = s.stop()
+	<-s.done // wait for run goroutine to finish
 	s.stopping.Store(false)
 	return err
 }
 
-func (s *Server) listeningAddress() net.Addr {
+func (s *server) stop() error {
+	s.listening.Store(false)
+	err := s.listener.Close()
+	s.socksConnCancel() // stop ongoing socks connections
+	return err
+}
+
+func (s *server) listeningAddress() net.Addr {
 	if s.listening.Load() {
 		return s.listener.Addr()
 	}

@@ -2,7 +2,6 @@ package socks5
 
 import (
 	"bytes"
-	"context"
 	"encoding/binary"
 	"io"
 	"net"
@@ -17,8 +16,8 @@ import (
 
 type noopLogger struct{}
 
-func (noopLogger) Infof(string, ...interface{}) {}
-func (noopLogger) Warnf(string, ...interface{}) {}
+func (noopLogger) Infof(string, ...any) {}
+func (noopLogger) Warnf(string, ...any) {}
 
 func TestServerProxy(t *testing.T) {
 	t.Parallel()
@@ -38,10 +37,10 @@ func TestServerProxy(t *testing.T) {
 			t.Parallel()
 
 			// Backend TCP server: accepts one connection for the proxy to forward to.
-			backendListener, err := (&net.ListenConfig{}).Listen(context.Background(), "tcp", "127.0.0.1:0")
+			backendListener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 			require.NoError(t, err)
 
-			backendConnCh := make(chan net.Conn, 1)
+			backendConnCh := make(chan net.Conn)
 			go func() {
 				conn, err := backendListener.Accept()
 				if err != nil {
@@ -56,7 +55,7 @@ func TestServerProxy(t *testing.T) {
 				Address:  "127.0.0.1:0",
 				Logger:   noopLogger{},
 			})
-			_, err = server.Start(context.Background())
+			_, err = server.Start(t.Context())
 			require.NoError(t, err)
 			t.Cleanup(func() {
 				_ = server.Stop()
@@ -107,7 +106,7 @@ func dialSOCKS5(t *testing.T, proxyAddr, targetAddr, username, password string) 
 	targetPort, err := strconv.Atoi(portStr)
 	require.NoError(t, err)
 
-	conn, err := (&net.Dialer{}).DialContext(context.Background(), "tcp", proxyAddr)
+	conn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", proxyAddr)
 	require.NoError(t, err)
 
 	var method authMethod
@@ -180,11 +179,11 @@ func dialSOCKS5(t *testing.T, proxyAddr, targetAddr, username, password string) 
 	return conn
 }
 
-func TestNew(t *testing.T) {
+func Test_newServer(t *testing.T) {
 	t.Parallel()
 	testCases := map[string]struct {
 		settings Settings
-		expected *Server
+		expected *server
 	}{
 		"with_auth": {
 			settings: Settings{
@@ -193,7 +192,7 @@ func TestNew(t *testing.T) {
 				Address:  "127.0.0.1:1080",
 				Logger:   nil,
 			},
-			expected: &Server{
+			expected: &server{
 				username: "user",
 				password: "pass",
 				address:  "127.0.0.1:1080",
@@ -205,7 +204,7 @@ func TestNew(t *testing.T) {
 				Address: "127.0.0.1:1080",
 				Logger:  nil,
 			},
-			expected: &Server{
+			expected: &server{
 				address: "127.0.0.1:1080",
 				logger:  nil,
 			},
@@ -224,7 +223,7 @@ func TestNew(t *testing.T) {
 	}
 }
 
-func TestStartStop(t *testing.T) {
+func Test_Server_StartStop(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	logger := NewMockLogger(ctrl)
@@ -236,7 +235,7 @@ func TestStartStop(t *testing.T) {
 		Logger:  logger,
 	})
 
-	runErr, startErr := server.Start(context.Background())
+	runErr, startErr := server.Start(t.Context())
 	require.NoError(t, startErr)
 
 	select {
@@ -252,7 +251,7 @@ func TestStartStop(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestEncodeBindData(t *testing.T) {
+func Test_encodeBindData(t *testing.T) {
 	t.Parallel()
 	testCases := map[string]struct {
 		addrType    addrType
@@ -319,61 +318,47 @@ func TestEncodeBindData(t *testing.T) {
 	}
 }
 
-func TestDecodeRequest(t *testing.T) {
+func Test_decodeRequest(t *testing.T) {
 	t.Parallel()
 	testCases := map[string]struct {
-		buildPacket func() []byte
+		packet      []byte
 		expectedErr string
 		validate    func(*testing.T, request)
 	}{
 		"ipv4_valid": {
-			buildPacket: func() []byte {
-				packet := []byte{socks5Version, byte(connect), 0, byte(ipv4)}
-				packet = append(packet, 127, 0, 0, 1)
-				packet = append(packet, byte(0x1f), byte(0x90))
-				return packet
-			},
-			validate: func(t *testing.T, req request) {
+			packet: []byte{socks5Version, byte(connect), 0, byte(ipv4), 127, 0, 0, 1, byte(0x1f), byte(0x90)},
+			validate: func(t *testing.T, request request) {
 				t.Helper()
-				assert.Equal(t, connect, req.command)
-				assert.Equal(t, "127.0.0.1", req.destination)
-				assert.Equal(t, uint16(8080), req.port)
-				assert.Equal(t, ipv4, req.addressType)
+				assert.Equal(t, connect, request.command)
+				assert.Equal(t, "127.0.0.1", request.destination)
+				assert.Equal(t, uint16(8080), request.port)
+				assert.Equal(t, ipv4, request.addressType)
 			},
 		},
 		"domain_name_valid": {
-			buildPacket: func() []byte {
-				packet := []byte{socks5Version, byte(connect), 0, byte(domainName)}
-				domain := "example.com"
-				packet = append(packet, byte(len(domain)))
-				packet = append(packet, []byte(domain)...)
-				packet = append(packet, byte(0x00), byte(0x50))
-				return packet
-			},
-			validate: func(t *testing.T, req request) {
+			packet: concatBytes(
+				[]byte{socks5Version, byte(connect), 0, byte(domainName)},
+				[]byte{byte(len("example.com"))},
+				[]byte("example.com"),
+				[]byte{0x00, 0x50},
+			),
+			validate: func(t *testing.T, request request) {
 				t.Helper()
-				assert.Equal(t, "example.com", req.destination)
-				assert.Equal(t, uint16(80), req.port)
-				assert.Equal(t, domainName, req.addressType)
+				assert.Equal(t, "example.com", request.destination)
+				assert.Equal(t, uint16(80), request.port)
+				assert.Equal(t, domainName, request.addressType)
 			},
 		},
 		"version_mismatch": {
-			buildPacket: func() []byte {
-				return []byte{4, byte(connect), 0, byte(ipv4), 127, 0, 0, 1, 0, 0}
-			},
+			packet:      []byte{4, byte(connect), 0, byte(ipv4), 127, 0, 0, 1, 0, 0},
 			expectedErr: "version is not supported",
 		},
 		"truncated_header": {
-			buildPacket: func() []byte {
-				return []byte{socks5Version, byte(connect)}
-			},
+			packet:      []byte{socks5Version, byte(connect)},
 			expectedErr: "reading header",
 		},
 		"unsupported_address_type": {
-			buildPacket: func() []byte {
-				packet := []byte{socks5Version, byte(connect), 0, byte(255)}
-				return packet
-			},
+			packet:      []byte{socks5Version, byte(connect), 0, byte(255)},
 			expectedErr: "address type is not supported",
 		},
 	}
@@ -381,59 +366,49 @@ func TestDecodeRequest(t *testing.T) {
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			packet := testCase.buildPacket()
-			reader := bytes.NewReader(packet)
 
-			req, err := decodeRequest(reader, socks5Version)
+			reader := bytes.NewReader(testCase.packet)
+
+			request, err := decodeRequest(reader, socks5Version)
 
 			if testCase.expectedErr != "" {
 				assert.ErrorContains(t, err, testCase.expectedErr)
 			} else {
 				assert.NoError(t, err)
-				testCase.validate(t, req)
+				testCase.validate(t, request)
 			}
 		})
 	}
 }
 
-func TestVerifyFirstNegotiation(t *testing.T) {
+func Test_verifyFirstNegotiation(t *testing.T) {
 	t.Parallel()
 	testCases := map[string]struct {
-		buildPacket  func() []byte
+		packet       []byte
 		requiredAuth authMethod
 		expectedErr  string
 	}{
 		"version_mismatch": {
-			buildPacket: func() []byte {
-				return []byte{4, 2, byte(authNotRequired), byte(authUsernamePassword)}
-			},
+			packet:       []byte{4, 2, byte(authNotRequired), byte(authUsernamePassword)},
 			requiredAuth: authNotRequired,
 			expectedErr:  "version is not supported",
 		},
 		"no_methods": {
-			buildPacket: func() []byte {
-				return []byte{socks5Version, 0}
-			},
+			packet:       []byte{socks5Version, 0},
 			requiredAuth: authNotRequired,
 			expectedErr:  "no method identifiers",
 		},
 		"required_method_not_present": {
-			buildPacket: func() []byte {
-				return []byte{socks5Version, 2, byte(authNotRequired), byte(authGssapi)}
-			},
+			packet:       []byte{socks5Version, 2, byte(authNotRequired), byte(authGssapi)},
 			requiredAuth: authUsernamePassword,
 			expectedErr:  "no valid method identifier",
 		},
 		"required_method_present": {
-			buildPacket: func() []byte {
-				return []byte{socks5Version, 3, byte(authNotRequired), byte(authUsernamePassword), byte(authGssapi)}
-			},
+			packet:       []byte{socks5Version, 3, byte(authNotRequired), byte(authUsernamePassword), byte(authGssapi)},
 			requiredAuth: authUsernamePassword,
 		},
 		"no_auth_required": {
-			buildPacket: func() []byte {
-				return []byte{socks5Version, 1, byte(authNotRequired)}
-			},
+			packet:       []byte{socks5Version, 1, byte(authNotRequired)},
 			requiredAuth: authNotRequired,
 		},
 	}
@@ -441,8 +416,8 @@ func TestVerifyFirstNegotiation(t *testing.T) {
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			packet := testCase.buildPacket()
-			reader := bytes.NewReader(packet)
+
+			reader := bytes.NewReader(testCase.packet)
 
 			err := verifyFirstNegotiation(reader, testCase.requiredAuth)
 
@@ -455,61 +430,54 @@ func TestVerifyFirstNegotiation(t *testing.T) {
 	}
 }
 
-func TestUsernamePasswordSubnegotiate(t *testing.T) {
+func Test_usernamePasswordSubnegotiate(t *testing.T) {
 	t.Parallel()
 	testCases := map[string]struct {
-		buildPacket func() []byte
+		packet      []byte
 		username    string
 		password    string
 		expectedErr string
 	}{
 		"valid_credentials": {
-			buildPacket: func() []byte {
-				packet := []byte{authUsernamePasswordSubNegotiation1, 4}
-				packet = append(packet, []byte("user")...)
-				packet = append(packet, 4)
-				packet = append(packet, []byte("pass")...)
-				return packet
-			},
+			packet: concatBytes(
+				[]byte{authUsernamePasswordSubNegotiation1, 4},
+				[]byte("user"),
+				[]byte{4},
+				[]byte("pass"),
+			),
 			username: "user",
 			password: "pass",
 		},
 		"version_mismatch": {
-			buildPacket: func() []byte {
-				return []byte{2, 4, 'u', 's', 'e', 'r'}
-			},
+			packet:      []byte{2, 4, 'u', 's', 'e', 'r'},
 			username:    "user",
 			password:    "pass",
 			expectedErr: "subnegotiation version not supported",
 		},
 		"wrong_username": {
-			buildPacket: func() []byte {
-				packet := []byte{authUsernamePasswordSubNegotiation1, 4}
-				packet = append(packet, []byte("fake")...)
-				packet = append(packet, 4)
-				packet = append(packet, []byte("pass")...)
-				return packet
-			},
+			packet: concatBytes(
+				[]byte{authUsernamePasswordSubNegotiation1, 4},
+				[]byte("fake"),
+				[]byte{4},
+				[]byte("pass"),
+			),
 			username:    "user",
 			password:    "pass",
-			expectedErr: "username not valid",
+			expectedErr: "username received is not valid",
 		},
 		"wrong_password": {
-			buildPacket: func() []byte {
-				packet := []byte{authUsernamePasswordSubNegotiation1, 4}
-				packet = append(packet, []byte("user")...)
-				packet = append(packet, 4)
-				packet = append(packet, []byte("fake")...)
-				return packet
-			},
+			packet: concatBytes(
+				[]byte{authUsernamePasswordSubNegotiation1, 4},
+				[]byte("user"),
+				[]byte{4},
+				[]byte("fake"),
+			),
 			username:    "user",
 			password:    "pass",
 			expectedErr: "password not valid",
 		},
 		"truncated_header": {
-			buildPacket: func() []byte {
-				return []byte{authUsernamePasswordSubNegotiation1}
-			},
+			packet:      []byte{authUsernamePasswordSubNegotiation1},
 			username:    "user",
 			password:    "pass",
 			expectedErr: "reading header",
@@ -519,9 +487,8 @@ func TestUsernamePasswordSubnegotiate(t *testing.T) {
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			packet := testCase.buildPacket()
-			buffer := &bytes.Buffer{}
-			buffer.Write(packet)
+
+			buffer := bytes.NewBuffer(testCase.packet)
 
 			readWriter := struct {
 				io.Reader
@@ -542,32 +509,40 @@ func TestUsernamePasswordSubnegotiate(t *testing.T) {
 	}
 }
 
-func TestBindDataLength(t *testing.T) {
+func concatBytes(slices ...[]byte) []byte {
+	var result []byte
+	for _, slice := range slices {
+		result = append(result, slice...)
+	}
+	return result
+}
+
+func Test_bindDataLength(t *testing.T) {
 	t.Parallel()
 	testCases := map[string]struct {
 		addrType      addrType
 		address       string
-		expectedBytes int
+		wantMaxLength uint
 	}{
 		"ipv4": {
 			addrType:      ipv4,
 			address:       "127.0.0.1",
-			expectedBytes: 1 + 4 + 2,
+			wantMaxLength: 1 + 4 + 2,
 		},
 		"ipv6": {
 			addrType:      ipv6,
 			address:       "::1",
-			expectedBytes: 1 + 16 + 2,
+			wantMaxLength: 1 + 16 + 2,
 		},
 		"domain_short": {
 			addrType:      domainName,
 			address:       "example.com",
-			expectedBytes: 1 + 1 + len("example.com") + 2,
+			wantMaxLength: 1 + 1 + uint(len("example.com")) + 2,
 		},
 		"domain_long": {
 			addrType:      domainName,
 			address:       strings.Repeat("a", 100),
-			expectedBytes: 1 + 1 + 100 + 2,
+			wantMaxLength: 1 + 1 + 100 + 2,
 		},
 	}
 
@@ -575,12 +550,12 @@ func TestBindDataLength(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			length := bindDataLength(testCase.addrType, testCase.address)
-			assert.Equal(t, testCase.expectedBytes, length)
+			assert.Equal(t, testCase.wantMaxLength, length)
 		})
 	}
 }
 
-func TestAuthMethodString(t *testing.T) {
+func Test_authMethod_String(t *testing.T) {
 	t.Parallel()
 	testCases := map[string]struct {
 		method       authMethod
@@ -617,7 +592,7 @@ func TestAuthMethodString(t *testing.T) {
 	}
 }
 
-func TestCmdTypeString(t *testing.T) {
+func Test_cmdType_String(t *testing.T) {
 	t.Parallel()
 	testCases := map[string]struct {
 		cmd          cmdType
@@ -646,37 +621,6 @@ func TestCmdTypeString(t *testing.T) {
 			t.Parallel()
 			result := testCase.cmd.String()
 			assert.Equal(t, testCase.expectedName, result)
-		})
-	}
-}
-
-func TestParseAddress(t *testing.T) {
-	t.Parallel()
-	testCases := map[string]struct {
-		address     string
-		expectedIP  string
-		expectedErr string
-	}{
-		"ipv4": {
-			address:    "127.0.0.1",
-			expectedIP: "127.0.0.1",
-		},
-		"ipv6": {
-			address:    "::1",
-			expectedIP: "::1",
-		},
-		"domain": {
-			address:     "example.com",
-			expectedErr: "parsing IP address",
-		},
-	}
-
-	for name, testCase := range testCases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			if testCase.expectedErr == "" {
-				assert.True(t, strings.Contains(testCase.address, testCase.expectedIP) || testCase.address == testCase.expectedIP)
-			}
 		})
 	}
 }

@@ -31,7 +31,7 @@ func usernamePasswordSubnegotiate(conn io.ReadWriter, username, password string)
 		return fmt.Errorf("reading username bytes: %w", err)
 	} else if username != string(usernameBytes) {
 		_, _ = conn.Write([]byte{version, status})
-		return fmt.Errorf("username not valid: %s", string(usernameBytes))
+		return fmt.Errorf("username received is not valid")
 	}
 
 	const passwordHeaderLength = 1
