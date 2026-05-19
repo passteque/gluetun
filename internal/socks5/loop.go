@@ -4,6 +4,8 @@ import (
 	"context"
 	"sync"
 	"time"
+
+	"github.com/qdm12/goservices"
 )
 
 type Loop struct {
@@ -45,7 +47,13 @@ func run(ctx context.Context, done chan<- error, settings Settings) {
 	logger := settings.Logger
 
 	for ctx.Err() == nil {
-		server := newServer(settings)
+		var server goservices.Service
+		if settings.Enabled {
+			server = newServer(settings)
+		} else {
+			server = new(noopService)
+		}
+
 		errorCh, err := server.Start(ctx)
 		if err != nil {
 			logger.Warnf("failed starting SOCKS5 server: %s", err)
@@ -82,4 +90,18 @@ func waitBeforeRetry(ctx context.Context) {
 	case <-timer.C:
 	case <-ctx.Done():
 	}
+}
+
+type noopService struct{}
+
+func (s noopService) Start(_ context.Context) (runErr <-chan error, err error) {
+	return nil, nil //nolint:nilnil
+}
+
+func (s noopService) Stop() error {
+	return nil
+}
+
+func (s noopService) String() string {
+	return "noop service"
 }

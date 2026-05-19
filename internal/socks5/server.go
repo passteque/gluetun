@@ -32,6 +32,10 @@ func newServer(settings Settings) *server {
 	}
 }
 
+func (s *server) String() string {
+	return "SOCKS5 server"
+}
+
 func (s *server) Start(ctx context.Context) (runErr <-chan error, err error) {
 	s.socksConnCtx, s.socksConnCancel = context.WithCancel(context.Background())
 	config := &net.ListenConfig{}
