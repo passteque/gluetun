@@ -44,6 +44,7 @@ func (s *server) Start(ctx context.Context) (runErr <-chan error, err error) {
 		return nil, fmt.Errorf("listening on %s: %w", s.address, err)
 	}
 	s.listening.Store(true)
+	s.logger.Infof("SOCKS5 server listening on %s", s.listener.Addr())
 
 	ready := make(chan struct{})
 	runErrCh := make(chan error)

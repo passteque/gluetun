@@ -226,9 +226,9 @@ func Test_newServer(t *testing.T) {
 func Test_Server_StartStop(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
+
 	logger := NewMockLogger(ctrl)
-	logger.EXPECT().Infof(gomock.Any(), gomock.Any()).Times(0)
-	logger.EXPECT().Warnf(gomock.Any(), gomock.Any()).Times(0)
+	logger.EXPECT().Infof("SOCKS5 server listening on %s", gomock.Any())
 
 	server := newServer(Settings{
 		Address: "127.0.0.1:0",
