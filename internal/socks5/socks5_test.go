@@ -50,7 +50,7 @@ func TestServerProxy(t *testing.T) {
 				backendConnCh <- conn
 			}()
 
-			server := New(Settings{
+			server := newServer(Settings{
 				Username: testCase.username,
 				Password: testCase.password,
 				Address:  "127.0.0.1:0",
@@ -215,7 +215,7 @@ func TestNew(t *testing.T) {
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
-			result := New(testCase.settings)
+			result := newServer(testCase.settings)
 			assert.Equal(t, testCase.expected.username, result.username)
 			assert.Equal(t, testCase.expected.password, result.password)
 			assert.Equal(t, testCase.expected.address, result.address)
@@ -231,7 +231,7 @@ func TestStartStop(t *testing.T) {
 	logger.EXPECT().Infof(gomock.Any(), gomock.Any()).Times(0)
 	logger.EXPECT().Warnf(gomock.Any(), gomock.Any()).Times(0)
 
-	server := New(Settings{
+	server := newServer(Settings{
 		Address: "127.0.0.1:0",
 		Logger:  logger,
 	})

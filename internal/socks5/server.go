@@ -23,7 +23,7 @@ type Server struct {
 	stopping        atomic.Bool
 }
 
-func New(settings Settings) *Server {
+func newServer(settings Settings) *Server {
 	return &Server{
 		username: settings.Username,
 		password: settings.Password,

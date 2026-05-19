@@ -41,6 +41,7 @@ import (
 	"github.com/qdm12/gluetun/internal/routing"
 	"github.com/qdm12/gluetun/internal/server"
 	"github.com/qdm12/gluetun/internal/shadowsocks"
+	"github.com/qdm12/gluetun/internal/socks5"
 	"github.com/qdm12/gluetun/internal/storage"
 	updater "github.com/qdm12/gluetun/internal/updater/loop"
 	"github.com/qdm12/gluetun/internal/updater/resolver"
@@ -411,6 +412,17 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		return fmt.Errorf("starting public ip loop: %w", err)
 	}
 
+	socks5Loop := socks5.NewLoop(socks5.Settings{
+		Username: *allSettings.Socks5.Username,
+		Password: *allSettings.Socks5.Password,
+		Address:  allSettings.Socks5.ListeningAddress,
+		Logger:   logger.New(log.SetComponent("socks5")),
+	})
+	socks5RunError, err := socks5Loop.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("starting SOCKS5 server loop: %w", err)
+	}
+
 	healthLogger := logger.New(log.SetComponent("healthcheck"))
 	healthcheckServer := healthcheck.NewServer(allSettings.Health, healthLogger)
 	healthServerHandler, healthServerCtx, healthServerDone := goshutdown.NewGoRoutineHandler(
@@ -506,7 +518,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 			String() string
 			Stop() error
 		}{
-			portForwardLooper, publicIPLooper,
+			portForwardLooper, publicIPLooper, socks5Loop,
 		}
 		for _, stopper := range stoppers {
 			err := stopper.Stop()
@@ -518,6 +530,8 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		logger.Errorf("port forwarding loop crashed: %s", err)
 	case err := <-publicIPRunError:
 		logger.Errorf("public IP loop crashed: %s", err)
+	case err := <-socks5RunError:
+		logger.Errorf("SOCKS5 server loop crashed: %s", err)
 	}
 
 	return orderHandler.Shutdown(context.Background())
