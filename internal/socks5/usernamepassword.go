@@ -1,15 +1,8 @@
 package socks5
 
 import (
-	"errors"
 	"fmt"
 	"io"
-)
-
-var (
-	ErrSubnegotiationVersionNotSupported = errors.New("subnegotiation version not supported")
-	ErrUsernameNotValid                  = errors.New("username not valid")
-	ErrPasswordNotValid                  = errors.New("password not valid")
 )
 
 // See https://datatracker.ietf.org/doc/html/rfc1929#section-2
@@ -27,7 +20,7 @@ func usernamePasswordSubnegotiate(conn io.ReadWriter, username, password string)
 
 	if header[0] != authUsernamePasswordSubNegotiation1 {
 		_, _ = conn.Write([]byte{defaultVersion, status})
-		return fmt.Errorf("%w: %d", ErrSubnegotiationVersionNotSupported, header[0])
+		return fmt.Errorf("subnegotiation version not supported: %d", header[0])
 	}
 	version := header[0]
 
@@ -38,7 +31,7 @@ func usernamePasswordSubnegotiate(conn io.ReadWriter, username, password string)
 		return fmt.Errorf("reading username bytes: %w", err)
 	} else if username != string(usernameBytes) {
 		_, _ = conn.Write([]byte{version, status})
-		return fmt.Errorf("%w: %s", ErrUsernameNotValid, string(usernameBytes))
+		return fmt.Errorf("username not valid: %s", string(usernameBytes))
 	}
 
 	const passwordHeaderLength = 1
@@ -56,7 +49,7 @@ func usernamePasswordSubnegotiate(conn io.ReadWriter, username, password string)
 		return fmt.Errorf("reading password bytes: %w", err)
 	} else if password != string(passwordBytes) {
 		_, _ = conn.Write([]byte{version, status})
-		return fmt.Errorf("%w: %s", ErrPasswordNotValid, string(passwordBytes))
+		return fmt.Errorf("password not valid for username %q", string(usernameBytes))
 	}
 
 	status = 0
