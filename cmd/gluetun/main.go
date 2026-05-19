@@ -413,6 +413,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	}
 
 	socks5Loop := socks5.NewLoop(socks5.Settings{
+		Enabled:  *allSettings.Socks5.Enabled,
 		Username: *allSettings.Socks5.Username,
 		Password: *allSettings.Socks5.Password,
 		Address:  allSettings.Socks5.ListeningAddress,

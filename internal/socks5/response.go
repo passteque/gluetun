@@ -33,7 +33,7 @@ func (c *socksConn) encodeSuccessResponse(writer io.Writer, socksVersion byte,
 ) (err error) {
 	bindData, err := encodeBindData(bindAddrType, bindAddress, bindPort)
 	if err != nil {
-		return err
+		return fmt.Errorf("encoding bind data: %w", err)
 	}
 
 	const initialPacketLength = 3
@@ -46,7 +46,7 @@ func (c *socksConn) encodeSuccessResponse(writer io.Writer, socksVersion byte,
 
 	_, err = writer.Write(packet)
 	if err != nil {
-		c.logger.Warnf("failed writing success response: %s", err)
+		return fmt.Errorf("writing packet: %w", err)
 	}
 	return nil
 }

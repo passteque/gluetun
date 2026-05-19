@@ -218,9 +218,12 @@ func decodeRequest(reader io.Reader, expectedVersion byte) (req request, err err
 	}
 
 	version := header[0]
-	if header[0] != expectedVersion {
+	switch {
+	case version != expectedVersion:
 		return request{}, fmt.Errorf("version is not supported: expected %d and got %d",
 			expectedVersion, version)
+	case header[2] != 0:
+		return request{}, fmt.Errorf("reserved header byte must be 0 but got %d", header[2])
 	}
 
 	req.command = cmdType(header[1])
