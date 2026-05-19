@@ -190,23 +190,19 @@ func Test_newServer(t *testing.T) {
 				Username: "user",
 				Password: "pass",
 				Address:  "127.0.0.1:1080",
-				Logger:   nil,
 			},
 			expected: &server{
 				username: "user",
 				password: "pass",
 				address:  "127.0.0.1:1080",
-				logger:   nil,
 			},
 		},
 		"without_auth": {
 			settings: Settings{
 				Address: "127.0.0.1:1080",
-				Logger:  nil,
 			},
 			expected: &server{
 				address: "127.0.0.1:1080",
-				logger:  nil,
 			},
 		},
 	}
