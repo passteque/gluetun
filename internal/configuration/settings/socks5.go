@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -22,6 +23,13 @@ func (s Socks5) validate() (err error) {
 	err = validate.ListeningAddress(s.ListeningAddress, os.Getuid())
 	if err != nil {
 		return fmt.Errorf("server listening address is not valid: %w", err)
+	}
+
+	switch {
+	case *s.Username != "" && *s.Password == "":
+		return errors.New("password must be set if username is set")
+	case *s.Username == "" && *s.Password != "":
+		return errors.New("username must be set if password is set")
 	}
 
 	return nil

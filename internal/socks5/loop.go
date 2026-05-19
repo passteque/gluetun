@@ -35,11 +35,10 @@ func (l *Loop) Start(_ context.Context) (runError <-chan error, err error) {
 
 	runDone := make(chan error)
 	l.runDone = runDone
-	runErrorCh := make(chan error)
 
 	go run(runCtx, runDone, l.settings)
 
-	return runErrorCh, nil
+	return nil, nil //nolint:nilnil
 }
 
 func run(ctx context.Context, done chan<- error, settings Settings) {
