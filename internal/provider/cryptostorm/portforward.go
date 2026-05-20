@@ -21,11 +21,15 @@ import (
 // portRangePattern matches the valid Cryptostorm port range 30000-65535.
 const portRangePattern = `([3-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])`
 
+// ipPattern matches either an IPv4 address or a bracketed IPv6 address.
+const ipPattern = `(?:\d+\.\d+\.\d+\.\d+|\[[0-9a-fA-F:]+\])`
+
 // regexForwardPlainText matches plain text responses (e.g. from curl):
 //
 //	37.120.234.253:55555 -> 10.10.123.139:55555
+//	[2400:a842:c46e:1::4a]:55555 -> [fd00:10:10::e0e0]:55555
 var regexForwardPlainText = regexp.MustCompile(
-	`\d+\.\d+\.\d+\.\d+:` + portRangePattern + `\s*->\s*\d+\.\d+\.\d+\.\d+:\d+`)
+	ipPattern + `:` + portRangePattern + `\s*->\s*` + ipPattern + `:\d+`)
 
 // regexForwardHTML matches the HTML response from the port forwarding page.
 // Each forwarded port has a hidden delete input:
@@ -33,6 +37,13 @@ var regexForwardPlainText = regexp.MustCompile(
 //	<input type="hidden" name="delfwd" value="30000">
 var regexForwardHTML = regexp.MustCompile(
 	`name="delfwd"\s+value="` + portRangePattern + `"`)
+
+// portForwardURLs lists all port forwarding endpoints.
+// IPv4 and IPv6 must both be registered for dual-stack support.
+var portForwardURLs = []string{
+	"http://10.31.33.7/fwd",
+	"http://[2001:db8::7]/fwd",
+}
 
 // portForwardData is the data persisted to the port forward JSON file.
 type portForwardData struct {
@@ -76,65 +87,26 @@ func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObj
 
 	postBody := "port=" + strconv.FormatUint(uint64(listeningPort), 10)
 
-	// IPv4: http://10.31.33.7/fwd
-	// IPv6: http://[2001:db8::7]/fwd (for future use)
-	const portForwardURL = "http://10.31.33.7/fwd"
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, portForwardURL,
-		strings.NewReader(postBody))
-	if err != nil {
-		return nil, fmt.Errorf("creating HTTP request: %w", err)
-	}
-	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-
-	response, err := objects.Client.Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("sending HTTP request: %w", err)
-	}
-	defer response.Body.Close()
-
-	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: %d %s", common.ErrHTTPStatusCodeNotOK,
-			response.StatusCode, response.Status)
-	}
-
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, fmt.Errorf("reading response body: %w", err)
-	}
-
-	// Parse forwarded ports from the response. The server returns HTML to
-	// Go's HTTP client but plain text to curl, so we try both formats.
-	bodyStr := string(body)
-	matches := regexForwardPlainText.FindAllStringSubmatch(bodyStr, -1)
-	if len(matches) == 0 {
-		matches = regexForwardHTML.FindAllStringSubmatch(bodyStr, -1)
-	}
-	if len(matches) == 0 {
-		return nil, fmt.Errorf("%w: no active port forwards found in response",
-			common.ErrPortForwardNotSupported)
-	}
-
-	// The server response lists all currently active forwards for this session,
-	// which may include stale ports from prior runs. Delete any that are not
-	// the one we requested, then verify ours is present.
-	const base, bitSize = 10, 16
+	// Register the port with both IPv4 and IPv6 endpoints.
+	// The IPv6 endpoint may not be reachable if the tunnel has no IPv6,
+	// so we log a warning rather than failing hard.
 	requestedFound := false
-	for _, match := range matches {
-		portUint64, err := strconv.ParseUint(match[1], base, bitSize)
+	for _, url := range portForwardURLs {
+		found, err := p.registerPort(ctx, objects.Client, url, postBody, listeningPort, objects)
 		if err != nil {
-			return nil, fmt.Errorf("parsing port number %q: %w", match[1], err)
-		}
-		port := uint16(portUint64)
-		if port == listeningPort {
-			requestedFound = true
+			if url == portForwardURLs[0] {
+				// IPv4 failure is fatal.
+				return nil, err
+			}
+			// IPv6 failure is a warning only.
+			objects.Logger.Warn("IPv6 port forward registration failed (" + url + "): " + err.Error())
 			continue
 		}
-		// Best-effort delete; log but don't fail if it errors.
-		if err := p.deletePort(ctx, objects.Client, port); err != nil {
-			objects.Logger.Warn("deleting stale port forward " +
-				strconv.FormatUint(uint64(port), 10) + ": " + err.Error())
+		if found {
+			requestedFound = true
 		}
 	}
+
 	if !requestedFound {
 		return nil, fmt.Errorf("%w: requested port %d not found in server response",
 			common.ErrPortForwardNotSupported, listeningPort)
@@ -151,6 +123,70 @@ func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObj
 	return internalToExternalPorts, nil
 }
 
+// registerPort POSTs the port to a single forwarding endpoint and returns
+// whether the requested port was confirmed in the response.
+func (p *Provider) registerPort(ctx context.Context, client *http.Client,
+	url, postBody string, listeningPort uint16, objects utils.PortForwardObjects,
+) (requestedFound bool, err error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url,
+		strings.NewReader(postBody))
+	if err != nil {
+		return false, fmt.Errorf("creating HTTP request: %w", err)
+	}
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	response, err := client.Do(request)
+	if err != nil {
+		return false, fmt.Errorf("sending HTTP request: %w", err)
+	}
+	defer response.Body.Close()
+
+	if response.StatusCode != http.StatusOK {
+		return false, fmt.Errorf("%w: %d %s", common.ErrHTTPStatusCodeNotOK,
+			response.StatusCode, response.Status)
+	}
+
+	body, err := io.ReadAll(response.Body)
+	if err != nil {
+		return false, fmt.Errorf("reading response body: %w", err)
+	}
+
+	// Parse forwarded ports from the response. The server returns HTML to
+	// Go's HTTP client but plain text to curl, so we try both formats.
+	bodyStr := string(body)
+	matches := regexForwardPlainText.FindAllStringSubmatch(bodyStr, -1)
+	if len(matches) == 0 {
+		matches = regexForwardHTML.FindAllStringSubmatch(bodyStr, -1)
+	}
+	if len(matches) == 0 {
+		return false, fmt.Errorf("%w: no active port forwards found in response",
+			common.ErrPortForwardNotSupported)
+	}
+
+	// The server response lists all currently active forwards for this session,
+	// which may include stale ports from prior runs. Delete any that are not
+	// the one we requested, then verify ours is present.
+	const base, bitSize = 10, 16
+	for _, match := range matches {
+		portUint64, err := strconv.ParseUint(match[1], base, bitSize)
+		if err != nil {
+			return false, fmt.Errorf("parsing port number %q: %w", match[1], err)
+		}
+		port := uint16(portUint64)
+		if port == listeningPort {
+			requestedFound = true
+			continue
+		}
+		// Best-effort delete; log but don't fail if it errors.
+		if err := p.deletePortFromURL(ctx, client, url, port); err != nil {
+			objects.Logger.Warn("deleting stale port forward " +
+				strconv.FormatUint(uint64(port), 10) + " from " + url + ": " + err.Error())
+		}
+	}
+
+	return requestedFound, nil
+}
+
 func (p *Provider) KeepPortForward(ctx context.Context,
 	objects utils.PortForwardObjects,
 ) (err error) {
@@ -163,8 +199,10 @@ func (p *Provider) KeepPortForward(ctx context.Context,
 		const deleteTimeout = 5 * time.Second
 		deleteCtx, cancel := context.WithTimeout(context.Background(), deleteTimeout)
 		defer cancel()
-		if err := p.deletePort(deleteCtx, objects.Client, p.forwardedPort); err != nil {
-			objects.Logger.Warn("deregistering port forward on teardown: " + err.Error())
+		for _, url := range portForwardURLs {
+			if err := p.deletePortFromURL(deleteCtx, objects.Client, url, p.forwardedPort); err != nil {
+				objects.Logger.Warn("deregistering port forward on teardown from " + url + ": " + err.Error())
+			}
 		}
 		p.forwardedPort = 0
 	}
@@ -173,9 +211,12 @@ func (p *Provider) KeepPortForward(ctx context.Context,
 }
 
 func (p *Provider) deletePort(ctx context.Context, client *http.Client, port uint16) error {
-	const portForwardURL = "http://10.31.33.7/fwd"
+	return p.deletePortFromURL(ctx, client, portForwardURLs[0], port)
+}
+
+func (p *Provider) deletePortFromURL(ctx context.Context, client *http.Client, url string, port uint16) error {
 	body := strings.NewReader("delfwd=" + strconv.FormatUint(uint64(port), 10))
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, portForwardURL, body)
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
 	if err != nil {
 		return fmt.Errorf("creating delete request: %w", err)
 	}
