@@ -72,9 +72,9 @@ LABEL \
     org.opencontainers.image.created=$CREATED \
     org.opencontainers.image.version=$VERSION \
     org.opencontainers.image.revision=$COMMIT \
-    org.opencontainers.image.url="https://github.com/qdm12/gluetun" \
-    org.opencontainers.image.documentation="https://github.com/qdm12/gluetun" \
-    org.opencontainers.image.source="https://github.com/qdm12/gluetun" \
+    org.opencontainers.image.url="https://github.com/passteque/gluetun" \
+    org.opencontainers.image.documentation="https://github.com/passteque/gluetun" \
+    org.opencontainers.image.source="https://github.com/passteque/gluetun" \
     org.opencontainers.image.title="VPN swiss-knife like client for multiple VPN providers" \
     org.opencontainers.image.description="VPN swiss-knife like client to tunnel to multiple VPN servers using OpenVPN, IPtables, DNS over TLS, Shadowsocks, an HTTP proxy and Alpine Linux"
 ENV VPN_SERVICE_PROVIDER=pia \
