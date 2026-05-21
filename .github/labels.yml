@@ -140,6 +140,8 @@
   color: "ffc7ea"
 - name: "Category: Shadowsocks 🔁"
   color: "ffc7ea"
+- name: "Category: Socks5 proxy 🔁"
+  color: "ffc7ea"
 - name: "Category: control server ⚙️"
   color: "ffc7ea"
 - name: "Category: kernel 🧠"
