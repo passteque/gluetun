@@ -1,6 +1,7 @@
 package iptables
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"os/exec"
@@ -41,8 +42,7 @@ func (c *Config) saveAndRestore(ctx context.Context) (restore func(context.Conte
 // Callers of saveAndRestoreIPv4 MUST always lock the [Config] iptablesMutex
 // before calling this function.
 func (c *Config) saveAndRestoreIPv4(ctx context.Context) (restore func(context.Context), err error) {
-	cmd := exec.CommandContext(ctx, c.ipTables+"-save") //nolint:gosec
-	data, err := c.runner.Run(cmd)
+	data, err := saveData(ctx, c.ipTables)
 	if err != nil {
 		return nil, fmt.Errorf("saving IPv4 iptables: %w", err)
 	}
@@ -65,14 +65,13 @@ func (c *Config) saveAndRestoreIPv6(ctx context.Context) (restore func(context.C
 		return nil, nil //nolint:nilnil
 	}
 
-	cmd := exec.CommandContext(ctx, c.ip6Tables+"-save") //nolint:gosec
-	data, err := c.runner.Run(cmd)
+	data, err := saveData(ctx, c.ip6Tables)
 	if err != nil {
 		return nil, fmt.Errorf("saving IPv6 iptables: %w", err)
 	}
 
 	restore = func(ctx context.Context) {
-		cmd = exec.CommandContext(ctx, c.ip6Tables+"-restore") //nolint:gosec
+		cmd := exec.CommandContext(ctx, c.ip6Tables+"-restore") //nolint:gosec
 		cmd.Stdin = strings.NewReader(data)
 		output, err := c.runner.Run(cmd)
 		if err != nil {
@@ -84,4 +83,39 @@ func (c *Config) saveAndRestoreIPv6(ctx context.Context) (restore func(context.C
 
 func makeRestoreErrorMessage(err error, output, data string) string {
 	return fmt.Sprintf("%s: %s: restoring from data:\n%s", err, output, data)
+}
+
+func saveData(ctx context.Context, binary string) (data string, err error) {
+	cmd := exec.CommandContext(ctx, binary+"-save") //nolint:gosec
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr := strings.TrimSuffix(string(exitErr.Stderr), "\n")
+			if stderr != "" {
+				return "", fmt.Errorf("running %s-save: %w: %s", binary, err, stderr)
+			}
+		}
+		return "", fmt.Errorf("running %s-save: %w", binary, err)
+	}
+	err = checkData(string(output))
+	if err != nil {
+		return "", fmt.Errorf("checking saved data: %w", err)
+	}
+	return string(output), nil
+}
+
+func checkData(data string) error {
+	scanner := bufio.NewScanner(strings.NewReader(data))
+	i := 0
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "[unsupported") {
+			return fmt.Errorf("unsupported revision marker found in line %d: %s", i+1, line)
+		}
+		i++
+	}
+	if scanner.Err() != nil {
+		return fmt.Errorf("scanning data: %w", scanner.Err())
+	}
+	return nil
 }
