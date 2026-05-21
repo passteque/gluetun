@@ -39,7 +39,7 @@ func (s *server) String() string {
 func (s *server) Start(ctx context.Context) (runErr <-chan error, err error) {
 	s.socksConnCtx, s.socksConnCancel = context.WithCancel(context.Background())
 	config := &net.ListenConfig{}
-	s.listener, err = config.Listen(s.socksConnCtx, "tcp", s.address)
+	s.listener, err = config.Listen(ctx, "tcp", s.address)
 	if err != nil {
 		return nil, fmt.Errorf("listening on %s: %w", s.address, err)
 	}

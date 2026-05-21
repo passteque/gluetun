@@ -34,6 +34,24 @@ func (c *socksConn) closeClientConn(ctxErr error) {
 }
 
 func (c *socksConn) run(ctx context.Context) error {
+	// Monitoring context cancellation to close the connection and stop
+	// reading operations on clientConn.
+	done := make(chan struct{})
+	ctxWatcherDone := make(chan struct{})
+	go func() {
+		defer close(ctxWatcherDone)
+		select {
+		case <-done:
+		case <-ctx.Done():
+			// unblock read operations
+			c.closeClientConn(ctx.Err())
+		}
+	}()
+	defer func() {
+		close(done)
+		<-ctxWatcherDone
+	}()
+
 	authMethod := authNotRequired
 	if c.username != "" || c.password != "" {
 		authMethod = authUsernamePassword
