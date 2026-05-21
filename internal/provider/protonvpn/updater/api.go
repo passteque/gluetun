@@ -16,6 +16,7 @@ import (
 	"strings"
 
 	srp "github.com/ProtonMail/go-srp"
+	"github.com/qdm12/gluetun/internal/provider/common"
 )
 
 // apiClient is a minimal Proton v4 API client which can handle all the
@@ -28,11 +29,12 @@ type apiClient struct {
 	vpnGtkAppVersion string
 	userAgent        string
 	generator        *rand.ChaCha8
+	warner           common.Warner
 }
 
 // newAPIClient returns an [apiClient] with sane defaults matching Proton's
 // insane expectations.
-func newAPIClient(ctx context.Context, httpClient *http.Client) (client *apiClient, err error) {
+func newAPIClient(ctx context.Context, httpClient *http.Client, warner common.Warner) (client *apiClient, err error) {
 	var seed [32]byte
 	_, _ = crand.Read(seed[:])
 	generator := rand.NewChaCha8(seed)
@@ -63,6 +65,7 @@ func newAPIClient(ctx context.Context, httpClient *http.Client) (client *apiClie
 		vpnGtkAppVersion: vpnGtkAppVersion,
 		userAgent:        userAgent,
 		generator:        generator,
+		warner:           warner,
 	}, nil
 }
 
@@ -104,7 +107,11 @@ func (c *apiClient) authenticate(ctx context.Context, email, password string,
 	}
 	username, modulusPGPClearSigned, serverEphemeralBase64, saltBase64,
 		srpSessionHex, version, err := c.authInfo(ctx, email, unauthCookie)
-	if err != nil {
+	switch {
+	case errors.Is(err, errUsernameEmpty):
+		c.warner.Warn("Username is empty in auth info response, trying with email address instead")
+		username = email
+	case err != nil:
 		return cookie{}, fmt.Errorf("getting auth information: %w", err)
 	}
 
@@ -297,6 +304,8 @@ func (c *apiClient) cookieToken(ctx context.Context, sessionID, tokenType, acces
 	return "", errors.New("auth cookie not found")
 }
 
+var errUsernameEmpty = errors.New("username is empty in response")
+
 // authInfo fetches SRP parameters for the account.
 func (c *apiClient) authInfo(ctx context.Context, email string, unauthCookie cookie) (
 	username, modulusPGPClearSigned, serverEphemeralBase64, saltBase64, srpSessionHex string,
@@ -364,15 +373,17 @@ func (c *apiClient) authInfo(ctx context.Context, email string, unauthCookie coo
 		return "", "", "", "", "", 0, errors.New("salt is empty in response")
 	case info.SRPSession == "":
 		return "", "", "", "", "", 0, errors.New("SRP session is empty in response")
-	case info.Username == "":
-		return "", "", "", "", "", 0, errors.New("username is empty in response")
 	case info.Version == nil:
 		return "", "", "", "", "", 0, errors.New("version is missing in response")
+	case info.Username == "":
+		// Return a sentinel error the caller can handle to try with the email address instead of the username.
+		// Some accounts seem to have no username.
+		err = fmt.Errorf("%w", errUsernameEmpty)
 	}
 
 	version = int(*info.Version) //nolint:gosec
 	return info.Username, info.Modulus, info.ServerEphemeral, info.Salt,
-		info.SRPSession, version, nil
+		info.SRPSession, version, err
 }
 
 type cookie struct {
