@@ -49,6 +49,7 @@ func (s *Storage) FilterServers(provider string, selection settings.ServerSelect
 	return servers, nil
 }
 
+//nolint:gocognit,gocyclo
 func filterServer(server models.Server,
 	selection settings.ServerSelection,
 ) (filtered bool) {
@@ -89,6 +90,11 @@ func filterServer(server models.Server,
 
 	if *selection.TorOnly && !server.Tor {
 		return true
+	}
+
+	if (*selection.Dedicated && !server.Dedicated) ||
+		(!*selection.Dedicated && server.Dedicated) {
+		return false
 	}
 
 	if filterByPossibilities(server.Country, selection.Countries) {

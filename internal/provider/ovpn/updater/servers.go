@@ -56,7 +56,18 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 			multiHopWireguardServer := wireguardServer
 			multiHopWireguardServer.MultiHop = true
 			multiHopWireguardServer.PortsUDP = []uint16{apiServer.MultiHopWireguardPort}
-			servers = append(servers, wireguardServer, multiHopWireguardServer)
+			dedicatedWireguardServer := wireguardServer
+			dedicatedWireguardServer.WgPubKey = apiServer.PublicKeyIPv4
+			dedicatedWireguardServer.Dedicated = true
+			dedicatedMultiHopWireguardServer := multiHopWireguardServer
+			dedicatedMultiHopWireguardServer.WgPubKey = apiServer.PublicKeyIPv4
+			dedicatedMultiHopWireguardServer.Dedicated = true
+			servers = append(servers,
+				wireguardServer,
+				multiHopWireguardServer,
+				dedicatedWireguardServer,
+				dedicatedMultiHopWireguardServer,
+			)
 		}
 	}
 

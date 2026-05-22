@@ -55,7 +55,7 @@ func Test_Updater_FetchServers(t *testing.T) {
 			errMessage: "validating data center 1 of 1: data center Vienna: country name is not set",
 		},
 		"not_enough_servers": {
-			minServers:     5,
+			minServers:     7,
 			responseStatus: http.StatusOK,
 			responseBody: `{
   "success": true,
@@ -69,6 +69,7 @@ func Test_Updater_FetchServers(t *testing.T) {
           "ptr": "vpn44.prd.vienna.ovpn.com",
           "online": true,
           "public_key": "r83LIc0Q2F8s3dY9x5y17Yz8wTADJc7giW1t5eSmoXc=",
+					"public_key_ipv4": "wFbSRyjSXBmkjJodlqz7DoYn3WNDPYFUIXyIUS2QU2A=",
           "wireguard_ports": [9929],
           "multihop_openvpn_port": 20044,
           "multihop_wireguard_port": 30044
@@ -78,7 +79,9 @@ func Test_Updater_FetchServers(t *testing.T) {
   ]
 }`,
 			errWrapped: common.ErrNotEnoughServers,
-			errMessage: "not enough servers found: 4 and expected at least 5",
+			// Wireguard + dedicated Wireguard + Wireguard multi-hop +
+			// dedicated Wireguard multi-hop + OpenVPN + OpenVPN multi-hop
+			errMessage: "not enough servers found: 6 and expected at least 7",
 		},
 		"success": {
 			minServers: 4,
@@ -114,6 +117,7 @@ func Test_Updater_FetchServers(t *testing.T) {
           "ptr": "vpn45.prd.vienna.ovpn.com",
           "online": false,
           "public_key": "r93LIc0Q2F8s3dY9x5y17Yz8wTADJc7giW1t5eSmoXc=",
+					"public_key_ipv4": "wGbSRyjSXBmkjJodlqz7DoYn3WNDPYFUIXyIUS2QU2A=",
           "wireguard_ports": [9929],
           "multihop_openvpn_port": 20045,
           "multihop_wireguard_port": 30045
@@ -162,6 +166,26 @@ func Test_Updater_FetchServers(t *testing.T) {
 					WgPubKey: "r83LIc0Q2F8s3dY9x5y17Yz8wTADJc7giW1t5eSmoXc=",
 					MultiHop: true,
 					PortsUDP: []uint16{30044},
+				},
+				{
+					Country:   "Austria",
+					City:      "Vienna",
+					Hostname:  "vpn44.prd.vienna.ovpn.com",
+					IPs:       []netip.Addr{netip.MustParseAddr("37.120.212.227")},
+					VPN:       vpn.Wireguard,
+					WgPubKey:  "wFbSRyjSXBmkjJodlqz7DoYn3WNDPYFUIXyIUS2QU2A=",
+					Dedicated: true,
+				},
+				{
+					Country:   "Austria",
+					City:      "Vienna",
+					Hostname:  "vpn44.prd.vienna.ovpn.com",
+					IPs:       []netip.Addr{netip.MustParseAddr("37.120.212.227")},
+					VPN:       vpn.Wireguard,
+					WgPubKey:  "wFbSRyjSXBmkjJodlqz7DoYn3WNDPYFUIXyIUS2QU2A=",
+					MultiHop:  true,
+					Dedicated: true,
+					PortsUDP:  []uint16{30044},
 				},
 			},
 		},

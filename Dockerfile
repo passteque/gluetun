@@ -192,6 +192,8 @@ ENV VPN_SERVICE_PROVIDER=pia \
     PREMIUM_ONLY= \
     # # PIA and ProtonVPN only:
     PORT_FORWARD_ONLY= \
+    # # Ovpn only:
+    SERVER_DEDICATED=no \
     # Firewall
     FIREWALL_ENABLED_DISABLING_IT_SHOOTS_YOU_IN_YOUR_FOOT=on \
     FIREWALL_VPN_INPUT_PORTS= \
