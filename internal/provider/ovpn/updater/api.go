@@ -67,17 +67,11 @@ func fetchAPI(ctx context.Context, client *http.Client) (
 	return data, nil
 }
 
-var (
-	ErrCityNotSet        = errors.New("city is not set")
-	ErrCountryNameNotSet = errors.New("country name is not set")
-	ErrServersNotSet     = errors.New("servers array is not set")
-)
-
 func (a *apiDataCenter) validate() (err error) {
 	conditionalErrors := []conditionalError{
-		{err: ErrCityNotSet, condition: a.City == ""},
-		{err: ErrCountryNameNotSet, condition: a.CountryName == ""},
-		{err: ErrServersNotSet, condition: len(a.Servers) == 0},
+		{err: "city is not set", condition: a.City == ""},
+		{err: "country name is not set", condition: a.CountryName == ""},
+		{err: "servers array is not set", condition: len(a.Servers) == 0},
 	}
 	err = collectErrors(conditionalErrors)
 	if err != nil {
@@ -106,29 +100,19 @@ func (a *apiDataCenter) validate() (err error) {
 	return nil
 }
 
-var (
-	ErrIPFieldNotValid             = errors.New("ip address is not set")
-	ErrHostnameFieldNotSet         = errors.New("hostname field is not set")
-	ErrPublicKeyFieldNotSet        = errors.New("public key field is not set")
-	ErrWireguardPortsNotSet        = errors.New("wireguard ports array is not set")
-	ErrWireguardPortNotDefault     = errors.New("wireguard port is not the default 9929")
-	ErrMultiHopOpenVPNPortNotSet   = errors.New("multihop OpenVPN port is not set")
-	ErrMultiHopWireguardPortNotSet = errors.New("multihop WireGuard port is not set")
-)
-
 func (a *apiServer) validate() (err error) {
 	const defaultWireguardPort = 9929
 	conditionalErrors := []conditionalError{
-		{err: ErrIPFieldNotValid, condition: !a.IP.IsValid()},
-		{err: ErrHostnameFieldNotSet, condition: a.Ptr == ""},
-		{err: ErrPublicKeyFieldNotSet, condition: a.PublicKey == ""},
-		{err: ErrWireguardPortsNotSet, condition: len(a.WireguardPorts) == 0},
+		{err: "ip address is not set", condition: !a.IP.IsValid()},
+		{err: "hostname field is not set", condition: a.Ptr == ""},
+		{err: "public key field is not set", condition: a.PublicKey == ""},
+		{err: "wireguard ports array is not set", condition: len(a.WireguardPorts) == 0},
 		{
-			err:       ErrWireguardPortNotDefault,
+			err:       "wireguard port is not the default 9929",
 			condition: len(a.WireguardPorts) != 1 || a.WireguardPorts[0] != defaultWireguardPort,
 		},
-		{err: ErrMultiHopOpenVPNPortNotSet, condition: a.MultiHopOpenvpnPort == 0},
-		{err: ErrMultiHopWireguardPortNotSet, condition: a.MultiHopWireguardPort == 0},
+		{err: "multihop OpenVPN port is not set", condition: a.MultiHopOpenvpnPort == 0},
+		{err: "multihop WireGuard port is not set", condition: a.MultiHopWireguardPort == 0},
 	}
 	err = collectErrors(conditionalErrors)
 	switch {
@@ -144,28 +128,12 @@ func (a *apiServer) validate() (err error) {
 }
 
 type conditionalError struct {
-	err       error
+	err       string
 	condition bool
 }
 
-type joinedError struct {
-	errs []error
-}
-
-func (e *joinedError) Unwrap() []error {
-	return e.errs
-}
-
-func (e *joinedError) Error() string {
-	errStrings := make([]string, len(e.errs))
-	for i, err := range e.errs {
-		errStrings[i] = err.Error()
-	}
-	return strings.Join(errStrings, "; ")
-}
-
 func collectErrors(conditionalErrors []conditionalError) (err error) {
-	errs := make([]error, 0, len(conditionalErrors))
+	errs := make([]string, 0, len(conditionalErrors))
 	for _, conditionalError := range conditionalErrors {
 		if !conditionalError.condition {
 			continue
@@ -177,7 +145,5 @@ func collectErrors(conditionalErrors []conditionalError) (err error) {
 		return nil
 	}
 
-	return &joinedError{
-		errs: errs,
-	}
+	return errors.New(strings.Join(errs, "; "))
 }

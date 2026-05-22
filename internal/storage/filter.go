@@ -123,7 +123,11 @@ func filterServer(server models.Server,
 		return true
 	}
 
-	if filterByPorts(selection, server.PortsTCP) {
+	serverPorts := server.PortsUDP
+	if server.VPN == vpn.OpenVPN && server.TCP {
+		serverPorts = server.PortsTCP
+	}
+	if filterByPorts(selection, serverPorts) {
 		return true
 	}
 
