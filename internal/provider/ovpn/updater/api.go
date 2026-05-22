@@ -22,13 +22,16 @@ type apiDataCenter struct {
 }
 
 type apiServer struct {
-	IP                    netip.Addr `json:"ip"`
-	Ptr                   string     `json:"ptr"` // hostname
-	Online                bool       `json:"online"`
-	PublicKey             string     `json:"public_key"`
-	WireguardPorts        []uint16   `json:"wireguard_ports"`
-	MultiHopOpenvpnPort   uint16     `json:"multihop_openvpn_port"`
-	MultiHopWireguardPort uint16     `json:"multihop_wireguard_port"`
+	IP     netip.Addr `json:"ip"`
+	Ptr    string     `json:"ptr"` // hostname
+	Online bool       `json:"online"`
+	// PublicKey is for the Standard Shared Entry Point
+	PublicKey string `json:"public_key"`
+	// PublicKeyIPv4 is for the Public / Dedicated IP Entry Point
+	PublicKeyIPv4         string   `json:"public_key_ipv4"`
+	WireguardPorts        []uint16 `json:"wireguard_ports"`
+	MultiHopOpenvpnPort   uint16   `json:"multihop_openvpn_port"`
+	MultiHopWireguardPort uint16   `json:"multihop_wireguard_port"`
 }
 
 func fetchAPI(ctx context.Context, client *http.Client) (
@@ -106,6 +109,7 @@ func (a *apiServer) validate() (err error) {
 		{err: "ip address is not set", condition: !a.IP.IsValid()},
 		{err: "hostname field is not set", condition: a.Ptr == ""},
 		{err: "public key field is not set", condition: a.PublicKey == ""},
+		{err: "public key IPv4 field is not set", condition: a.PublicKeyIPv4 == ""},
 		{err: "wireguard ports array is not set", condition: len(a.WireguardPorts) == 0},
 		{
 			err:       "wireguard port is not the default 9929",

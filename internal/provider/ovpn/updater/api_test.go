@@ -76,6 +76,7 @@ func Test_fetchAPI(t *testing.T) {
 							Ptr:                   "vpn44.prd.vienna.ovpn.com",
 							Online:                true,
 							PublicKey:             "r83LIc0Q2F8s3dY9x5y17Yz8wTADJc7giW1t5eSmoXc=",
+							PublicKeyIPv4:         "wFbSRyjSXBmkjJodlqz7DoYn3WNDPYFUIXyIUS2QU2A=",
 							WireguardPorts:        []uint16{9929},
 							MultiHopOpenvpnPort:   20044,
 							MultiHopWireguardPort: 30044,
