@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -59,6 +60,10 @@ func (s *Service) SetPortsForwarded(ctx context.Context, ports []uint16) (err er
 	s.portMutex.Lock()
 	defer s.portMutex.Unlock()
 
+	if s.settings.PortForwarder != nil {
+		return errors.New("setting port forwarded at runtime is not supported with internally running port forwarding code")
+	}
+
 	slices.Sort(ports)
 	if slices.Equal(s.ports, ports) {
 		return nil
@@ -77,8 +82,6 @@ func (s *Service) SetPortsForwarded(ctx context.Context, ports []uint16) (err er
 	if err != nil {
 		return fmt.Errorf("handling new ports: %w", err)
 	}
-
-	s.logger.Info("updated: " + portsToString(s.ports))
 
 	return nil
 }
