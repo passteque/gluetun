@@ -88,7 +88,7 @@ func (s *Settings) Validate(forStartup bool) (err error) {
 			return errors.New("password not set")
 		}
 	case providers.Protonvpn:
-		const maxPortsCount = 4
+		const maxPortsCount = 5
 		if s.PortsCount > maxPortsCount {
 			return fmt.Errorf("ports count too high: %d > %d", s.PortsCount, maxPortsCount)
 		}
