@@ -92,13 +92,9 @@ func (s *Service) onNewPorts(ctx context.Context, internalToExternalPorts map[ui
 	s.logger.Info(portPairsToString(internalToExternalPorts))
 
 	externalPorts := slices.Collect(maps.Values(internalToExternalPorts))
-	autoRedirectionNeeded := false
 	externalToInternalPorts := make(map[uint16]uint16, len(internalToExternalPorts))
 	for internal, external := range internalToExternalPorts {
 		externalToInternalPorts[external] = internal
-		if internal != external {
-			autoRedirectionNeeded = true
-		}
 	}
 	slices.Sort(externalPorts)
 	userRedirectionEnabled := !slices.Equal(s.settings.ListeningPorts, []uint16{0})
@@ -114,7 +110,7 @@ func (s *Service) onNewPorts(ctx context.Context, internalToExternalPorts map[ui
 		case userRedirectionEnabled: // precedence over auto redirection
 			sourcePort = externalToInternalPorts[port]
 			destinationPort = s.settings.ListeningPorts[i]
-		case autoRedirectionNeeded:
+		case port != externalToInternalPorts[port]: // auto redirection needed, source and destination ports differ
 			sourcePort = externalToInternalPorts[port]
 			destinationPort = port
 		default:

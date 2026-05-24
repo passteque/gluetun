@@ -46,12 +46,13 @@ func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObj
 
 	// Only one port can be a symmetric mapping
 	const internalPort, externalPort = 0, 1
-	assignedInternalPort, assignedExternalPort, err := addPortMappingTCPUDP(ctx,
+	_, assignedExternalPort, err := addPortMappingTCPUDP(ctx,
 		client, logger, objects.Gateway, internalPort, externalPort, lifetime)
+	// Note the returned assignedInternalPort is always 0 in this case
 	if err != nil {
 		return nil, fmt.Errorf("adding first port mapping: %w", err)
 	}
-	p.internalToExternalPorts[assignedInternalPort] = assignedExternalPort
+	p.internalToExternalPorts[assignedExternalPort] = assignedExternalPort
 
 	// Extra ports must be non-symmetric, meaning that the internal port is
 	// different from the external port.
@@ -82,7 +83,7 @@ func addPortMappingTCPUDP(ctx context.Context, client *natpmp.Client, logger uti
 			return 0, 0, fmt.Errorf("adding %s port mapping: %w", protocolStr, err)
 		}
 		checkLifetime(logger, protocolStr, lifetime, assignedLifetime)
-		if internalPort != 0 && internalPort != assignedInternalPort {
+		if internalPort != assignedInternalPort {
 			return 0, 0, fmt.Errorf("%s internal port requested as %d but received %d",
 				protocolStr, internalPort, assignedInternalPort)
 		} else if externalPort != 0 && externalPort != 1 && externalPort != assignedExternalPort {
