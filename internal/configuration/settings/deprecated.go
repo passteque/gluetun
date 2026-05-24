@@ -1,10 +1,10 @@
 package settings
 
 import (
+	"maps"
 	"slices"
 
 	"github.com/qdm12/gosettings/reader"
-	"golang.org/x/exp/maps"
 )
 
 func readObsolete(r *reader.Reader) (warnings []string) {
@@ -17,7 +17,7 @@ func readObsolete(r *reader.Reader) (warnings []string) {
 		"DNS_KEEP_NAMESERVER": "DNS_KEEP_NAMESERVER is obsolete because you should use the built-in server which now " +
 			"forwards local names to private DNS resolvers found in /etc/resolv.conf at container start",
 	}
-	sortedKeys := maps.Keys(keyToMessage)
+	sortedKeys := slices.Collect(maps.Keys(keyToMessage))
 	slices.Sort(sortedKeys)
 	warnings = make([]string, 0, len(keyToMessage))
 	for _, key := range sortedKeys {
