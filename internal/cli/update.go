@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"slices"
 	"strings"
@@ -103,6 +104,10 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 	dnsDialer, err := doh.New(dohSettings)
 	if err != nil {
 		return fmt.Errorf("creating DoH dialer: %w", err)
+	}
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial:     dnsDialer.Dial,
 	}
 
 	const clientTimeout = 10 * time.Second
