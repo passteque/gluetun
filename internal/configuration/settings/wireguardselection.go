@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 
+	"github.com/qdm12/gluetun/internal/configuration/settings/helpers"
 	"github.com/qdm12/gluetun/internal/constants/providers"
 	"github.com/qdm12/gosettings"
 	"github.com/qdm12/gosettings/reader"
@@ -22,7 +23,7 @@ type WireguardSelection struct {
 	// It can never be the zero value in the internal state.
 	EndpointIP netip.Addr `json:"endpoint_ip"`
 	// EndpointPort is a the server port to use for the VPN server.
-	// It is optional for VPN providers IVPN, Mullvad, Surfshark
+	// It is optional for VPN providers IVPN, Mullvad, Ovpn, Surfshark
 	// and Windscribe, and compulsory for the others.
 	// When optional, it can be set to 0 to indicate not use
 	// a custom endpoint port. It cannot be nil in the internal
@@ -40,8 +41,9 @@ func (w WireguardSelection) validate(vpnProvider string) (err error) {
 	// Validate EndpointIP
 	switch vpnProvider {
 	case providers.Airvpn, providers.Fastestvpn, providers.Ivpn,
-		providers.Mullvad, providers.Nordvpn, providers.Protonvpn,
-		providers.Surfshark, providers.Windscribe:
+		providers.Mullvad, providers.Nordvpn, providers.Ovpn,
+		providers.Protonvpn, providers.Surfshark,
+		providers.Windscribe:
 		// endpoint IP addresses are baked in
 	case providers.Custom:
 		if !w.EndpointIP.IsValid() || w.EndpointIP.IsUnspecified() {
@@ -63,12 +65,16 @@ func (w WireguardSelection) validate(vpnProvider string) (err error) {
 		if *w.EndpointPort != 0 {
 			return errors.New("endpoint port is set")
 		}
-	case providers.Airvpn, providers.Ivpn, providers.Mullvad, providers.Windscribe:
+	case providers.Airvpn, providers.Ivpn, providers.Mullvad,
+		providers.Ovpn, providers.Windscribe:
 		// EndpointPort is optional and can be 0
 		if *w.EndpointPort == 0 {
 			break // no custom endpoint port set
 		}
-		if vpnProvider == providers.Mullvad {
+		if helpers.IsOneOf(vpnProvider,
+			providers.Mullvad,
+			providers.Ovpn,
+		) {
 			break // no restriction on custom endpoint port value
 		}
 		var allowed []uint16
@@ -92,7 +98,7 @@ func (w WireguardSelection) validate(vpnProvider string) (err error) {
 	// Validate PublicKey
 	switch vpnProvider {
 	case providers.Fastestvpn, providers.Ivpn, providers.Mullvad,
-		providers.Surfshark, providers.Windscribe:
+		providers.Ovpn, providers.Surfshark, providers.Windscribe:
 		// public keys are baked in
 	case providers.Custom:
 		if w.PublicKey == "" {

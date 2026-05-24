@@ -26,10 +26,14 @@ func parseHardcodedServers() (allServers models.AllServers) {
 	}
 
 	for provider, metadata := range allServers.ProviderToServers {
+		if metadata.Filepath == "" {
+			panic(fmt.Sprintf("embedded manifest file servers.json should have the filepath field set for %s", provider))
+		}
 		filename := path.Base(metadata.Filepath)
 		providerFile, err := serversmodule.Files.Open(filename)
 		if err != nil {
-			panic(fmt.Sprintf("reading embedded provider file %s for %s: %s", filename, provider, err))
+			const rootURL = "https://github.com/qdm12/gluetun-servers/blob/main/pkg/servers"
+			panic(fmt.Sprintf("reading embedded provider file defined at %s/%s: %s", rootURL, filename, err))
 		}
 		defer providerFile.Close() // no-op
 

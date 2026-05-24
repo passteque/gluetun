@@ -186,12 +186,14 @@ ENV VPN_SERVICE_PROVIDER=pia \
     # # ProtonVPN only:
     SECURE_CORE_ONLY= \
     TOR_ONLY= \
-    # # Surfshark only:
+    # # Surfshark and ovpn only:
     MULTIHOP_ONLY= \
     # # VPN Secure only:
     PREMIUM_ONLY= \
     # # PIA and ProtonVPN only:
     PORT_FORWARD_ONLY= \
+    # # Ovpn only:
+    SERVER_DEDICATED=no \
     # Firewall
     FIREWALL_ENABLED_DISABLING_IT_SHOOTS_YOU_IN_YOUR_FOOT=on \
     FIREWALL_VPN_INPUT_PORTS= \

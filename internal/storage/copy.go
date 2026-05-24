@@ -1,23 +1,15 @@
 package storage
 
 import (
-	"net/netip"
+	"slices"
 
 	"github.com/qdm12/gluetun/internal/models"
 )
 
 func copyServer(server models.Server) (serverCopy models.Server) {
 	serverCopy = server
-	serverCopy.IPs = copyIPs(server.IPs)
+	serverCopy.IPs = slices.Clone(server.IPs)
+	serverCopy.PortsTCP = slices.Clone(server.PortsTCP)
+	serverCopy.PortsUDP = slices.Clone(server.PortsUDP)
 	return serverCopy
-}
-
-func copyIPs(toCopy []netip.Addr) (copied []netip.Addr) {
-	if toCopy == nil {
-		return nil
-	}
-
-	copied = make([]netip.Addr, len(toCopy))
-	copy(copied, toCopy)
-	return copied
 }
