@@ -105,23 +105,21 @@ func (s *Service) onNewPorts(ctx context.Context, internalToExternalPorts map[ui
 			return fmt.Errorf("allowing port in firewall: %w", err)
 		}
 
-		var sourcePort, destinationPort uint16
+		var destinationPort uint16
 		switch {
 		case userRedirectionEnabled: // precedence over auto redirection
-			sourcePort = externalToInternalPorts[port]
 			destinationPort = s.settings.ListeningPorts[i]
-		case port != externalToInternalPorts[port]: // auto redirection needed, source and destination ports differ
-			sourcePort = externalToInternalPorts[port]
+		case port != internalPort: // auto redirection needed, source and destination ports differ
 			destinationPort = port
 		default:
 			// No redirection needed, source and destination ports are the same.
 			continue
 		}
 
-		err = s.portAllower.RedirectPort(ctx, s.settings.Interface, sourcePort, destinationPort)
+		err = s.portAllower.RedirectPort(ctx, s.settings.Interface, internalPort, destinationPort)
 		if err != nil {
 			return fmt.Errorf("redirecting port %d to %d in firewall: %w",
-				sourcePort, destinationPort, err)
+				internalPort, destinationPort, err)
 		}
 	}
 
