@@ -152,8 +152,7 @@ func Test_extractServersFromBytes(t *testing.T) {
 			allProviders[0]: 1,
 			// Missing provider allProviders[1]
 		}
-		expectedPanicValue := fmt.Sprintf("provider %s not found in hardcoded servers map; "+
-			"did you add the provider key in the embedded servers.json?", allProviders[1])
+		expectedPanicValue := fmt.Sprintf("provider %s not found in hardcoded servers map", allProviders[1])
 		assert.PanicsWithValue(t, expectedPanicValue, func() {
 			_, _ = s.extractServersFromBytes(b, hardcodedVersions)
 		})

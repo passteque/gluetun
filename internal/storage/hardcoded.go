@@ -1,32 +1,23 @@
 package storage
 
 import (
-	"embed"
 	"encoding/json"
 	"fmt"
-	"path"
+	"path/filepath"
 
 	serversmodule "github.com/qdm12/gluetun-servers/pkg/servers"
+	"github.com/qdm12/gluetun/internal/constants/providers"
 	"github.com/qdm12/gluetun/internal/models"
 )
 
-//go:embed servers.json
-var allServersEmbedFS embed.FS
-
 func parseHardcodedServers() (allServers models.AllServers) {
-	f, err := allServersEmbedFS.Open("servers.json")
-	if err != nil {
-		panic(err)
-	}
-	defer f.Close() // no-op
-	decoder := json.NewDecoder(f)
-	err = decoder.Decode(&allServers)
-	if err != nil {
-		panic("decoding servers.json: " + err.Error())
-	}
+	allProviders := providers.All()
 
-	for provider, metadata := range allServers.ProviderToServers {
-		filename := path.Base(metadata.Filepath)
+	const version = 1
+	allServers.ProviderToServers = make(map[string]models.Servers, len(allProviders))
+	allServers.Version = version
+	for _, provider := range allProviders {
+		filename := provider + ".json"
 		providerFile, err := serversmodule.Files.Open(filename)
 		if err != nil {
 			panic(fmt.Sprintf("reading embedded provider file %s for %s: %s", filename, provider, err))
@@ -44,7 +35,8 @@ func parseHardcodedServers() (allServers models.AllServers) {
 				filename, provider))
 		}
 
-		providerServers.Filepath = metadata.Filepath // inherit filepath from servers.json
+		const serversPath = "/gluetun/servers/"
+		providerServers.Filepath = filepath.Join(serversPath, filename)
 		allServers.ProviderToServers[provider] = providerServers
 	}
 

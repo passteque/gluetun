@@ -44,7 +44,6 @@ jobs:
           locale: "US"
           level: error
           exclude: |
-            ./internal/storage/servers.json
             ./.golangci.yml
             *.md
 
@@ -98,7 +97,7 @@ jobs:
         github.event_name == 'release' ||
         (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
       )
-    needs: [ verify ]
+    needs: [verify]
     runs-on: ubuntu-latest
     environment: secrets
     steps:
@@ -120,7 +119,8 @@ jobs:
 
       - name: Run Gluetun container with ProtonVPN Wireguard and port forwarding
           configuration
-        run: echo -e "${{ secrets.PROTONVPN_WIREGUARD_PRIVATE_KEY }}" | ./ci/runner
+        run:
+          echo -e "${{ secrets.PROTONVPN_WIREGUARD_PRIVATE_KEY }}" | ./ci/runner
           protonvpn-wireguard-port-forwarding
 
       - name: Run Gluetun container with ProtonVPN OpenVPN and port forwarding
@@ -129,7 +129,8 @@ jobs:
           secrets.PROTONVPN_OPENVPN_PASSWORD }}" | ./ci/runner
           protonvpn-openvpn-port-forwarding
 
-      - name: Run Gluetun container with Private Internet Access OpenVPN and port
+      - name:
+          Run Gluetun container with Private Internet Access OpenVPN and port
           forwarding configuration
         run: echo -e "${{ secrets.PRIVATEINTERNETACCESS_OPENVPN_USER }}\n${{
           secrets.PRIVATEINTERNETACCESS_OPENVPN_PASSWORD }}" | ./ci/runner
@@ -141,7 +142,8 @@ jobs:
           secrets.AIRVPN_WIREGUARD_ADDRESSES }}" | ./ci/runner airvpn-wireguard
 
       - name: Run Gluetun container with AirVPN OpenVPN configuration
-        run: echo -e "${{ secrets.AIRVPN_OPENVPN_KEY }}\n${{ secrets.AIRVPN_OPENVPN_CERT
+        run:
+          echo -e "${{ secrets.AIRVPN_OPENVPN_KEY }}\n${{ secrets.AIRVPN_OPENVPN_CERT
           }}" | ./ci/runner airvpn-openvpn
 
   codeql:
@@ -169,7 +171,7 @@ jobs:
         github.event_name == 'release' ||
         (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]')
       )
-    needs: [ verify, verify-private, codeql ]
+    needs: [verify, verify-private, codeql]
     permissions:
       actions: read
       contents: read
