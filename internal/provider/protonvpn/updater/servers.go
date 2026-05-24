@@ -20,7 +20,7 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 		return nil, fmt.Errorf("%w: password is empty", common.ErrCredentialsMissing)
 	}
 
-	apiClient, err := newAPIClient(ctx, u.client)
+	apiClient, err := newAPIClient(ctx, u.client, u.warner)
 	if err != nil {
 		return nil, fmt.Errorf("creating API client: %w", err)
 	}
