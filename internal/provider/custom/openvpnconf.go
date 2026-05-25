@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
+	"github.com/qdm12/gluetun/internal/constants"
 	"github.com/qdm12/gluetun/internal/constants/openvpn"
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/utils"
@@ -65,7 +66,11 @@ func modifyConfig(lines []string, connection models.Connection,
 	}
 
 	// Add values
-	modified = append(modified, "proto "+connection.Protocol)
+	protocol := connection.Protocol
+	if protocol == constants.TCP {
+		protocol = "tcp-client"
+	}
+	modified = append(modified, "proto "+protocol)
 	modified = append(modified, fmt.Sprintf("remote %s %d", connection.IP, connection.Port))
 	modified = append(modified, "dev "+settings.Interface)
 	modified = append(modified, "mute-replay-warnings")
