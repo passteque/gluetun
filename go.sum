@@ -6,8 +6,8 @@ github.com/ProtonMail/go-crypto v1.3.0-proton h1:tAQKQRZX/73VmzK6yHSCaRUOvS/3OYS
 github.com/ProtonMail/go-crypto v1.3.0-proton/go.mod h1:9whxjD8Rbs29b4XWbB8irEcE8KHMqaR2e7GWU1R+/PE=
 github.com/ProtonMail/go-srp v0.0.7 h1:Sos3Qk+th4tQR64vsxGIxYpN3rdnG9Wf9K4ZloC1JrI=
 github.com/ProtonMail/go-srp v0.0.7/go.mod h1:giCp+7qRnMIcCvI6V6U3S1lDDXDQYx2ewJ6F/9wdlJk=
-github.com/amnezia-vpn/amneziawg-go v0.2.16 h1:XY6HOq/xtqH8ZXMncRWkjFs85EKdN10NLNnw23kTpE0=
-github.com/amnezia-vpn/amneziawg-go v0.2.16/go.mod h1:nRkPpIzjCxMW8pZKXTRkpqAQVlmFJdVOGkeQSC7wbms=
+github.com/amnezia-vpn/amneziawg-go v0.2.18 h1:pUn7/P8qdGmHd6JmE3bCQXPblZs3vruWR98nLODQLJg=
+github.com/amnezia-vpn/amneziawg-go v0.2.18/go.mod h1:aMgOk9MuX0xI7b5TKAYp8pLM54RlXcOPzDvYw3YEO5A=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/breml/rootcerts v0.3.4 h1:9i7WNl/ctd9OEAOaTfLy//Wrlfxq/tRQ7v4okYFN9Ys=
