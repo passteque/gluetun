@@ -209,7 +209,7 @@ func (r *udpRouter) clientAddrPortForAssociation(associationID uint64) (
 
 func (r *udpRouter) runAssociationHandler(ctx context.Context, association udpAssociation) {
 	config := &net.ListenConfig{}
-	socket, err := config.ListenPacket(ctx, "udp", "127.0.0.1:0")
+	socket, err := config.ListenPacket(ctx, "udp", ":0")
 	if err != nil {
 		r.logger.Warnf("creating per-association UDP socket: %s", err)
 		return

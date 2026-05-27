@@ -3,7 +3,7 @@
   // to develop this project.
   "files.eol": "\n",
   "editor.formatOnSave": true,
-  "go.buildTags": "linux",
+  "go.buildTags": "linux,integration",
   "go.toolsEnvVars": {
     "CGO_ENABLED": "0"
   },
