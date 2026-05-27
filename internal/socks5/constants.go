@@ -43,7 +43,6 @@ type cmdType byte
 
 const (
 	connect      cmdType = 1
-	bind         cmdType = 2
 	udpAssociate cmdType = 3
 )
 
@@ -51,8 +50,6 @@ func (c cmdType) String() string {
 	switch c {
 	case connect:
 		return "connect"
-	case bind:
-		return "bind"
 	case udpAssociate:
 		return "UDP associate"
 	default:
