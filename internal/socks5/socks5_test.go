@@ -942,3 +942,80 @@ func Test_cmdType_String(t *testing.T) {
 		})
 	}
 }
+
+func Test_socksConn_udpAssociationAddresses(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		routerAddress         string
+		expectAddressFromConn bool
+		expectedAddress       string
+	}{
+		"wildcard_router_address_uses_control_connection_local_ip": {
+			routerAddress:         ":0",
+			expectAddressFromConn: true,
+		},
+		"concrete_router_address_is_kept": {
+			routerAddress:   "127.0.0.1:0",
+			expectedAddress: "127.0.0.1",
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			router, err := newUDPRouter(t.Context(), testCase.routerAddress, noopLogger{})
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				err := router.close()
+				assert.NoError(t, err)
+			})
+
+			controlListener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				err := controlListener.Close()
+				assert.NoError(t, err)
+			})
+
+			acceptedConnCh := make(chan net.Conn, 1)
+			go func() {
+				acceptedConn, acceptErr := controlListener.Accept()
+				if acceptErr != nil {
+					return
+				}
+				acceptedConnCh <- acceptedConn
+			}()
+
+			clientControlConn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", controlListener.Addr().String())
+			require.NoError(t, err)
+			defer clientControlConn.Close()
+
+			serverControlConn := <-acceptedConnCh
+			defer serverControlConn.Close()
+
+			socksConnection := &socksConn{
+				clientConn: clientControlConn,
+				udpRouter:  router,
+			}
+			bindAddress, bindPort, bindAddrType, err := socksConnection.udpAssociationAddresses()
+			require.NoError(t, err)
+
+			if testCase.expectAddressFromConn {
+				clientLocalHost, _, err := net.SplitHostPort(clientControlConn.LocalAddr().String())
+				require.NoError(t, err)
+				assert.Equal(t, clientLocalHost, bindAddress)
+			} else {
+				assert.Equal(t, testCase.expectedAddress, bindAddress)
+			}
+
+			_, routerPortString, err := net.SplitHostPort(router.localAddress().String())
+			require.NoError(t, err)
+			routerPort, err := strconv.ParseUint(routerPortString, 10, 16)
+			require.NoError(t, err)
+			assert.Equal(t, uint16(routerPort), bindPort)
+			assert.Equal(t, ipv4, bindAddrType)
+		})
+	}
+}

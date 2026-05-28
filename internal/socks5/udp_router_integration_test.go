@@ -80,7 +80,7 @@ func Test_udpRouter_ResolveGithubFromCloudflareDNS(t *testing.T) {
 		assert.NoError(t, err, "closing server control connection")
 	})
 
-	association, err := router.registerAssociation(serverControlConn)
+	association, err := router.registerAssociation(serverControlConn, netip.AddrPort{})
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		router.unregisterAssociation(association)

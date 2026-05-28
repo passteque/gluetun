@@ -119,7 +119,7 @@ func (c *socksConn) handleRequest(ctx context.Context) error {
 		}
 		return nil
 	case udpAssociate:
-		err = c.handleUDPAssociateRequest(ctx, socksVersion)
+		err = c.handleUDPAssociateRequest(ctx, socksVersion, request)
 		if err != nil {
 			return fmt.Errorf("handling %s request: %w", request.command, err)
 		}
@@ -196,8 +196,14 @@ func (c *socksConn) handleConnectRequest(ctx context.Context,
 }
 
 func (c *socksConn) handleUDPAssociateRequest(ctx context.Context,
-	socksVersion byte,
+	socksVersion byte, request request,
 ) error {
+	expectedAddrPort, err := udpAssociateExpectedClientEndpoint(request)
+	if err != nil {
+		c.encodeFailedResponse(c.clientConn, socksVersion, addressTypeNotSupported)
+		return fmt.Errorf("deriving expected client address and port from request: %w", err)
+	}
+
 	bindAddress, bindPort, bindAddrType, err := c.udpAssociationAddresses()
 	if err != nil {
 		c.encodeFailedResponse(c.clientConn, socksVersion, generalServerFailure)
@@ -211,7 +217,7 @@ func (c *socksConn) handleUDPAssociateRequest(ctx context.Context,
 		return fmt.Errorf("writing successful %s response: %w", udpAssociate, err)
 	}
 
-	association, err := c.udpRouter.registerAssociation(c.clientConn)
+	association, err := c.udpRouter.registerAssociation(c.clientConn, expectedAddrPort)
 	if err != nil {
 		c.encodeFailedResponse(c.clientConn, socksVersion, generalServerFailure)
 		return fmt.Errorf("registering udp association: %w", err)
@@ -236,6 +242,28 @@ func (c *socksConn) handleUDPAssociateRequest(ctx context.Context,
 	return nil
 }
 
+func udpAssociateExpectedClientEndpoint(request request) (expectedAddrPort netip.AddrPort, err error) {
+	switch request.addressType {
+	case ipv4, ipv6:
+		expectedClientAddress, parseErr := netip.ParseAddr(request.destination)
+		if parseErr != nil {
+			return netip.AddrPort{}, fmt.Errorf("parsing destination address: %w", parseErr)
+		}
+		expectedClientAddress = expectedClientAddress.Unmap()
+		if !expectedClientAddress.IsUnspecified() {
+			return netip.AddrPortFrom(expectedClientAddress, request.port), nil
+		}
+		return netip.AddrPortFrom(netip.Addr{}, request.port), nil
+	case domainName:
+		if request.destination != "" || request.port != 0 {
+			return netip.AddrPort{}, fmt.Errorf("domain name is not supported for UDP associate destination")
+		}
+		return netip.AddrPort{}, nil
+	default:
+		return netip.AddrPort{}, fmt.Errorf("address type %d is not supported", request.addressType)
+	}
+}
+
 func (c *socksConn) udpAssociationAddresses() (bindAddress string,
 	bindPort uint16, bindAddrType addrType, err error,
 ) {
@@ -250,6 +278,14 @@ func (c *socksConn) udpAssociationAddresses() (bindAddress string,
 	}
 	bindAddress = host
 	bindPort = uint16(port)
+	if isUnspecifiedIPAddress(bindAddress) {
+		controlLocalAddress := c.clientConn.LocalAddr().String()
+		controlLocalHost, _, splitErr := net.SplitHostPort(controlLocalAddress)
+		if splitErr != nil {
+			return "", 0, 0, fmt.Errorf("splitting control connection local address: %w", splitErr)
+		}
+		bindAddress = controlLocalHost
+	}
 
 	ipAddress := net.ParseIP(bindAddress)
 	if ipAddress == nil {
@@ -264,6 +300,14 @@ func (c *socksConn) udpAssociationAddresses() (bindAddress string,
 	}
 
 	return bindAddress, bindPort, bindAddrType, nil
+}
+
+func isUnspecifiedIPAddress(address string) bool {
+	ipAddress, err := netip.ParseAddr(address)
+	if err != nil {
+		return false
+	}
+	return ipAddress.IsUnspecified()
 }
 
 func decodeUDPDatagram(packet []byte) (destination string, payload []byte, err error) {
@@ -364,6 +408,8 @@ func writeUDPDatagramSourceAddress(writer io.Writer, address netip.Addr) error {
 		addrType = ipv6
 		array := address.As16()
 		addressBytes = array[:]
+	default:
+		return fmt.Errorf("address type is not supported: %v", address)
 	}
 
 	_, err := writer.Write([]byte{0, 0, 0, byte(addrType)})
