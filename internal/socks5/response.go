@@ -10,7 +10,7 @@ import (
 )
 
 // See https://datatracker.ietf.org/doc/html/rfc1928#section-6
-func (c *socksConn) encodeFailedResponse(writer io.Writer, socksVersion byte, reply replyCode) { //nolint:unparam
+func (c *socksConn) encodeFailedResponse(writer io.Writer, socksVersion byte, reply replyCode) {
 	_, err := writer.Write([]byte{
 		socksVersion,
 		byte(reply),

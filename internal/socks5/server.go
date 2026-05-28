@@ -2,6 +2,7 @@ package socks5
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -15,7 +16,8 @@ type server struct {
 	logger   Logger
 
 	// internal fields
-	listener        net.Listener
+	tcpListener     net.Listener
+	udpRouter       *udpRouter
 	listening       atomic.Bool
 	socksConnCtx    context.Context //nolint:containedctx
 	socksConnCancel context.CancelFunc
@@ -39,12 +41,19 @@ func (s *server) String() string {
 func (s *server) Start(ctx context.Context) (runErr <-chan error, err error) {
 	s.socksConnCtx, s.socksConnCancel = context.WithCancel(context.Background())
 	config := &net.ListenConfig{}
-	s.listener, err = config.Listen(ctx, "tcp", s.address)
+	s.tcpListener, err = config.Listen(ctx, "tcp", s.address)
 	if err != nil {
-		return nil, fmt.Errorf("listening on %s: %w", s.address, err)
+		return nil, fmt.Errorf("TCP listening on %s: %w", s.address, err)
+	}
+
+	s.udpRouter, err = newUDPRouter(ctx, s.address, s.logger)
+	if err != nil {
+		_ = s.tcpListener.Close()
+		return nil, fmt.Errorf("creating UDP router: %w", err)
 	}
 	s.listening.Store(true)
-	s.logger.Infof("SOCKS5 server listening on %s", s.listener.Addr())
+	s.logger.Infof("SOCKS5 TCP server listening on %s", s.tcpListener.Addr())
+	s.logger.Infof("SOCKS5 UDP server listening on %s", s.udpRouter.localAddress())
 
 	ready := make(chan struct{})
 	runErrCh := make(chan error)
@@ -69,9 +78,19 @@ func (s *server) runServer(ready chan<- struct{},
 	wg := new(sync.WaitGroup)
 	defer wg.Wait()
 
+	wg.Go(func() {
+		err := s.udpRouter.run(s.socksConnCtx)
+		if err != nil {
+			if !s.stopping.Load() {
+				_ = s.stop()
+				runErrCh <- fmt.Errorf("running UDP router: %w", err)
+			}
+		}
+	})
+
 	dialer := &net.Dialer{}
 	for {
-		connection, err := s.listener.Accept()
+		connection, err := s.tcpListener.Accept()
 		if err != nil {
 			if !s.stopping.Load() {
 				_ = s.stop()
@@ -89,6 +108,7 @@ func (s *server) runServer(ready chan<- struct{},
 				username:   s.username,
 				password:   s.password,
 				clientConn: connection,
+				udpRouter:  s.udpRouter,
 				logger:     s.logger,
 			}
 			err := socksConn.run(ctx)
@@ -109,14 +129,25 @@ func (s *server) Stop() (err error) {
 
 func (s *server) stop() error {
 	s.listening.Store(false)
-	err := s.listener.Close()
+	var errs []error
+	err := s.tcpListener.Close()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("closing TCP listener: %w", err))
+	}
+	err = s.udpRouter.close()
+	if err != nil {
+		errs = append(errs, fmt.Errorf("closing UDP router: %w", err))
+	}
 	s.socksConnCancel() // stop ongoing socks connections
-	return err
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
 }
 
 func (s *server) listeningAddress() net.Addr {
 	if s.listening.Load() {
-		return s.listener.Addr()
+		return s.tcpListener.Addr()
 	}
 	return nil
 }
