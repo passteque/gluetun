@@ -11,10 +11,11 @@ import (
 )
 
 type udpAssociation struct {
-	id              uint64
-	clientAddrPort  netip.AddrPort
-	controlConnAddr netip.Addr
-	packetCh        chan *bytes.Buffer
+	id               uint64
+	clientAddrPort   netip.AddrPort
+	expectedAddrPort netip.AddrPort
+	controlConnAddr  netip.Addr
+	packetCh         chan *bytes.Buffer
 }
 
 type udpRouter struct {
@@ -65,7 +66,7 @@ func (r *udpRouter) close() error {
 	return r.listener.Close()
 }
 
-func (r *udpRouter) registerAssociation(controlConn net.Conn) (udpAssociation, error) {
+func (r *udpRouter) registerAssociation(controlConn net.Conn, expectedAddrPort netip.AddrPort) (udpAssociation, error) {
 	controlConnAddrPort, err := netip.ParseAddrPort(controlConn.RemoteAddr().String())
 	if err != nil {
 		return udpAssociation{}, fmt.Errorf("parsing control connection address: %w", err)
@@ -80,9 +81,17 @@ func (r *udpRouter) registerAssociation(controlConn net.Conn) (udpAssociation, e
 	r.nextAssociationID++
 
 	association := udpAssociation{
-		id:              associationID,
-		controlConnAddr: controlConnAddr,
-		packetCh:        make(chan *bytes.Buffer, udpPacketChannelBuffer),
+		id:               associationID,
+		expectedAddrPort: expectedAddrPort,
+		controlConnAddr:  controlConnAddr,
+		packetCh:         make(chan *bytes.Buffer, udpPacketChannelBuffer),
+	}
+
+	if expectedAddrPort.Addr().IsValid() && expectedAddrPort.Port() != 0 {
+		association.clientAddrPort = expectedAddrPort
+		r.clientAddrPortToAssociation[association.clientAddrPort] = association
+		r.associationIDToClientAddrPort[association.id] = association.clientAddrPort
+		return association, nil
 	}
 
 	pendingAssociations := r.clientIPToPendingAssociations[controlConnAddr]
@@ -184,8 +193,19 @@ func (r *udpRouter) findClientAssociation(sourceAddrPort netip.AddrPort) (
 		return udpAssociation{}, false
 	}
 
-	association = pendingAssociations[0]
-	r.clientIPToPendingAssociations[sourceAddr] = pendingAssociations[1:]
+	index := -1
+	for i, pendingAssociation := range pendingAssociations {
+		if matchesExpectedClientEndpoint(pendingAssociation, sourceAddrPort) {
+			association = pendingAssociation
+			index = i
+			break
+		}
+	}
+	if index == -1 {
+		return udpAssociation{}, false
+	}
+
+	r.clientIPToPendingAssociations[sourceAddr] = append(pendingAssociations[:index], pendingAssociations[index+1:]...)
 	if len(r.clientIPToPendingAssociations[sourceAddr]) == 0 {
 		delete(r.clientIPToPendingAssociations, sourceAddr)
 	}
@@ -195,6 +215,16 @@ func (r *udpRouter) findClientAssociation(sourceAddrPort netip.AddrPort) (
 	r.associationIDToClientAddrPort[association.id] = sourceAddrPort
 
 	return association, true
+}
+
+func matchesExpectedClientEndpoint(association udpAssociation, sourceAddrPort netip.AddrPort) bool {
+	switch {
+	case association.expectedAddrPort.Addr().IsValid() && sourceAddrPort.Addr() != association.expectedAddrPort.Addr():
+		return false
+	case association.expectedAddrPort.Port() != 0 && sourceAddrPort.Port() != association.expectedAddrPort.Port():
+		return false
+	}
+	return true
 }
 
 func (r *udpRouter) clientAddrPortForAssociation(associationID uint64) (
