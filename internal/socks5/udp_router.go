@@ -336,10 +336,13 @@ func (r *udpRouter) writeClientPacketToDestination(ctx context.Context,
 		return fmt.Errorf("splitting destination host and port: %w", err)
 	}
 
-	if _, err := netip.ParseAddr(destination); err != nil { // domain name
+	if _, err := netip.ParseAddr(host); err != nil { // domain name
 		addrs, err := net.DefaultResolver.LookupHost(ctx, host)
 		if err != nil {
 			return fmt.Errorf("resolving destination host: %w", err)
+		}
+		if len(addrs) == 0 {
+			return fmt.Errorf("resolving destination host: no addresses found for %q", host)
 		}
 
 		destination = net.JoinHostPort(addrs[0], portStr)
