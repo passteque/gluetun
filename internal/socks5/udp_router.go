@@ -111,10 +111,6 @@ func (r *udpRouter) unregisterAssociation(association udpAssociation) {
 		delete(r.clientAddrPortToAssociation, clientAddrPort)
 	}
 
-	if association.clientAddrPort.IsValid() {
-		delete(r.clientAddrPortToAssociation, association.clientAddrPort)
-	}
-
 	pendingAssociations := r.clientIPToPendingAssociations[association.controlConnAddr]
 	for i, pendingAssociation := range pendingAssociations {
 		if pendingAssociation.id == association.id {
