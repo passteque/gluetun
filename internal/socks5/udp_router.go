@@ -48,7 +48,7 @@ func newUDPRouter(ctx context.Context, address string, logger Logger) (router *u
 		listener: listener,
 		bufferPool: sync.Pool{
 			New: func() any {
-				return bytes.NewBuffer(make([]byte, pooledUDPPacketBufferCapacity))
+				return bytes.NewBuffer(make([]byte, 0, pooledUDPPacketBufferCapacity))
 			},
 		},
 		nextAssociationID:             1,
