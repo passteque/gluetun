@@ -159,8 +159,9 @@ func (r *udpRouter) run(ctx context.Context) error {
 
 func (r *udpRouter) routePacket(sourceAddrPort netip.AddrPort, packet *bytes.Buffer) error {
 	r.mutex.Lock()
-	defer r.mutex.Unlock()
 	association, packetFromClient := r.findClientAssociation(sourceAddrPort)
+	r.mutex.Unlock()
+
 	if !packetFromClient {
 		r.bufferPool.Put(packet)
 		return nil
@@ -328,6 +329,20 @@ func (r *udpRouter) writeClientPacketToDestination(ctx context.Context,
 	destination, payload, err := decodeUDPDatagram(packet.Bytes())
 	if err != nil {
 		return fmt.Errorf("decoding UDP datagram: %w", err)
+	}
+
+	host, portStr, err := net.SplitHostPort(destination)
+	if err != nil {
+		return fmt.Errorf("splitting destination host and port: %w", err)
+	}
+
+	if _, err := netip.ParseAddr(destination); err != nil { // domain name
+		addrs, err := net.DefaultResolver.LookupHost(ctx, host)
+		if err != nil {
+			return fmt.Errorf("resolving destination host: %w", err)
+		}
+
+		destination = net.JoinHostPort(addrs[0], portStr)
 	}
 
 	resolvedDestinationUDPAddress, err := net.ResolveUDPAddr("udp", destination)

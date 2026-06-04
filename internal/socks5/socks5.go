@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 var (
@@ -227,18 +228,18 @@ func (c *socksConn) handleUDPAssociateRequest(ctx context.Context,
 	associationCtx, associationCancel := context.WithCancel(ctx)
 	defer associationCancel()
 
-	handlerDone := make(chan struct{})
-	go func() {
-		defer close(handlerDone)
-		c.udpRouter.runAssociationHandler(associationCtx, association)
-	}()
+	var wg sync.WaitGroup
 
-	go func() {
+	wg.Go(func() {
+		c.udpRouter.runAssociationHandler(associationCtx, association)
+	})
+
+	wg.Go(func() {
 		_, _ = io.Copy(io.Discard, c.clientConn)
 		associationCancel()
-	}()
+	})
 	<-associationCtx.Done()
-	<-handlerDone
+	wg.Wait()
 	return nil
 }
 
