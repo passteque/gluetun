@@ -211,19 +211,19 @@ func (c *socksConn) handleUDPAssociateRequest(ctx context.Context,
 		return fmt.Errorf("getting udp association addresses: %w", err)
 	}
 
-	err = c.encodeSuccessResponse(c.clientConn, socksVersion, succeeded,
-		bindAddrType, bindAddress, bindPort)
-	if err != nil {
-		c.encodeFailedResponse(c.clientConn, socksVersion, generalServerFailure)
-		return fmt.Errorf("writing successful %s response: %w", udpAssociate, err)
-	}
-
 	association, err := c.udpRouter.registerAssociation(c.clientConn, expectedAddrPort)
 	if err != nil {
 		c.encodeFailedResponse(c.clientConn, socksVersion, generalServerFailure)
 		return fmt.Errorf("registering udp association: %w", err)
 	}
 	defer c.udpRouter.unregisterAssociation(association)
+
+	err = c.encodeSuccessResponse(c.clientConn, socksVersion, succeeded,
+		bindAddrType, bindAddress, bindPort)
+	if err != nil {
+		c.encodeFailedResponse(c.clientConn, socksVersion, generalServerFailure)
+		return fmt.Errorf("writing successful %s response: %w", udpAssociate, err)
+	}
 
 	associationCtx, associationCancel := context.WithCancel(ctx)
 	defer associationCancel()
