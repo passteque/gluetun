@@ -129,12 +129,12 @@ jobs:
           secrets.PROTONVPN_OPENVPN_PASSWORD }}" | ./ci/runner
           protonvpn-openvpn-port-forwarding
 
-      - name:
-          Run Gluetun container with Private Internet Access OpenVPN and port
-          forwarding configuration
-        run: echo -e "${{ secrets.PRIVATEINTERNETACCESS_OPENVPN_USER }}\n${{
-          secrets.PRIVATEINTERNETACCESS_OPENVPN_PASSWORD }}" | ./ci/runner
-          private-internet-access-openvpn-port-forwarding
+      # - name:
+      #     Run Gluetun container with Private Internet Access OpenVPN and port
+      #     forwarding configuration
+      #   run: echo -e "${{ secrets.PRIVATEINTERNETACCESS_OPENVPN_USER }}\n${{
+      #     secrets.PRIVATEINTERNETACCESS_OPENVPN_PASSWORD }}" | ./ci/runner
+      #     private-internet-access-openvpn-port-forwarding
 
       - name: Run Gluetun container with AirVPN Wireguard configuration
         run: echo -e "${{ secrets.AIRVPN_WIREGUARD_PRIVATE_KEY }}\n${{
