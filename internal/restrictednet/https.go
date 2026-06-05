@@ -8,14 +8,18 @@ import (
 	"net"
 	"net/http"
 	"net/netip"
+	"os"
 	"time"
+
+	"github.com/jsimonetti/rtnetlink"
+	"github.com/qdm12/gluetun/internal/pmtud/constants"
 )
 
 // OpenHTTPS opens temporary restrictive firewall output for one HTTPS destination.
 // The returned cleanup function must be called to remove the temporary firewall rule and close connections.
 func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, destinationIP netip.Addr,
 ) (httpClient *http.Client, cleanup func() error, err error) {
-	connection, sourceAddrPort, err := bindSourceConnection(ctx, destinationIP)
+	fd, sourceAddrPort, err := bindSourceConnection(destinationIP)
 	if err != nil {
 		return nil, nil, fmt.Errorf("binding source port: %w", err)
 	}
@@ -27,8 +31,16 @@ func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, desti
 	err = c.firewall.AcceptOutputFromIPPortToIPPort(ctx, "tcp", c.outboundInterface,
 		sourceAddrPort, destinationAddrPort, remove)
 	if err != nil {
-		_ = connection.Close()
+		closeFD(fd)
 		return nil, nil, fmt.Errorf("allowing output traffic through firewall: %w", err)
+	}
+
+	connection, err := connectSourceConnection(fd, destinationAddrPort)
+	if err != nil {
+		const remove = true
+		_ = c.firewall.AcceptOutputFromIPPortToIPPort(ctx, "tcp", c.outboundInterface,
+			sourceAddrPort, destinationAddrPort, remove)
+		return nil, nil, fmt.Errorf("connecting source socket: %w", err)
 	}
 
 	httpClient = newHTTPSClient(destinationTLSName, connection)
@@ -53,9 +65,7 @@ func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, desti
 	return httpClient, cleanup, nil
 }
 
-func newHTTPSClient(destinationTLSName string,
-	connection net.Conn,
-) *http.Client {
+func newHTTPSClient(destinationTLSName string, connection net.Conn) *http.Client {
 	httpTransport := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert
 	httpTransport.Proxy = nil
 	httpTransport.MaxIdleConns = 1
@@ -65,7 +75,9 @@ func newHTTPSClient(destinationTLSName string,
 		MinVersion: tls.VersionTLS12,
 		ServerName: destinationTLSName,
 	}
-	httpTransport.DialContext = newConnectionDialContext(connection)
+	httpTransport.DialContext = func(_ context.Context, _, _ string) (net.Conn, error) {
+		return connection, nil
+	}
 
 	const timeout = 5 * time.Second
 	return &http.Client{
@@ -74,35 +86,92 @@ func newHTTPSClient(destinationTLSName string,
 	}
 }
 
-func newConnectionDialContext(connection net.Conn) func(ctx context.Context, network, _ string) (net.Conn, error) {
-	return func(ctx context.Context, network, _ string) (net.Conn, error) {
-		return connection, nil
+func bindSourceConnection(destinationIP netip.Addr) (fd int, sourceAddr netip.AddrPort, err error) {
+	sourceIP, err := sourceIPForDestination(destinationIP)
+	if err != nil {
+		return 0, netip.AddrPort{}, fmt.Errorf("finding source IP: %w", err)
 	}
+
+	family := constants.AF_INET
+	if sourceIP.Is6() {
+		family = constants.AF_INET6
+	}
+
+	fd, err = newTCPSockStream(family)
+	if err != nil {
+		return 0, netip.AddrPort{}, fmt.Errorf("creating socket: %w", err)
+	}
+
+	bindAddrPort := netip.AddrPortFrom(sourceIP, 0)
+	err = bindFD(fd, bindAddrPort)
+	if err != nil {
+		closeFD(fd)
+		return 0, netip.AddrPort{}, fmt.Errorf("binding socket: %w", err)
+	}
+
+	sourceAddr, err = fdToSourceAddr(fd)
+	if err != nil {
+		closeFD(fd)
+		return 0, netip.AddrPort{}, fmt.Errorf("getting source address: %w", err)
+	}
+
+	return fd, sourceAddr, nil
 }
 
-func bindSourceConnection(ctx context.Context, destinationIP netip.Addr) (
-	connection net.Conn, sourceAddr netip.AddrPort, err error,
-) {
-	var bindAddr netip.Addr
-	if destinationIP.Is4() {
-		bindAddr = netip.AddrFrom4([4]byte{})
-	} else {
-		bindAddr = netip.AddrFrom16([16]byte{})
-	}
-
-	const httpsPort = 443
-	destinationAddrPort := netip.AddrPortFrom(destinationIP, httpsPort)
-	dialer := &net.Dialer{
-		Timeout:   time.Second,
-		LocalAddr: net.TCPAddrFromAddrPort(netip.AddrPortFrom(bindAddr, 0)),
-	}
-	connection, err = dialer.DialContext(ctx, "tcp", destinationAddrPort.String())
+func connectSourceConnection(fd int, destinationAddrPort netip.AddrPort) (connection net.Conn, err error) {
+	err = connectFD(fd, destinationAddrPort)
 	if err != nil {
-		return nil, netip.AddrPort{}, fmt.Errorf("binding TCP port: %w", err)
+		closeFD(fd)
+		return nil, fmt.Errorf("connecting socket: %w", err)
 	}
 
-	tcpAddr := connection.LocalAddr().(*net.TCPAddr) //nolint:forcetypeassert
-	sourceAddr = tcpAddr.AddrPort()
+	file := os.NewFile(uintptr(fd), "")
+	if file == nil {
+		closeFD(fd)
+		return nil, fmt.Errorf("creating socket file")
+	}
+	defer file.Close()
 
-	return connection, sourceAddr, nil
+	connection, err = net.FileConn(file)
+	if err != nil {
+		return nil, fmt.Errorf("wrapping socket connection: %w", err)
+	}
+
+	return connection, nil
+}
+
+func sourceIPForDestination(destinationIP netip.Addr) (srcIP netip.Addr, err error) {
+	conn, err := rtnetlink.Dial(nil)
+	if err != nil {
+		return netip.Addr{}, err
+	}
+	defer conn.Close()
+
+	family := uint8(constants.AF_INET)
+	if destinationIP.Is6() {
+		family = constants.AF_INET6
+	}
+
+	requestMessage := &rtnetlink.RouteMessage{
+		Family: family,
+		Attributes: rtnetlink.RouteAttributes{
+			Dst: destinationIP.AsSlice(),
+		},
+	}
+	messages, err := conn.Route.Get(requestMessage)
+	if err != nil {
+		return netip.Addr{}, fmt.Errorf("getting routes to %s: %w", destinationIP, err)
+	}
+
+	for _, message := range messages {
+		if message.Attributes.Src == nil {
+			continue
+		}
+		if message.Attributes.Src.To4() == nil {
+			return netip.AddrFrom16([16]byte(message.Attributes.Src)), nil
+		}
+		return netip.AddrFrom4([4]byte(message.Attributes.Src)), nil
+	}
+
+	return netip.Addr{}, fmt.Errorf("no route to %s", destinationIP)
 }
