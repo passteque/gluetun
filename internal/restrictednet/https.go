@@ -24,8 +24,7 @@ func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, desti
 		return nil, nil, fmt.Errorf("binding source port: %w", err)
 	}
 
-	const httpsPort = 443
-	destinationAddrPort := netip.AddrPortFrom(destinationIP, httpsPort)
+	destinationAddrPort := netip.AddrPortFrom(destinationIP, c.httpsPort)
 
 	const remove = false
 	err = c.firewall.AcceptOutputFromIPPortToIPPort(ctx, "tcp", c.outboundInterface,
