@@ -37,7 +37,7 @@ func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, desti
 	connection, err := connectSourceConnection(ctx, fd, destinationAddrPort)
 	if err != nil {
 		const remove = true
-		_ = c.firewall.AcceptOutputFromIPPortToIPPort(ctx, "tcp", c.outboundInterface,
+		_ = c.firewall.AcceptOutputFromIPPortToIPPort(context.Background(), "tcp", c.outboundInterface,
 			sourceAddrPort, destinationAddrPort, remove)
 		return nil, nil, fmt.Errorf("connecting source socket: %w", err)
 	}

@@ -23,7 +23,10 @@ type Client struct {
 
 func New(firewall Firewall, defaultInterface string, ipv6Supported bool,
 	upstreamResolvers []provider.Provider,
-) (*Client, error) {
+) *Client {
+	if len(upstreamResolvers) == 0 {
+		panic("no upstream resolvers provided") // programming error
+	}
 	dohServers := make([]provider.DoHServer, len(upstreamResolvers))
 	for i, upstreamResolver := range upstreamResolvers {
 		dohServers[i] = upstreamResolver.DoH
@@ -36,7 +39,7 @@ func New(firewall Firewall, defaultInterface string, ipv6Supported bool,
 		ipv6Supported:     ipv6Supported,
 		dohServers:        dohServers,
 		httpsPort:         defaultHTTPSPort,
-	}, nil
+	}
 }
 
 func (c *Client) OpenHTTPSByDomain(ctx context.Context, domain string) (
