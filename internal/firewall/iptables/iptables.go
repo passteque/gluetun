@@ -2,6 +2,7 @@ package iptables
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/netip"
@@ -181,7 +182,7 @@ func (c *Config) AcceptOutputFromIPPortToIPPort(ctx context.Context,
 	protocol, intf string, source, destination netip.AddrPort, remove bool,
 ) error {
 	if source.Addr().BitLen() != destination.Addr().BitLen() {
-		return fmt.Errorf("source and destination address families do not match")
+		return errors.New("source and destination address families do not match")
 	}
 
 	interfaceFlag := "-o " + intf
