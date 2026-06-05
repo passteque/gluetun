@@ -106,7 +106,7 @@ func (c *Client) resolveOneQuestionType(ctx context.Context,
 func (c *Client) doHQuery(ctx context.Context, queryWire []byte,
 	dohURL *url.URL, dohServerIP netip.Addr,
 ) (responseMessage *dns.Msg, err error) {
-	httpClient, cleanup, err := c.OpenHTTPS(dohURL.Hostname(), dohServerIP)
+	httpClient, cleanup, err := c.OpenHTTPS(ctx, dohURL.Hostname(), dohServerIP)
 	if err != nil {
 		return nil, fmt.Errorf("opening https connection: %w", err)
 	}

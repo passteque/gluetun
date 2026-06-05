@@ -2,6 +2,7 @@ package restrictednet
 
 import (
 	"context"
+	"net"
 	"net/netip"
 	"testing"
 
@@ -34,15 +35,28 @@ func (m listenAddrPortMatcher) String() string {
 
 func Test_Client_OpenHTTPS(t *testing.T) {
 	t.Parallel()
+	ctx := t.Context()
+
+	netConfig := net.ListenConfig{}
+	listener, err := netConfig.Listen(ctx, "tcp", "127.0.0.1:443")
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = listener.Close()
+	})
+	go func() {
+		connection, acceptErr := listener.Accept()
+		if acceptErr == nil {
+			_ = connection.Close()
+		}
+	}()
 
 	ctrl := gomock.NewController(t)
 	firewall := NewMockFirewall(ctrl)
 
-	destination := netip.MustParseAddrPort("1.2.3.4:443")
-	backgroundContext := context.Background()
+	destination := netip.MustParseAddrPort("127.0.0.1:443")
 	sourceMatcher := listenAddrPortMatcher{}
 	firewall.EXPECT().AcceptOutputFromIPPortToIPPort(
-		backgroundContext, "tcp", "eth0", sourceMatcher, destination, false,
+		ctx, "tcp", "eth0", sourceMatcher, destination, false,
 	).DoAndReturn(func(_ context.Context,
 		_, _ string, source, _ netip.AddrPort, _ bool,
 	) error {
@@ -50,7 +64,7 @@ func Test_Client_OpenHTTPS(t *testing.T) {
 		return nil
 	})
 	firewall.EXPECT().AcceptOutputFromIPPortToIPPort(
-		backgroundContext, "tcp", "eth0", sourceMatcher, destination, true,
+		ctx, "tcp", "eth0", sourceMatcher, destination, true,
 	)
 
 	const ipv6Supported = false
@@ -58,7 +72,7 @@ func Test_Client_OpenHTTPS(t *testing.T) {
 	client, err := New(firewall, "eth0", ipv6Supported, upstreamResolvers)
 	require.NoError(t, err)
 
-	httpClient, cleanup, err := client.OpenHTTPS("api.example.com", netip.MustParseAddr("1.2.3.4"))
+	httpClient, cleanup, err := client.OpenHTTPS(ctx, "api.example.com", netip.MustParseAddr("127.0.0.1"))
 	require.NoError(t, err)
 	require.NotNil(t, httpClient)
 	require.NotNil(t, cleanup)
