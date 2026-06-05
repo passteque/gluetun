@@ -142,8 +142,8 @@ func (c *Client) doHQuery(ctx context.Context, queryWire []byte,
 	}
 
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("response status code is %s, data: %s",
-			response.Status, responseData)
+		return nil, fmt.Errorf("response status code is %s (data length %d)",
+			response.Status, len(responseData))
 	}
 
 	responseMessage = new(dns.Msg)

@@ -65,7 +65,7 @@ func Test_Client_OpenHTTPS(t *testing.T) {
 		return nil
 	})
 	firewall.EXPECT().AcceptOutputFromIPPortToIPPort(
-		ctx, "tcp", "eth0", sourceMatcher, destination, true,
+		context.Background(), "tcp", "eth0", sourceMatcher, destination, true,
 	)
 
 	const ipv6Supported = false
