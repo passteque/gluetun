@@ -69,12 +69,23 @@ func newHTTPSClient(destinationTLSName string, connection net.Conn) *http.Client
 	httpTransport.Proxy = nil
 	httpTransport.MaxIdleConns = 1
 	httpTransport.MaxIdleConnsPerHost = 1
+	httpTransport.MaxConnsPerHost = 1
 	httpTransport.IdleConnTimeout = time.Second
 	httpTransport.TLSClientConfig = &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		ServerName: destinationTLSName,
 	}
-	httpTransport.DialContext = func(_ context.Context, _, _ string) (net.Conn, error) {
+
+	expectedAddress := net.JoinHostPort(destinationTLSName, "443")
+	httpTransport.DialContext = func(_ context.Context, network, address string) (net.Conn, error) {
+		switch network {
+		case "tcp", "tcp4", "tcp6":
+		default:
+			return nil, fmt.Errorf("unexpected dial network %q", network)
+		}
+		if address != expectedAddress {
+			return nil, fmt.Errorf("unexpected dial address %q (expected %q)", address, expectedAddress)
+		}
 		return connection, nil
 	}
 
