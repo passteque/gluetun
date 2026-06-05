@@ -19,7 +19,8 @@ import (
 func (c *Client) ResolveName(ctx context.Context, host string) (
 	resolvedAddresses []netip.Addr, err error,
 ) {
-	questionTypes := make([]uint16, 0, 2)
+	const maxTypes = 2
+	questionTypes := make([]uint16, 0, maxTypes)
 	if c.ipv6Supported {
 		questionTypes = append(questionTypes, dns.TypeAAAA)
 	}
@@ -105,12 +106,12 @@ func (c *Client) resolveOneQuestionType(ctx context.Context,
 func (c *Client) doHQuery(ctx context.Context, queryWire []byte,
 	dohURL *url.URL, dohServerIP netip.Addr,
 ) (responseMessage *dns.Msg, err error) {
-	httpClient, close, err := c.OpenHTTPS(dohURL.Hostname(), dohServerIP)
+	httpClient, cleanup, err := c.OpenHTTPS(dohURL.Hostname(), dohServerIP)
 	if err != nil {
 		return nil, fmt.Errorf("opening https connection: %w", err)
 	}
 	defer func() {
-		closeErr := close()
+		closeErr := cleanup()
 		if err == nil && closeErr != nil {
 			err = fmt.Errorf("cleaning up https connection: %w", closeErr)
 		}
