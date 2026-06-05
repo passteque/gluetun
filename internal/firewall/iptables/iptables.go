@@ -177,6 +177,29 @@ func (c *Config) AcceptOutput(ctx context.Context,
 	return c.runIP6tablesInstruction(ctx, instruction)
 }
 
+func (c *Config) AcceptOutputFromIPPortToIPPort(ctx context.Context,
+	protocol, intf string, source, destination netip.AddrPort, remove bool,
+) error {
+	if source.Addr().BitLen() != destination.Addr().BitLen() {
+		return fmt.Errorf("source and destination address families do not match")
+	}
+
+	interfaceFlag := "-o " + intf
+	if intf == "*" { // all interfaces
+		interfaceFlag = ""
+	}
+
+	instruction := fmt.Sprintf("%s OUTPUT -s %s --sport %d -d %s %s -p %s -m %s --dport %d -j ACCEPT",
+		appendOrDelete(remove), source.Addr(), source.Port(), destination.Addr(),
+		interfaceFlag, protocol, protocol, destination.Port())
+	if destination.Addr().Is4() {
+		return c.runIptablesInstruction(ctx, instruction)
+	} else if c.ip6Tables == "" {
+		return fmt.Errorf("accept output from %s to %s: %s", source, destination, needIP6Tables)
+	}
+	return c.runIP6tablesInstruction(ctx, instruction)
+}
+
 // AcceptOutputFromIPToSubnet accepts outgoing traffic from sourceIP to destinationSubnet
 // on the interface intf. If intf is empty, it is set to "*" which means all interfaces.
 // If remove is true, the rule is removed instead of added.
