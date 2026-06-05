@@ -17,6 +17,7 @@ type Client struct {
 	firewall          Firewall
 	outboundInterface string
 	dohServers        []provider.DoHServer
+	httpsPort         uint16
 }
 
 func New(firewall Firewall, defaultInterface string, ipv6Supported bool,
@@ -27,11 +28,13 @@ func New(firewall Firewall, defaultInterface string, ipv6Supported bool,
 		dohServers[i] = upstreamResolver.DoH
 	}
 
+	const defaultHTTPSPort = 443
 	return &Client{
 		firewall:          firewall,
 		outboundInterface: defaultInterface,
 		ipv6Supported:     ipv6Supported,
 		dohServers:        dohServers,
+		httpsPort:         defaultHTTPSPort,
 	}, nil
 }
 

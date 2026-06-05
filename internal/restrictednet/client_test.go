@@ -38,11 +38,12 @@ func Test_Client_OpenHTTPS(t *testing.T) {
 	ctx := t.Context()
 
 	netConfig := net.ListenConfig{}
-	listener, err := netConfig.Listen(ctx, "tcp", "127.0.0.1:443")
+	listener, err := netConfig.Listen(ctx, "tcp", "127.0.0.1:0")
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		_ = listener.Close()
 	})
+	listeningPort := uint16(listener.Addr().(*net.TCPAddr).Port) //nolint:gosec,forcetypeassert
 	go func() {
 		connection, acceptErr := listener.Accept()
 		if acceptErr == nil {
@@ -53,7 +54,7 @@ func Test_Client_OpenHTTPS(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	firewall := NewMockFirewall(ctrl)
 
-	destination := netip.MustParseAddrPort("127.0.0.1:443")
+	destination := netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), listeningPort)
 	sourceMatcher := listenAddrPortMatcher{}
 	firewall.EXPECT().AcceptOutputFromIPPortToIPPort(
 		ctx, "tcp", "eth0", sourceMatcher, destination, false,
@@ -71,6 +72,7 @@ func Test_Client_OpenHTTPS(t *testing.T) {
 	upstreamResolvers := []provider.Provider{provider.Google()}
 	client, err := New(firewall, "eth0", ipv6Supported, upstreamResolvers)
 	require.NoError(t, err)
+	client.httpsPort = listeningPort
 
 	httpClient, cleanup, err := client.OpenHTTPS(ctx, "api.example.com", netip.MustParseAddr("127.0.0.1"))
 	require.NoError(t, err)
