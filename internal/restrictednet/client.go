@@ -2,6 +2,7 @@ package restrictednet
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -48,12 +49,15 @@ func (c *Client) OpenHTTPSByDomain(ctx context.Context, domain string) (
 		return nil, nil, fmt.Errorf("no IP address found for name %q", domain)
 	}
 
-	selectedIP := resolvedIPs[0]
-
-	httpClient, cleanup, err = c.OpenHTTPS(ctx, domain, selectedIP)
-	if err != nil {
-		return nil, nil, fmt.Errorf("opening HTTPS: %w", err)
+	errs := make([]error, 0, len(resolvedIPs))
+	for _, ip := range resolvedIPs {
+		httpClient, cleanup, err := c.OpenHTTPS(ctx, domain, ip)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("for %s: %w", ip, err))
+			continue
+		}
+		return httpClient, cleanup, nil
 	}
 
-	return httpClient, cleanup, nil
+	return nil, nil, fmt.Errorf("opening HTTPS to %s: %w", domain, errors.Join(errs...))
 }

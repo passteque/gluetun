@@ -47,7 +47,7 @@ func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, desti
 		var errs []error
 		httpClient.CloseIdleConnections()
 		const remove = true
-		err := c.firewall.AcceptOutputFromIPPortToIPPort(ctx, "tcp", c.outboundInterface,
+		err := c.firewall.AcceptOutputFromIPPortToIPPort(context.Background(), "tcp", c.outboundInterface,
 			sourceAddrPort, destinationAddrPort, remove)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("removing output traffic rule: %w", err))
@@ -76,7 +76,8 @@ func newHTTPSClient(destinationTLSName string, connection net.Conn) *http.Client
 		ServerName: destinationTLSName,
 	}
 
-	expectedAddress := net.JoinHostPort(destinationTLSName, "443")
+	_, destinationPort, _ := net.SplitHostPort(connection.RemoteAddr().String())
+	expectedAddress := net.JoinHostPort(destinationTLSName, destinationPort)
 	httpTransport.DialContext = func(_ context.Context, network, address string) (net.Conn, error) {
 		switch network {
 		case "tcp", "tcp4", "tcp6":
