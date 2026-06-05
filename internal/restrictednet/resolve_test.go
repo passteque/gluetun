@@ -70,7 +70,6 @@ func Test_answersToNetipAddrs(t *testing.T) {
 	}
 
 	for testName, testCase := range testCases {
-		testCase := testCase
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 

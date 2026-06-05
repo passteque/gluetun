@@ -189,9 +189,9 @@ func (c *Config) AcceptOutputFromIPPortToIPPort(ctx context.Context,
 		interfaceFlag = ""
 	}
 
-	instruction := fmt.Sprintf("%s OUTPUT -s %s --sport %d -d %s %s -p %s -m %s --dport %d -j ACCEPT",
-		appendOrDelete(remove), source.Addr(), source.Port(), destination.Addr(),
-		interfaceFlag, protocol, protocol, destination.Port())
+	instruction := fmt.Sprintf("%s OUTPUT %s -s %s -d %s -p %s -m %s --sport %d --dport %d -j ACCEPT",
+		appendOrDelete(remove), interfaceFlag, source.Addr(), destination.Addr(),
+		protocol, protocol, source.Port(), destination.Port())
 	if destination.Addr().Is4() {
 		return c.runIptablesInstruction(ctx, instruction)
 	} else if c.ip6Tables == "" {
