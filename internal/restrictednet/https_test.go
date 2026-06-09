@@ -2,12 +2,14 @@ package restrictednet
 
 import (
 	"context"
-	"net"
+	"fmt"
+	"net/http"
 	"net/netip"
 	"testing"
 
 	"github.com/golang/mock/gomock"
 	"github.com/qdm12/dns/v2/pkg/provider"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -33,31 +35,40 @@ func (m listenAddrPortMatcher) String() string {
 	return "is a valid netip.AddrPort with a valid IP and non-zero port"
 }
 
+type destinationAddrPortMatcher struct {
+	expected netip.AddrPort
+}
+
+func (m destinationAddrPortMatcher) Matches(x any) bool {
+	ip, ok := x.(netip.AddrPort)
+	if !ok {
+		return false
+	}
+	if m.expected.IsValid() {
+		return ip == m.expected
+	}
+	return ip.IsValid() && ip.Port() == m.expected.Port()
+}
+
+func (m destinationAddrPortMatcher) String() string {
+	if m.expected.IsValid() {
+		return "is the same as " + m.expected.String()
+	}
+	return "matches the port " + fmt.Sprint(m.expected.Port())
+}
+
 func Test_Client_OpenHTTPS(t *testing.T) {
 	t.Parallel()
 	ctx := t.Context()
-
-	netConfig := net.ListenConfig{}
-	listener, err := netConfig.Listen(ctx, "tcp", "127.0.0.1:0")
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = listener.Close()
-	})
-	listeningPort := uint16(listener.Addr().(*net.TCPAddr).Port) //nolint:gosec,forcetypeassert
-	go func() {
-		connection, acceptErr := listener.Accept()
-		if acceptErr == nil {
-			_ = connection.Close()
-		}
-	}()
-
 	ctrl := gomock.NewController(t)
-	firewall := NewMockFirewall(ctrl)
 
-	destination := netip.AddrPortFrom(netip.MustParseAddr("127.0.0.1"), listeningPort)
+	const destinationTLSName = "one.one.one.one"
+	destinationAddrPort := netip.AddrPortFrom(netip.AddrFrom4([4]byte{1, 1, 1, 1}), 443)
+
+	firewall := NewMockFirewall(ctrl)
 	sourceMatcher := listenAddrPortMatcher{}
 	firewall.EXPECT().AcceptOutputFromIPPortToIPPort(
-		ctx, "tcp", "eth0", sourceMatcher, destination, false,
+		ctx, "tcp", "eth0", sourceMatcher, destinationAddrPort, false,
 	).DoAndReturn(func(_ context.Context,
 		_, _ string, source, _ netip.AddrPort, _ bool,
 	) error {
@@ -65,7 +76,7 @@ func Test_Client_OpenHTTPS(t *testing.T) {
 		return nil
 	})
 	firewall.EXPECT().AcceptOutputFromIPPortToIPPort(
-		context.Background(), "tcp", "eth0", sourceMatcher, destination, true,
+		context.Background(), "tcp", "eth0", sourceMatcher, destinationAddrPort, true,
 	)
 
 	const ipv6Supported = false
@@ -77,12 +88,22 @@ func Test_Client_OpenHTTPS(t *testing.T) {
 		UpstreamResolvers: upstreamResolvers,
 	}
 	client := New(settings)
-	client.httpsPort = listeningPort
 
-	httpClient, cleanup, err := client.OpenHTTPS(ctx, "api.example.com", netip.MustParseAddr("127.0.0.1"))
+	httpClient, cleanup, err := client.OpenHTTPS(ctx, destinationTLSName, destinationAddrPort)
 	require.NoError(t, err)
 	require.NotNil(t, httpClient)
 	require.NotNil(t, cleanup)
+
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+destinationTLSName, nil)
+	require.NoError(t, err)
+
+	response, err := httpClient.Do(request)
+	t.Cleanup(func() {
+		response.Body.Close()
+	})
+	require.NoError(t, err)
+
+	assert.Equal(t, http.StatusOK, response.StatusCode)
 
 	err = cleanup()
 	require.NoError(t, err)

@@ -76,15 +76,17 @@ func (c *Client) resolveOneQuestionType(ctx context.Context,
 		dohServerIPs = append(dohServerIPs, dohServer.IPv4...)
 
 		for _, dohServerIP := range dohServerIPs {
-			responseMessage, err := c.doHQuery(ctx, queryWire, dohURL, dohServerIP)
+			const defaultDoHPort = 443
+			dohServerAddrPort := netip.AddrPortFrom(dohServerIP, defaultDoHPort)
+			responseMessage, err := c.doHQuery(ctx, queryWire, dohURL, dohServerAddrPort)
 			switch {
 			case err != nil:
-				errs = append(errs, fmt.Errorf("querying DoH server %q (ip %s): %w",
-					dohServer.URL, dohServerIP, err))
+				errs = append(errs, fmt.Errorf("querying DoH server %q (%s): %w",
+					dohServer.URL, dohServerAddrPort, err))
 				continue
 			case responseMessage.Rcode != dns.RcodeSuccess:
-				errs = append(errs, fmt.Errorf("querying DoH server %q (ip %s): DNS rcode %s",
-					dohServer.URL, dohServerIP, dns.RcodeToString[responseMessage.Rcode]))
+				errs = append(errs, fmt.Errorf("querying DoH server %q (%s): DNS rcode %s",
+					dohServer.URL, dohServerAddrPort, dns.RcodeToString[responseMessage.Rcode]))
 				continue
 			}
 			addresses := answersToNetipAddrs(responseMessage)
@@ -104,9 +106,9 @@ func (c *Client) resolveOneQuestionType(ctx context.Context,
 }
 
 func (c *Client) doHQuery(ctx context.Context, queryWire []byte,
-	dohURL *url.URL, dohServerIP netip.Addr,
+	dohURL *url.URL, dohServerAddrPort netip.AddrPort,
 ) (responseMessage *dns.Msg, err error) {
-	httpClient, cleanup, err := c.OpenHTTPS(ctx, dohURL.Hostname(), dohServerIP)
+	httpClient, cleanup, err := c.OpenHTTPS(ctx, dohURL.Hostname(), dohServerAddrPort)
 	if err != nil {
 		return nil, fmt.Errorf("opening https connection: %w", err)
 	}

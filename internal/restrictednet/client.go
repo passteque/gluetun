@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
+	"net/netip"
+	"strconv"
 
 	"github.com/qdm12/dns/v2/pkg/provider"
 )
@@ -18,12 +21,9 @@ type Client struct {
 	ipv6Supported     bool
 	firewall          Firewall
 	dohServers        []provider.DoHServer
-	baseTransport     *http.Transport
-	httpsPort         uint16
 }
 
 func New(settings Settings) *Client {
-	settings.setDefaults()
 	if err := settings.validate(); err != nil {
 		panic(fmt.Sprintf("invalid settings: %v", err)) // programming error
 	}
@@ -32,30 +32,38 @@ func New(settings Settings) *Client {
 		dohServers[i] = upstreamResolver.DoH
 	}
 
-	const defaultHTTPSPort = 443
 	return &Client{
 		outboundInterface: settings.DefaultInterface,
 		ipv6Supported:     *settings.IPv6Supported,
 		firewall:          settings.Firewall,
 		dohServers:        dohServers,
-		baseTransport:     settings.BaseTransport,
-		httpsPort:         defaultHTTPSPort,
 	}
 }
 
-func (c *Client) OpenHTTPSByDomain(ctx context.Context, domain string) (
+func (c *Client) OpenHTTPSByDomain(ctx context.Context, hostname string) (
 	httpClient *http.Client, cleanup func() error, err error,
 ) {
-	resolvedIPs, err := c.ResolveName(ctx, domain)
+	host, portStr, err := net.SplitHostPort(hostname)
+	if err != nil {
+		return nil, nil, fmt.Errorf("splitting host and port: %w", err)
+	}
+	resolvedIPs, err := c.ResolveName(ctx, host)
 	if err != nil {
 		return nil, nil, fmt.Errorf("resolving name: %w", err)
 	} else if len(resolvedIPs) == 0 {
-		return nil, nil, fmt.Errorf("no IP address found for name %q", domain)
+		return nil, nil, fmt.Errorf("no IP address found for name %q", host)
 	}
+
+	portUint, err := strconv.ParseUint(portStr, 10, 16)
+	if err != nil {
+		return nil, nil, fmt.Errorf("parsing port: %w", err)
+	}
+	port := uint16(portUint)
 
 	errs := make([]error, 0, len(resolvedIPs))
 	for _, ip := range resolvedIPs {
-		httpClient, cleanup, err := c.OpenHTTPS(ctx, domain, ip)
+		addrPort := netip.AddrPortFrom(ip, port)
+		httpClient, cleanup, err := c.OpenHTTPS(ctx, host, addrPort)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("for %s: %w", ip, err))
 			continue
@@ -63,5 +71,5 @@ func (c *Client) OpenHTTPSByDomain(ctx context.Context, domain string) (
 		return httpClient, cleanup, nil
 	}
 
-	return nil, nil, fmt.Errorf("opening HTTPS to %s: %w", domain, errors.Join(errs...))
+	return nil, nil, fmt.Errorf("opening HTTPS to %s: %w", hostname, errors.Join(errs...))
 }
