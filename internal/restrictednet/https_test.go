@@ -77,7 +77,7 @@ func Test_Client_OpenHTTPS(t *testing.T) {
 	})
 	firewall.EXPECT().AcceptOutputFromIPPortToIPPort(
 		context.Background(), "tcp", "eth0", sourceMatcher, destinationAddrPort, true,
-	)
+	).Return(nil)
 
 	const ipv6Supported = false
 	upstreamResolvers := []provider.Provider{provider.Google()}
@@ -98,10 +98,10 @@ func Test_Client_OpenHTTPS(t *testing.T) {
 	require.NoError(t, err)
 
 	response, err := httpClient.Do(request)
-	t.Cleanup(func() {
-		response.Body.Close()
-	})
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		_ = response.Body.Close()
+	})
 
 	assert.Equal(t, http.StatusOK, response.StatusCode)
 

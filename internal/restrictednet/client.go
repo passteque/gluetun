@@ -40,7 +40,11 @@ func New(settings Settings) *Client {
 	}
 }
 
-func (c *Client) OpenHTTPSByDomain(ctx context.Context, hostname string) (
+// OpenHTTPSByHostname opens an https connection through the firewall,
+// valid for up to one second, to the hostname which in the format `host:port`.
+// It first resolves the domain in hostname using DNS over HTTPS and then opens
+// the restricted HTTPS connection to the resolved IP.
+func (c *Client) OpenHTTPSByHostname(ctx context.Context, hostname string) (
 	httpClient *http.Client, cleanup func() error, err error,
 ) {
 	host, portStr, err := net.SplitHostPort(hostname)

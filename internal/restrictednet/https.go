@@ -45,12 +45,12 @@ func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, desti
 	cleanup = func() error {
 		var errs []error
 		httpClient.CloseIdleConnections()
-		err = connection.Close()
+		err := connection.Close()
 		if err != nil && !errors.Is(err, net.ErrClosed) {
 			errs = append(errs, fmt.Errorf("closing connection: %w", err))
 		}
 		const remove = true
-		err := c.firewall.AcceptOutputFromIPPortToIPPort(context.Background(), "tcp", c.outboundInterface,
+		err = c.firewall.AcceptOutputFromIPPortToIPPort(context.Background(), "tcp", c.outboundInterface,
 			sourceAddrPort, destinationAddrPort, remove)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("removing output traffic rule: %w", err))
@@ -85,9 +85,17 @@ func newHTTPSClient(destinationTLSName string, dial dialFunc) *http.Client {
 }
 
 func makeDial(connection net.Conn, tlsName string) dialFunc {
-	_, destinationPort, _ := net.SplitHostPort(connection.RemoteAddr().String())
+	_, destinationPort, err := net.SplitHostPort(connection.RemoteAddr().String())
+	if err != nil {
+		panic(err) // connection remote address should always be in the form "host:port"
+	}
 	expectedAddress := net.JoinHostPort(tlsName, destinationPort)
+	used := false
 	return func(_ context.Context, network, address string) (net.Conn, error) {
+		if used {
+			return nil, errors.New("dial function called more than once")
+		}
+		used = true
 		switch network {
 		case "tcp", "tcp4", "tcp6":
 		default:
