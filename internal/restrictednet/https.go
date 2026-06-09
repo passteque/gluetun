@@ -45,15 +45,15 @@ func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, desti
 	cleanup = func() error {
 		var errs []error
 		httpClient.CloseIdleConnections()
+		err = connection.Close()
+		if err != nil && !errors.Is(err, net.ErrClosed) {
+			errs = append(errs, fmt.Errorf("closing connection: %w", err))
+		}
 		const remove = true
 		err := c.firewall.AcceptOutputFromIPPortToIPPort(context.Background(), "tcp", c.outboundInterface,
 			sourceAddrPort, destinationAddrPort, remove)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("removing output traffic rule: %w", err))
-		}
-		err = connection.Close()
-		if err != nil && !errors.Is(err, net.ErrClosed) {
-			errs = append(errs, fmt.Errorf("closing connection: %w", err))
 		}
 		if len(errs) > 0 {
 			return errors.Join(errs...)
