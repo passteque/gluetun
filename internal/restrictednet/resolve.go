@@ -79,11 +79,11 @@ func (c *Client) resolveOneQuestionType(ctx context.Context,
 			responseMessage, err := c.doHQuery(ctx, queryWire, dohURL, dohServerIP)
 			switch {
 			case err != nil:
-				errs = append(errs, fmt.Errorf("querying DoH server %q at %s: %w",
+				errs = append(errs, fmt.Errorf("querying DoH server %q (ip %s): %w",
 					dohServer.URL, dohServerIP, err))
 				continue
 			case responseMessage.Rcode != dns.RcodeSuccess:
-				errs = append(errs, fmt.Errorf("querying DoH server %q at %s: DNS rcode %s",
+				errs = append(errs, fmt.Errorf("querying DoH server %q (ip %s): DNS rcode %s",
 					dohServer.URL, dohServerIP, dns.RcodeToString[responseMessage.Rcode]))
 				continue
 			}

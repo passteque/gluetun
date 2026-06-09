@@ -14,30 +14,31 @@ import (
 // It is not meant to be high performance, although it can be used for
 // multiple requests and concurrently.
 type Client struct {
+	outboundInterface string
 	ipv6Supported     bool
 	firewall          Firewall
-	outboundInterface string
 	dohServers        []provider.DoHServer
+	baseTransport     *http.Transport
 	httpsPort         uint16
 }
 
-func New(firewall Firewall, defaultInterface string, ipv6Supported bool,
-	upstreamResolvers []provider.Provider,
-) *Client {
-	if len(upstreamResolvers) == 0 {
-		panic("no upstream resolvers provided") // programming error
+func New(settings Settings) *Client {
+	settings.setDefaults()
+	if err := settings.validate(); err != nil {
+		panic(fmt.Sprintf("invalid settings: %v", err)) // programming error
 	}
-	dohServers := make([]provider.DoHServer, len(upstreamResolvers))
-	for i, upstreamResolver := range upstreamResolvers {
+	dohServers := make([]provider.DoHServer, len(settings.UpstreamResolvers))
+	for i, upstreamResolver := range settings.UpstreamResolvers {
 		dohServers[i] = upstreamResolver.DoH
 	}
 
 	const defaultHTTPSPort = 443
 	return &Client{
-		firewall:          firewall,
-		outboundInterface: defaultInterface,
-		ipv6Supported:     ipv6Supported,
+		outboundInterface: settings.DefaultInterface,
+		ipv6Supported:     *settings.IPv6Supported,
+		firewall:          settings.Firewall,
 		dohServers:        dohServers,
+		baseTransport:     settings.BaseTransport,
 		httpsPort:         defaultHTTPSPort,
 	}
 }

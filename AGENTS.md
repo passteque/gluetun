@@ -116,6 +116,7 @@ Mocking works with the `go.uber.org/mock` library, and the `mockgen` tool.
   - **Never** use `.AnyTimes()` on mocks. Always define the number of times a certain mock call should be called, with `.Times(3)` for example.
   - **Always** set the `.Return(...)` on the mock if the function returns something.
   - Avoid using **mock helpers** functions, prefer a bit of repetition than tight coupling and dependency
+  - Always define the gomock controller `ctrl` in the subtest and not in the parent test, or a subtest mock failing will crash all the other subtests.
 
 ### main.go
 
