@@ -70,8 +70,13 @@ func Test_Client_OpenHTTPS(t *testing.T) {
 
 	const ipv6Supported = false
 	upstreamResolvers := []provider.Provider{provider.Google()}
-	client, err := New(firewall, "eth0", ipv6Supported, upstreamResolvers)
-	require.NoError(t, err)
+	settings := Settings{
+		Firewall:          firewall,
+		DefaultInterface:  "eth0",
+		IPv6Supported:     ptrTo(ipv6Supported),
+		UpstreamResolvers: upstreamResolvers,
+	}
+	client := New(settings)
 	client.httpsPort = listeningPort
 
 	httpClient, cleanup, err := client.OpenHTTPS(ctx, "api.example.com", netip.MustParseAddr("127.0.0.1"))

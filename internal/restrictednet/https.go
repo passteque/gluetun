@@ -42,7 +42,7 @@ func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, desti
 		return nil, nil, fmt.Errorf("connecting source socket: %w", err)
 	}
 
-	httpClient = newHTTPSClient(destinationTLSName, connection)
+	httpClient = newHTTPSClient(c.baseTransport, destinationTLSName, connection)
 	cleanup = func() error {
 		var errs []error
 		httpClient.CloseIdleConnections()
@@ -64,21 +64,21 @@ func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, desti
 	return httpClient, cleanup, nil
 }
 
-func newHTTPSClient(destinationTLSName string, connection net.Conn) *http.Client {
-	httpTransport := http.DefaultTransport.(*http.Transport).Clone() //nolint:forcetypeassert
-	httpTransport.Proxy = nil
-	httpTransport.MaxIdleConns = 1
-	httpTransport.MaxIdleConnsPerHost = 1
-	httpTransport.MaxConnsPerHost = 1
-	httpTransport.IdleConnTimeout = time.Second
-	httpTransport.TLSClientConfig = &tls.Config{
+func newHTTPSClient(baseTransport *http.Transport, destinationTLSName string, connection net.Conn) *http.Client {
+	transport := baseTransport.Clone()
+	transport.Proxy = nil
+	transport.MaxIdleConns = 1
+	transport.MaxIdleConnsPerHost = 1
+	transport.MaxConnsPerHost = 1
+	transport.IdleConnTimeout = time.Second
+	transport.TLSClientConfig = &tls.Config{
 		MinVersion: tls.VersionTLS12,
 		ServerName: destinationTLSName,
 	}
 
 	_, destinationPort, _ := net.SplitHostPort(connection.RemoteAddr().String())
 	expectedAddress := net.JoinHostPort(destinationTLSName, destinationPort)
-	httpTransport.DialContext = func(_ context.Context, network, address string) (net.Conn, error) {
+	transport.DialContext = func(_ context.Context, network, address string) (net.Conn, error) {
 		switch network {
 		case "tcp", "tcp4", "tcp6":
 		default:
@@ -93,7 +93,7 @@ func newHTTPSClient(destinationTLSName string, connection net.Conn) *http.Client
 	const timeout = 5 * time.Second
 	return &http.Client{
 		Timeout:   timeout,
-		Transport: httpTransport,
+		Transport: transport,
 	}
 }
 
