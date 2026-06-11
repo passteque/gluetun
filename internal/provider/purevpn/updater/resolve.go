@@ -8,7 +8,7 @@ import (
 
 func parallelResolverSettings(hosts []string) (settings resolver.ParallelSettings) {
 	const (
-		maxFailRatio    = 0.1
+		maxFailRatio    = 1.0
 		maxDuration     = 20 * time.Second
 		betweenDuration = time.Second
 		maxNoNew        = 2

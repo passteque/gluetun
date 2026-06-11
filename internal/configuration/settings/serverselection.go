@@ -91,6 +91,10 @@ func (ss *ServerSelection) validate(vpnServiceProvider string,
 		*ss = nordvpnRetroRegion(*ss, filterChoices.Regions, filterChoices.Countries)
 	case providers.Surfshark:
 		*ss = surfsharkRetroRegion(*ss)
+	case providers.Purevpn:
+		// Keep parsing SERVER_REGIONS for retro-compatibility, but
+		// do not apply it to PureVPN filtering.
+		ss.Regions = nil
 	}
 
 	err = validateServerFilters(*ss, filterChoices, vpnServiceProvider, warner)

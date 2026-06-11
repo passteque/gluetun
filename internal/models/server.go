@@ -13,29 +13,33 @@ import (
 type Server struct {
 	VPN string `json:"vpn,omitempty"`
 	// Surfshark: country is also used for multi-hop
-	Country     string       `json:"country,omitempty"`
-	Region      string       `json:"region,omitempty"`
-	City        string       `json:"city,omitempty"`
-	ISP         string       `json:"isp,omitempty"`
-	Categories  []string     `json:"categories,omitempty"`
-	Owned       bool         `json:"owned,omitempty"`
-	Number      uint16       `json:"number,omitempty"`
-	ServerName  string       `json:"server_name,omitempty"`
-	Hostname    string       `json:"hostname,omitempty"`
-	TCP         bool         `json:"tcp,omitempty"`
-	UDP         bool         `json:"udp,omitempty"`
-	OvpnX509    string       `json:"x509,omitempty"`
-	RetroLoc    string       `json:"retroloc,omitempty"` // TODO remove in v4
-	MultiHop    bool         `json:"multihop,omitempty"`
-	WgPubKey    string       `json:"wgpubkey,omitempty"`
-	Free        bool         `json:"free,omitempty"` // TODO v4 create a SubscriptionTier struct
-	Premium     bool         `json:"premium,omitempty"`
-	Stream      bool         `json:"stream,omitempty"` // TODO v4 create a Features struct
-	SecureCore  bool         `json:"secure_core,omitempty"`
-	Tor         bool         `json:"tor,omitempty"`
-	PortForward bool         `json:"port_forward,omitempty"`
-	Keep        bool         `json:"keep,omitempty"`
-	IPs         []netip.Addr `json:"ips,omitempty"`
+	Country          string       `json:"country,omitempty"`
+	Region           string       `json:"region,omitempty"`
+	City             string       `json:"city,omitempty"`
+	ISP              string       `json:"isp,omitempty"`
+	Categories       []string     `json:"categories,omitempty"`
+	Owned            bool         `json:"owned,omitempty"`
+	Number           uint16       `json:"number,omitempty"`
+	ServerName       string       `json:"server_name,omitempty"`
+	Hostname         string       `json:"hostname,omitempty"`
+	TCP              bool         `json:"tcp,omitempty"`
+	UDP              bool         `json:"udp,omitempty"`
+	TCPPorts         []uint16     `json:"tcp_ports,omitempty"`
+	UDPPorts         []uint16     `json:"udp_ports,omitempty"`
+	OvpnX509         string       `json:"x509,omitempty"`
+	RetroLoc         string       `json:"retroloc,omitempty"` // TODO remove in v4
+	MultiHop         bool         `json:"multihop,omitempty"`
+	WgPubKey         string       `json:"wgpubkey,omitempty"`
+	Free             bool         `json:"free,omitempty"` // TODO v4 create a SubscriptionTier struct
+	Premium          bool         `json:"premium,omitempty"`
+	Stream           bool         `json:"stream,omitempty"` // TODO v4 create a Features struct
+	SecureCore       bool         `json:"secure_core,omitempty"`
+	Tor              bool         `json:"tor,omitempty"`
+	PortForward      bool         `json:"port_forward,omitempty"`
+	QuantumResistant bool         `json:"quantum_resistant,omitempty"`
+	Obfuscated       bool         `json:"obfuscated,omitempty"`
+	Keep             bool         `json:"keep,omitempty"`
+	IPs              []netip.Addr `json:"ips,omitempty"`
 }
 
 func (s *Server) HasMinimumInformation() (err error) {

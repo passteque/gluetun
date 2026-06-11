@@ -13,7 +13,12 @@ var countryCodeToName = constants.CountryCodes() //nolint:gochecknoglobals
 var countryCityCodeToCityName = map[string]string{
 	"aume":  "Melbourne",
 	"aupe":  "Perth",
+	"aubb":  "Brisbane",
+	"aubn":  "Brisbane",
 	"ausd":  "Sydney",
+	"caq":   "Montreal",
+	"cato":  "Toronto",
+	"cav":   "Vancouver",
 	"ukl":   "London",
 	"ukm":   "Manchester",
 	"usca":  "Los Angeles",
