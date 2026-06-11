@@ -44,9 +44,9 @@ func connectFD(ctx context.Context, fd int, destination netip.AddrPort) error {
 			return ctx.Err()
 		default:
 			wset := &unix.FdSet{}
-			wset.Bits[fd/64] |= 1 << (uint(fd) % 64)
+			wset.Bits[fd/64] |= 1 << (uint64(fd) % 64) //nolint:gosec,mnd
 			eset := &unix.FdSet{}
-			eset.Bits[fd/64] |= 1 << (uint(fd) % 64)
+			eset.Bits[fd/64] |= 1 << (uint64(fd) % 64) //nolint:gosec,mnd
 			const selectTimeout = 50 * time.Millisecond
 			timeval := unix.NsecToTimeval(int64(selectTimeout))
 
