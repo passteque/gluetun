@@ -62,6 +62,8 @@ func (c *Client) OpenHTTPSByHostname(ctx context.Context, hostname string) (
 	portUint, err := strconv.ParseUint(portStr, 10, 16)
 	if err != nil {
 		return nil, nil, fmt.Errorf("parsing port: %w", err)
+	} else if portUint == 0 {
+		return nil, nil, errors.New("destination port cannot be 0")
 	}
 	port := uint16(portUint)
 

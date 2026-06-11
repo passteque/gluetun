@@ -73,7 +73,6 @@ func newHTTPSClient(destinationTLSName string, dial dialFunc) *http.Client {
 		MaxIdleConns:        1,
 		MaxIdleConnsPerHost: 1,
 		MaxConnsPerHost:     1,
-		IdleConnTimeout:     time.Second,
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
 			ServerName: destinationTLSName,
