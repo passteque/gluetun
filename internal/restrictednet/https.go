@@ -16,6 +16,8 @@ import (
 )
 
 // OpenHTTPS opens temporary restrictive firewall output for one HTTPS destination.
+// The returned [*http.Client] must be used sequentially only, and each request must
+// have its response body fully read/discarded and then closed.
 // The returned cleanup function must be called to remove the temporary firewall rule and close connections.
 func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, destinationAddrPort netip.AddrPort,
 ) (httpClient *http.Client, cleanup func() error, err error) {
