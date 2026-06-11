@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -9,44 +10,79 @@ import (
 	"github.com/qdm12/gluetun/internal/models"
 )
 
-// FlushToFile flushes the merged servers data to the file
-// specified by path, as indented JSON.
-func (s *Storage) FlushToFile(path string) error {
-	s.mergedMutex.RLock()
-	defer s.mergedMutex.RUnlock()
+// flushToFile flushes the merged servers data to files
+// using the manifest file path given. It is not thread-safe.
+func (s *Storage) flushToFile(manifestPath string) error {
+	const (
+		filePermission = 0o644
+		dirPermission  = 0o755
+	)
 
-	return s.flushToFile(path)
-}
-
-// flushToFile flushes the merged servers data to the file
-// specified by path, as indented JSON. It is not thread-safe.
-func (s *Storage) flushToFile(path string) error {
-	if path == "" {
-		return nil // no file to write to
-	}
-	const permission = 0o644
-	dirPath := filepath.Dir(path)
-	if err := os.MkdirAll(dirPath, permission); err != nil {
-		return err
+	serversDirectoryPath := filepath.Dir(manifestPath)
+	if err := os.MkdirAll(serversDirectoryPath, dirPermission); err != nil {
+		return fmt.Errorf("creating directory: %w", err)
 	}
 
-	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, permission)
+	for provider, providerServers := range s.mergedServers.ProviderToServers {
+		providerFilepath := providerServers.Filepath
+		if providerFilepath == "" {
+			providerFilepath = filepath.Join(serversDirectoryPath, provider+".json")
+		}
+
+		providerDirectoryPath := filepath.Dir(providerFilepath)
+		if err := os.MkdirAll(providerDirectoryPath, dirPermission); err != nil {
+			return fmt.Errorf("creating directory: %w", err)
+		}
+	}
+
+	metadata := map[string]any{"version": s.mergedServers.Version}
+
+	for provider, providerServers := range s.mergedServers.ProviderToServers {
+		sort.Sort(models.SortableServers(providerServers.Servers))
+
+		providerFilepath := providerServers.Filepath
+		if providerFilepath == "" {
+			providerFilepath = filepath.Join(serversDirectoryPath, provider+".json")
+		}
+
+		providerFile, err := os.OpenFile(providerFilepath,
+			os.O_CREATE|os.O_WRONLY|os.O_TRUNC, filePermission)
+		if err != nil {
+			return fmt.Errorf("opening servers data file for %s: %w", provider, err)
+		}
+
+		encodedProviderServers := providerServers
+		encodedProviderServers.Filepath = ""
+
+		encoder := json.NewEncoder(providerFile)
+		encoder.SetIndent("", "  ")
+		err = encoder.Encode(encodedProviderServers)
+		if err != nil {
+			_ = providerFile.Close()
+			return fmt.Errorf("encoding servers data for %s: %w", provider, err)
+		}
+
+		err = providerFile.Close()
+		if err != nil {
+			return fmt.Errorf("closing servers data file for %s: %w", provider, err)
+		}
+
+		metadata[provider] = map[string]string{"filepath": providerFilepath}
+	}
+
+	serversFile, err := os.OpenFile(manifestPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, filePermission)
 	if err != nil {
 		return err
 	}
 
-	encoder := json.NewEncoder(file)
+	encoder := json.NewEncoder(serversFile)
 	encoder.SetIndent("", "  ")
 
-	for _, obj := range s.mergedServers.ProviderToServers {
-		sort.Sort(models.SortableServers(obj.Servers))
-	}
-
-	err = encoder.Encode(&s.mergedServers)
+	err = encoder.Encode(metadata)
 	if err != nil {
-		_ = file.Close()
+		_ = serversFile.Close()
 		return err
 	}
 
-	return file.Close()
+	return serversFile.Close()
 }

@@ -28,6 +28,10 @@ on:
       - go.mod
       - go.sum
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -44,7 +48,6 @@ jobs:
           locale: "US"
           level: error
           exclude: |
-            ./internal/storage/servers.json
             ./.golangci.yml
             *.md
 
@@ -70,9 +73,29 @@ jobs:
       - name: Build final image
         run: docker build -t final-image .
 
+  verify-tools:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: ./devrun/go.mod
+      - run: go test ./...
+        working-directory: ./devrun
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: ./ci/go.mod
+      - run: go test ./...
+        working-directory: ./ci
+
   verify-private:
     if: |
-      github.repository == 'qdm12/gluetun' &&
+      github.repository == 'passteque/gluetun' &&
       (
         github.event_name == 'push' ||
         github.event_name == 'release' ||
@@ -95,10 +118,37 @@ jobs:
         run: go build -C ./ci -o runner ./cmd/main.go
 
       - name: Run Gluetun container with Mullvad configuration
-        run: echo -e "${{ secrets.MULLVAD_WIREGUARD_PRIVATE_KEY }}\n${{ secrets.MULLVAD_WIREGUARD_ADDRESS }}" | ./ci/runner mullvad
+        run: echo -e "${{ secrets.MULLVAD_WIREGUARD_PRIVATE_KEY }}\n${{
+          secrets.MULLVAD_WIREGUARD_ADDRESS }}" | ./ci/runner mullvad
 
-      - name: Run Gluetun container with ProtonVPN configuration
-        run: echo -e "${{ secrets.PROTONVPN_WIREGUARD_PRIVATE_KEY }}" | ./ci/runner protonvpn
+      - name: Run Gluetun container with ProtonVPN Wireguard and port forwarding
+          configuration
+        run:
+          echo -e "${{ secrets.PROTONVPN_WIREGUARD_PRIVATE_KEY }}" | ./ci/runner
+          protonvpn-wireguard-port-forwarding
+
+      - name: Run Gluetun container with ProtonVPN OpenVPN and port forwarding
+          configuration
+        run: echo -e "${{ secrets.PROTONVPN_OPENVPN_USER }}\n${{
+          secrets.PROTONVPN_OPENVPN_PASSWORD }}" | ./ci/runner
+          protonvpn-openvpn-port-forwarding
+
+      # - name:
+      #     Run Gluetun container with Private Internet Access OpenVPN and port
+      #     forwarding configuration
+      #   run: echo -e "${{ secrets.PRIVATEINTERNETACCESS_OPENVPN_USER }}\n${{
+      #     secrets.PRIVATEINTERNETACCESS_OPENVPN_PASSWORD }}" | ./ci/runner
+      #     private-internet-access-openvpn-port-forwarding
+
+      - name: Run Gluetun container with AirVPN Wireguard configuration
+        run: echo -e "${{ secrets.AIRVPN_WIREGUARD_PRIVATE_KEY }}\n${{
+          secrets.AIRVPN_WIREGUARD_PRESHARED_KEY }}\n${{
+          secrets.AIRVPN_WIREGUARD_ADDRESSES }}" | ./ci/runner airvpn-wireguard
+
+      - name: Run Gluetun container with AirVPN OpenVPN configuration
+        run:
+          echo -e "${{ secrets.AIRVPN_OPENVPN_KEY }}\n${{ secrets.AIRVPN_OPENVPN_CERT
+          }}" | ./ci/runner airvpn-openvpn
 
   codeql:
     runs-on: ubuntu-latest
@@ -119,7 +169,7 @@ jobs:
 
   publish:
     if: |
-      github.repository == 'qdm12/gluetun' &&
+      github.repository == 'passteque/gluetun' &&
       (
         github.event_name == 'push' ||
         github.event_name == 'release' ||
@@ -131,6 +181,7 @@ jobs:
       contents: read
       packages: write
     runs-on: ubuntu-latest
+    environment: secrets
     steps:
       - uses: actions/checkout@v6
 
@@ -165,7 +216,7 @@ jobs:
         with:
           registry: ghcr.io
           username: qdm12
-          password: ${{ github.token }}
+          password: ${{ secrets.GHCR_PAT }}
 
       - name: Short commit
         id: shortcommit

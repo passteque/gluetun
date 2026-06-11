@@ -52,9 +52,9 @@ func Test_processLogLine(t *testing.T) {
 		},
 		"TLS key negotiation error": {
 			s: "TLS Error: TLS key negotiation failed to occur within " +
-				"60 seconds (check your network connectivity)",
+				"20 seconds (check your network connectivity)",
 			filtered: "TLS Error: TLS key negotiation failed to occur within " +
-				"60 seconds (check your network connectivity)" + `
+				"20 seconds (check your network connectivity)" + `
 🚒🚒🚒🚒🚒🚨🚨🚨🚨🚨🚨🚒🚒🚒🚒🚒
 That error usually happens because either:
 

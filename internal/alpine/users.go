@@ -1,15 +1,12 @@
 package alpine
 
 import (
-	"errors"
 	"fmt"
 	"io/fs"
 	"os"
 	"os/user"
 	"strconv"
 )
-
-var ErrUserAlreadyExists = errors.New("user already exists")
 
 // CreateUser creates a user in Alpine with the given UID.
 func (a *Alpine) CreateUser(username string, uid int) (createdUsername string, err error) {
@@ -34,8 +31,8 @@ func (a *Alpine) CreateUser(username string, uid int) (createdUsername string, e
 	}
 
 	if u != nil {
-		return "", fmt.Errorf("%w: with name %s for ID %s instead of %d",
-			ErrUserAlreadyExists, username, u.Uid, uid)
+		return "", fmt.Errorf("user already exists: with name %s for ID %s instead of %d",
+			username, u.Uid, uid)
 	}
 
 	const permission = fs.FileMode(0o644)

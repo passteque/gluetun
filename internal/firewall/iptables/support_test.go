@@ -7,7 +7,6 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func newAppendTestRuleMatcher(path string) *cmdMatcher {
@@ -43,7 +42,6 @@ func Test_checkIptablesSupport(t *testing.T) {
 		buildRunner        func(ctrl *gomock.Controller) CmdRunner
 		iptablesPathsToTry []string
 		iptablesPath       string
-		errSentinel        error
 		errMessage         string
 	}{
 		"critical error when checking": {
@@ -56,7 +54,6 @@ func Test_checkIptablesSupport(t *testing.T) {
 				return runner
 			},
 			iptablesPathsToTry: []string{"path1", "path2"},
-			errSentinel:        ErrTestRuleCleanup,
 			errMessage: "for path1: failed cleaning up test rule: " +
 				"output (exit code 4)",
 		},
@@ -86,7 +83,6 @@ func Test_checkIptablesSupport(t *testing.T) {
 				return runner
 			},
 			iptablesPathsToTry: []string{"path1", "path2"},
-			errSentinel:        ErrNetAdminMissing,
 			errMessage: "NET_ADMIN capability is missing: " +
 				"path1: Permission denied (you must be root) more context (exit code 4); " +
 				"path2: context: Permission denied (you must be root) (exit code 4)",
@@ -101,7 +97,6 @@ func Test_checkIptablesSupport(t *testing.T) {
 				return runner
 			},
 			iptablesPathsToTry: []string{"path1", "path2"},
-			errSentinel:        ErrNotSupported,
 			errMessage: "no iptables supported found: " +
 				"errors encountered are: " +
 				"path1: output 1 (exit code 4); " +
@@ -118,9 +113,10 @@ func Test_checkIptablesSupport(t *testing.T) {
 
 			iptablesPath, err := checkIptablesSupport(ctx, runner, testCase.iptablesPathsToTry...)
 
-			require.ErrorIs(t, err, testCase.errSentinel)
-			if testCase.errSentinel != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 			assert.Equal(t, testCase.iptablesPath, iptablesPath)
 		})
@@ -139,7 +135,6 @@ func Test_testIptablesPath(t *testing.T) {
 		buildRunner        func(ctrl *gomock.Controller) CmdRunner
 		ok                 bool
 		unsupportedMessage string
-		criticalErrWrapped error
 		criticalErrMessage string
 	}{
 		"append test rule permission denied": {
@@ -168,7 +163,6 @@ func Test_testIptablesPath(t *testing.T) {
 					Return("some output", errDummy)
 				return runner
 			},
-			criticalErrWrapped: ErrTestRuleCleanup,
 			criticalErrMessage: "failed cleaning up test rule: some output (exit code 4)",
 		},
 		"list input rules permission denied": {
@@ -202,7 +196,6 @@ func Test_testIptablesPath(t *testing.T) {
 					Return("some\noutput", nil)
 				return runner
 			},
-			criticalErrWrapped: ErrInputPolicyNotFound,
 			criticalErrMessage: "input policy not found: in INPUT rules: some\noutput",
 		},
 		"set policy permission denied": {
@@ -257,9 +250,10 @@ func Test_testIptablesPath(t *testing.T) {
 
 			assert.Equal(t, testCase.ok, ok)
 			assert.Equal(t, testCase.unsupportedMessage, unsupportedMessage)
-			assert.ErrorIs(t, criticalErr, testCase.criticalErrWrapped)
-			if testCase.criticalErrWrapped != nil {
+			if testCase.criticalErrMessage != "" {
 				assert.EqualError(t, criticalErr, testCase.criticalErrMessage)
+			} else {
+				assert.NoError(t, criticalErr)
 			}
 		})
 	}

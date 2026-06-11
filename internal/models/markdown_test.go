@@ -15,12 +15,10 @@ func Test_Servers_ToMarkdown(t *testing.T) {
 		provider   string
 		servers    Servers
 		formatted  string
-		errWrapped error
 		errMessage string
 	}{
 		"unsupported_provider": {
 			provider:   "unsupported",
-			errWrapped: ErrMarkdownHeadersNotDefined,
 			errMessage: "getting markdown headers: markdown headers not defined: for unsupported",
 		},
 		providers.Cyberghost: {
@@ -58,9 +56,10 @@ func Test_Servers_ToMarkdown(t *testing.T) {
 			markdown, err := testCase.servers.toMarkdown(testCase.provider)
 
 			assert.Equal(t, testCase.formatted, markdown)
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if testCase.errWrapped != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}

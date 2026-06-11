@@ -2,14 +2,11 @@ package healthcheck
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
 )
-
-var ErrHTTPStatusNotOK = errors.New("HTTP response status is not OK")
 
 type Client struct {
 	httpClient *http.Client
@@ -41,6 +38,6 @@ func (c *Client) Check(ctx context.Context, url string) error {
 	if err != nil {
 		return err
 	}
-	return fmt.Errorf("%w: %d %s: %s", ErrHTTPStatusNotOK,
+	return fmt.Errorf("HTTP response status is not OK: %d %s: %s",
 		response.StatusCode, response.Status, string(b))
 }

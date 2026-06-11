@@ -60,8 +60,6 @@ func newAPIClient(ctx context.Context, httpClient *http.Client) (client *apiClie
 	}, nil
 }
 
-var ErrCodeNotSuccess = errors.New("response code is not success")
-
 // setHeaders sets the minimal necessary headers for Proton API requests
 // to succeed without being blocked by their "security" measures.
 // See for example [getMostRecentStableTag] on how the app version must
@@ -126,8 +124,6 @@ func (c *apiClient) authenticate(ctx context.Context, email, password string,
 	return authCookie, nil
 }
 
-var ErrSessionIDNotFound = errors.New("session ID not found in cookies")
-
 func (c *apiClient) getSessionID(ctx context.Context) (sessionID string, err error) {
 	const url = "https://account.proton.me/vpn"
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
@@ -150,10 +146,8 @@ func (c *apiClient) getSessionID(ctx context.Context) (sessionID string, err err
 		}
 	}
 
-	return "", fmt.Errorf("%w", ErrSessionIDNotFound)
+	return "", errors.New("session ID not found in cookies")
 }
-
-var ErrDataFieldMissing = errors.New("data field missing in response")
 
 func (c *apiClient) getUnauthSession(ctx context.Context, sessionID string) (
 	tokenType, accessToken, refreshToken, uid string, err error,
@@ -198,23 +192,21 @@ func (c *apiClient) getUnauthSession(ctx context.Context, sessionID string) (
 	const successCode = 1000
 	switch {
 	case data.Code != successCode:
-		return "", "", "", "", fmt.Errorf("%w: expected %d got %d",
-			ErrCodeNotSuccess, successCode, data.Code)
+		return "", "", "", "", fmt.Errorf("response code %d is not expected success code %d",
+			data.Code, successCode)
 	case data.AccessToken == "":
-		return "", "", "", "", fmt.Errorf("%w: access token is empty", ErrDataFieldMissing)
+		return "", "", "", "", errors.New("access token is empty in response")
 	case data.RefreshToken == "":
-		return "", "", "", "", fmt.Errorf("%w: refresh token is empty", ErrDataFieldMissing)
+		return "", "", "", "", errors.New("refresh token is empty in response")
 	case data.TokenType == "":
-		return "", "", "", "", fmt.Errorf("%w: token type is empty", ErrDataFieldMissing)
+		return "", "", "", "", errors.New("token type is empty in response")
 	case data.UID == "":
-		return "", "", "", "", fmt.Errorf("%w: UID is empty", ErrDataFieldMissing)
+		return "", "", "", "", errors.New("UID is empty in response")
 	}
 	// Ignore Scopes and LocalID fields, we don't use them.
 
 	return data.TokenType, data.AccessToken, data.RefreshToken, data.UID, nil
 }
-
-var ErrUIDMismatch = errors.New("UID in response does not match request UID")
 
 func (c *apiClient) cookieToken(ctx context.Context, sessionID, tokenType, accessToken,
 	refreshToken, uid string,
@@ -282,11 +274,11 @@ func (c *apiClient) cookieToken(ctx context.Context, sessionID, tokenType, acces
 	const successCode = 1000
 	switch {
 	case cookies.Code != successCode:
-		return "", fmt.Errorf("%w: expected %d got %d",
-			ErrCodeNotSuccess, successCode, cookies.Code)
+		return "", fmt.Errorf("response code %d is not expected success code %d",
+			cookies.Code, successCode)
 	case cookies.UID != requestBody.UID:
-		return "", fmt.Errorf("%w: expected %s got %s",
-			ErrUIDMismatch, requestBody.UID, cookies.UID)
+		return "", fmt.Errorf("UID %s in response does not match request UID %s",
+			cookies.UID, requestBody.UID)
 	}
 	// Ignore LocalID and RefreshCounter fields, we don't use them.
 
@@ -296,10 +288,8 @@ func (c *apiClient) cookieToken(ctx context.Context, sessionID, tokenType, acces
 		}
 	}
 
-	return "", fmt.Errorf("%w", ErrAuthCookieNotFound)
+	return "", errors.New("auth cookie not found")
 }
-
-var ErrUsernameDoesNotExist = errors.New("username does not exist")
 
 // authInfo fetches SRP parameters for the account.
 func (c *apiClient) authInfo(ctx context.Context, email string, unauthCookie cookie) (
@@ -326,6 +316,7 @@ func (c *apiClient) authInfo(ctx context.Context, email string, unauthCookie coo
 		return "", "", "", "", "", 0, fmt.Errorf("creating request: %w", err)
 	}
 	c.setHeaders(request, unauthCookie)
+	request.Header.Set("Content-Type", "application/json")
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
@@ -357,20 +348,20 @@ func (c *apiClient) authInfo(ctx context.Context, email string, unauthCookie coo
 	const successCode = 1000
 	switch {
 	case info.Code != successCode:
-		return "", "", "", "", "", 0, fmt.Errorf("%w: expected %d got %d",
-			ErrCodeNotSuccess, successCode, info.Code)
+		return "", "", "", "", "", 0, fmt.Errorf("response code %d is not expected success code %d",
+			info.Code, successCode)
 	case info.Modulus == "":
-		return "", "", "", "", "", 0, fmt.Errorf("%w: modulus is empty", ErrDataFieldMissing)
+		return "", "", "", "", "", 0, errors.New("modulus is empty in response")
 	case info.ServerEphemeral == "":
-		return "", "", "", "", "", 0, fmt.Errorf("%w: server ephemeral is empty", ErrDataFieldMissing)
+		return "", "", "", "", "", 0, errors.New("server ephemeral is empty in response")
 	case info.Salt == "":
-		return "", "", "", "", "", 0, fmt.Errorf("%w (salt data field is empty)", ErrUsernameDoesNotExist)
+		return "", "", "", "", "", 0, errors.New("salt is empty in response")
 	case info.SRPSession == "":
-		return "", "", "", "", "", 0, fmt.Errorf("%w: SRP session is empty", ErrDataFieldMissing)
+		return "", "", "", "", "", 0, errors.New("SRP session is empty in response")
 	case info.Username == "":
-		return "", "", "", "", "", 0, fmt.Errorf("%w: username is empty", ErrDataFieldMissing)
+		return "", "", "", "", "", 0, errors.New("username is empty in response")
 	case info.Version == nil:
-		return "", "", "", "", "", 0, fmt.Errorf("%w: version is missing", ErrDataFieldMissing)
+		return "", "", "", "", "", 0, errors.New("version is missing in response")
 	}
 
 	version = int(*info.Version) //nolint:gosec
@@ -398,13 +389,7 @@ func (c *cookie) String() string {
 	return s
 }
 
-var (
-	// ErrServerProofNotValid indicates the M2 from the server didn't match the expected proof.
-	ErrServerProofNotValid = errors.New("server proof from server is not valid")
-	ErrVPNScopeNotFound    = errors.New("VPN scope not found in scopes")
-	ErrTwoFANotSupported   = errors.New("two factor authentication not supported in this client")
-	ErrAuthCookieNotFound  = errors.New("auth cookie not found")
-)
+// ErrServerProofNotValid indicates the M2 from the server didn't match the expected proof.
 
 // auth performs the SRP proof submission (and optionally TOTP) to obtain tokens.
 func (c *apiClient) auth(ctx context.Context, unauthCookie cookie,
@@ -438,6 +423,7 @@ func (c *apiClient) auth(ctx context.Context, unauthCookie cookie,
 		return cookie{}, fmt.Errorf("creating request: %w", err)
 	}
 	c.setHeaders(request, unauthCookie)
+	request.Header.Set("Content-Type", "application/json")
 
 	response, err := c.httpClient.Do(request)
 	if err != nil {
@@ -493,22 +479,22 @@ func (c *apiClient) auth(ctx context.Context, unauthCookie cookie,
 		return cookie{}, fmt.Errorf("decoding server proof: %w", err)
 	}
 	if !bytes.Equal(m2, proofs.ExpectedServerProof) {
-		return cookie{}, fmt.Errorf("%w: expected %x got %x",
-			ErrServerProofNotValid, proofs.ExpectedServerProof, m2)
+		return cookie{}, fmt.Errorf("server proof from server %x is not expected proof %x",
+			m2, proofs.ExpectedServerProof)
 	}
 
 	const successCode = 1000
 	switch {
 	case auth.Code != successCode:
-		return cookie{}, fmt.Errorf("%w: expected %d got %d",
-			ErrCodeNotSuccess, successCode, auth.Code)
+		return cookie{}, fmt.Errorf("response code %d is not expected success code %d",
+			auth.Code, successCode)
 	case auth.UID != unauthCookie.uid:
-		return cookie{}, fmt.Errorf("%w: expected %s got %s",
-			ErrUIDMismatch, unauthCookie.uid, auth.UID)
+		return cookie{}, fmt.Errorf("UID %s in response does not match request UID %s",
+			auth.UID, unauthCookie.uid)
 	case auth.TwoFactor != 0:
-		return cookie{}, fmt.Errorf("%w", ErrTwoFANotSupported)
+		return cookie{}, errors.New("two factor authentication not supported in this client")
 	case !slices.Contains(auth.Scopes, "vpn"):
-		return cookie{}, fmt.Errorf("%w: in %v", ErrVPNScopeNotFound, auth.Scopes)
+		return cookie{}, fmt.Errorf("VPN scope not found in scopes %v", auth.Scopes)
 	}
 
 	for _, setCookieHeader := range response.Header.Values("Set-Cookie") {
@@ -522,8 +508,7 @@ func (c *apiClient) auth(ctx context.Context, unauthCookie cookie,
 		}
 	}
 
-	return cookie{}, fmt.Errorf("%w: in HTTP headers %s",
-		ErrAuthCookieNotFound, httpHeadersToString(response.Header))
+	return cookie{}, fmt.Errorf("auth cookie not found in HTTP headers %s", httpHeadersToString(response.Header))
 }
 
 // generateLettersDigits mimicing Proton's own random string generator:
@@ -609,8 +594,6 @@ func (c *apiClient) fetchServers(ctx context.Context, cookie cookie) (
 	return data, nil
 }
 
-var ErrHTTPStatusCodeNotOK = errors.New("HTTP status code not OK")
-
 func buildError(httpCode int, body []byte) error {
 	prettyCode := http.StatusText(httpCode)
 	var protonError struct {
@@ -622,8 +605,8 @@ func buildError(httpCode int, body []byte) error {
 	decoder.DisallowUnknownFields()
 	err := decoder.Decode(&protonError)
 	if err != nil || protonError.Error == nil || protonError.Code == nil {
-		return fmt.Errorf("%w: %s: %s",
-			ErrHTTPStatusCodeNotOK, prettyCode, body)
+		return fmt.Errorf("HTTP status code not OK: %s: %s",
+			prettyCode, body)
 	}
 
 	details := make([]string, 0, len(protonError.Details))
@@ -631,6 +614,6 @@ func buildError(httpCode int, body []byte) error {
 		details = append(details, fmt.Sprintf("%s: %s", key, value))
 	}
 
-	return fmt.Errorf("%w: %s: %s (code %d with details: %s)",
-		ErrHTTPStatusCodeNotOK, prettyCode, *protonError.Error, *protonError.Code, strings.Join(details, ", "))
+	return fmt.Errorf("HTTP status code not OK: %s: %s (code %d with details: %s)",
+		prettyCode, *protonError.Error, *protonError.Code, strings.Join(details, ", "))
 }

@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"errors"
 	"fmt"
 	"net/http"
 	"net/netip"
@@ -37,22 +36,16 @@ func (b *DNSBlacklist) setDefaults() {
 
 var hostRegex = regexp.MustCompile(`^([a-zA-Z0-9]|[a-zA-Z0-9_][a-zA-Z0-9\-_]{0,61}[a-zA-Z0-9_])(\.([a-zA-Z0-9]|[a-zA-Z0-9_][a-zA-Z0-9\-_]{0,61}[a-zA-Z0-9]))*$`) //nolint:lll
 
-var (
-	ErrAllowedHostNotValid                   = errors.New("allowed host is not valid")
-	ErrBlockedHostNotValid                   = errors.New("blocked host is not valid")
-	ErrRebindingProtectionExemptHostNotValid = errors.New("rebinding protection exempt host is not valid")
-)
-
 func (b DNSBlacklist) validate() (err error) {
 	for _, host := range b.AllowedHosts {
 		if !hostRegex.MatchString(host) {
-			return fmt.Errorf("%w: %s", ErrAllowedHostNotValid, host)
+			return fmt.Errorf("allowed host is not valid: %s", host)
 		}
 	}
 
 	for _, host := range b.AddBlockedHosts {
 		if !hostRegex.MatchString(host) {
-			return fmt.Errorf("%w: %s", ErrBlockedHostNotValid, host)
+			return fmt.Errorf("blocked host is not valid: %s", host)
 		}
 	}
 
@@ -61,7 +54,7 @@ func (b DNSBlacklist) validate() (err error) {
 			host = host[2:]
 		}
 		if !hostRegex.MatchString(host) {
-			return fmt.Errorf("%w: %s", ErrRebindingProtectionExemptHostNotValid, host)
+			return fmt.Errorf("rebinding protection exempt host is not valid: %s", host)
 		}
 	}
 
@@ -209,8 +202,6 @@ func readDNSBlockedIPs(r *reader.Reader) (ips []netip.Addr,
 	return ips, ipPrefixes, nil
 }
 
-var ErrPrivateAddressNotValid = errors.New("private address is not a valid IP or CIDR range")
-
 func readDNSPrivateAddresses(r *reader.Reader) (ips []netip.Addr,
 	ipPrefixes []netip.Prefix, err error,
 ) {
@@ -236,8 +227,9 @@ func readDNSPrivateAddresses(r *reader.Reader) (ips []netip.Addr,
 		}
 
 		return nil, nil, fmt.Errorf(
-			"environment variable DOT_PRIVATE_ADDRESS: %w: %s",
-			ErrPrivateAddressNotValid, privateAddress)
+			"environment variable DOT_PRIVATE_ADDRESS: "+
+				"private address is not a valid IP or CIDR range: %s",
+			privateAddress)
 	}
 
 	return ips, ipPrefixes, nil

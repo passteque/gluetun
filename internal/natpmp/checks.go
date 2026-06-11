@@ -6,48 +6,40 @@ import (
 	"fmt"
 )
 
-var ErrRequestSizeTooSmall = errors.New("message size is too small")
-
 func checkRequest(request []byte) (err error) {
 	const minMessageSize = 2 // version number + operation code
 	if len(request) < minMessageSize {
-		return fmt.Errorf("%w: need at least %d bytes and got %d byte(s)",
-			ErrRequestSizeTooSmall, minMessageSize, len(request))
+		return fmt.Errorf("message size is too small: need at least %d bytes and got %d byte(s)",
+			minMessageSize, len(request))
 	}
 
 	return nil
 }
-
-var (
-	ErrResponseSizeTooSmall    = errors.New("response size is too small")
-	ErrResponseSizeUnexpected  = errors.New("response size is unexpected")
-	ErrProtocolVersionUnknown  = errors.New("protocol version is unknown")
-	ErrOperationCodeUnexpected = errors.New("operation code is unexpected")
-)
 
 func checkResponse(response []byte, expectedOperationCode byte,
 	expectedResponseSize uint,
 ) (err error) {
 	const minResponseSize = 4
 	if len(response) < minResponseSize {
-		return fmt.Errorf("%w: need at least %d bytes and got %d byte(s)",
-			ErrResponseSizeTooSmall, minResponseSize, len(response))
+		return fmt.Errorf("response size is too small: "+
+			"need at least %d bytes and got %d byte(s)",
+			minResponseSize, len(response))
 	}
 
 	if uint(len(response)) != expectedResponseSize {
-		return fmt.Errorf("%w: expected %d bytes and got %d byte(s)",
-			ErrResponseSizeUnexpected, expectedResponseSize, len(response))
+		return fmt.Errorf("response size is unexpected: "+
+			"expected %d bytes and got %d byte(s)",
+			expectedResponseSize, len(response))
 	}
 
 	protocolVersion := response[0]
 	if protocolVersion != 0 {
-		return fmt.Errorf("%w: %d", ErrProtocolVersionUnknown, protocolVersion)
+		return fmt.Errorf("protocol version is unknown: %d", protocolVersion)
 	}
 
 	operationCode := response[1]
 	if operationCode != expectedOperationCode {
-		return fmt.Errorf("%w: expected 0x%x and got 0x%x",
-			ErrOperationCodeUnexpected, expectedOperationCode, operationCode)
+		return fmt.Errorf("operation code is unexpected: expected 0x%x and got 0x%x", expectedOperationCode, operationCode)
 	}
 
 	resultCode := binary.BigEndian.Uint16(response[2:4])
@@ -59,15 +51,6 @@ func checkResponse(response []byte, expectedOperationCode byte,
 	return nil
 }
 
-var (
-	ErrVersionNotSupported       = errors.New("version is not supported")
-	ErrNotAuthorized             = errors.New("not authorized")
-	ErrNetworkFailure            = errors.New("network failure")
-	ErrOutOfResources            = errors.New("out of resources")
-	ErrOperationCodeNotSupported = errors.New("operation code is not supported")
-	ErrResultCodeUnknown         = errors.New("result code is unknown")
-)
-
 // checkResultCode checks the result code and returns an error
 // if the result code is not a success (0).
 // See https://www.ietf.org/rfc/rfc6886.html#section-3.5
@@ -78,16 +61,16 @@ func checkResultCode(resultCode uint16) (err error) {
 	case 0:
 		return nil
 	case 1:
-		return fmt.Errorf("%w", ErrVersionNotSupported)
+		return errors.New("version is not supported")
 	case 2:
-		return fmt.Errorf("%w", ErrNotAuthorized)
+		return errors.New("not authorized")
 	case 3:
-		return fmt.Errorf("%w", ErrNetworkFailure)
+		return errors.New("network failure")
 	case 4:
-		return fmt.Errorf("%w", ErrOutOfResources)
+		return errors.New("out of resources")
 	case 5:
-		return fmt.Errorf("%w", ErrOperationCodeNotSupported)
+		return errors.New("operation code is not supported")
 	default:
-		return fmt.Errorf("%w: %d", ErrResultCodeUnknown, resultCode)
+		return fmt.Errorf("result code is unknown: %d", resultCode)
 	}
 }

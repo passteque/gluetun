@@ -1,7 +1,6 @@
 package routing
 
 import (
-	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -13,8 +12,6 @@ func ipIsPrivate(ip netip.Addr) bool {
 	return ip.IsPrivate() || ip.IsLoopback() ||
 		ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast()
 }
-
-var errInterfaceIPNotFound = errors.New("IP address not found for interface")
 
 func ipMatchesFamily(ip netip.Addr, family uint8) bool {
 	return (family == netlink.FamilyV4 && ip.Is4()) ||
@@ -46,6 +43,6 @@ func (r *Routing) AssignedIP(interfaceName string, family uint8) (ip netip.Addr,
 
 		return ip, nil
 	}
-	return ip, fmt.Errorf("%w: interface %s in %d addresses",
-		errInterfaceIPNotFound, interfaceName, len(addresses))
+	return ip, fmt.Errorf("IP address not found for interface: interface %s in %d addresses",
+		interfaceName, len(addresses))
 }

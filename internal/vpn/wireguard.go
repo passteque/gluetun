@@ -7,6 +7,7 @@ import (
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/models"
+	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/qdm12/gluetun/internal/provider"
 	"github.com/qdm12/gluetun/internal/wireguard"
 	"github.com/qdm12/gosettings"
@@ -16,15 +17,16 @@ import (
 // It returns a serverName for port forwarding (PIA) and an error if it fails.
 func setupWireguard(ctx context.Context, netlinker NetLinker,
 	fw Firewall, providerConf provider.Provider,
-	settings settings.VPN, ipv6Supported bool, logger wireguard.Logger) (
+	settings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel, logger wireguard.Logger) (
 	wireguarder *wireguard.Wireguard, connection models.Connection, err error,
 ) {
-	connection, err = providerConf.GetConnection(settings.Provider.ServerSelection, ipv6Supported)
+	ipv6Internet := ipv6SupportLevel == netlink.IPv6Internet
+	connection, err = providerConf.GetConnection(settings.Provider.ServerSelection, ipv6Internet)
 	if err != nil {
 		return nil, models.Connection{}, fmt.Errorf("finding a VPN server: %w", err)
 	}
 
-	wireguardSettings := buildWireguardSettings(connection, settings.Wireguard, ipv6Supported)
+	wireguardSettings := buildWireguardSettings(connection, settings.Wireguard, ipv6SupportLevel.IsSupported())
 
 	logger.Debug("Wireguard server public key: " + wireguardSettings.PublicKey)
 	logger.Debug("Wireguard client private key: " + gosettings.ObfuscateKey(wireguardSettings.PrivateKey))

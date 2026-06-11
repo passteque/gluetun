@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 )
 
@@ -38,13 +39,14 @@ func (s *Service) cleanup() (err error) {
 		}
 	}
 
+	redirectionWasEnabled := !slices.Equal(s.settings.ListeningPorts, []uint16{0})
 	for _, port := range s.ports {
 		err = s.portAllower.RemoveAllowedPort(context.Background(), port)
 		if err != nil {
 			return fmt.Errorf("blocking previous port in firewall: %w", err)
 		}
 
-		if s.settings.ListeningPort != 0 {
+		if redirectionWasEnabled {
 			ctx := context.Background()
 			const listeningPort = 0 // 0 to clear the redirection
 			err = s.portAllower.RedirectPort(ctx, s.settings.Interface, port, listeningPort)

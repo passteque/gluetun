@@ -25,7 +25,7 @@ func PathMTUDiscover(ctx context.Context, ip netip.Addr,
 		switch {
 		case err == nil:
 			return mtu, nil
-		case errors.Is(err, errTimeout) || errors.Is(err, ErrCommunicationAdministrativelyProhibited): // blackhole
+		case errors.Is(err, errTimeout) || errors.Is(err, errCommunicationAdministrativelyProhibited): // blackhole
 		default:
 			return 0, fmt.Errorf("finding IPv4 next hop MTU to %s: %w", ip, err)
 		}

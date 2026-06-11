@@ -4,14 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"net/netip"
 )
-
-var ErrHTTPStatusCodeNotOK = errors.New("HTTP status code not OK")
 
 type apiData struct {
 	Regions []regionData `json:"regions"`
@@ -36,7 +33,7 @@ type serverData struct {
 func fetchAPI(ctx context.Context, client *http.Client) (
 	data apiData, err error,
 ) {
-	const url = "https://serverlist.piaservers.net/vpninfo/servers/v6"
+	const url = "https://serverlist.piaservers.net/vpninfo/servers/v7"
 
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -50,7 +47,7 @@ func fetchAPI(ctx context.Context, client *http.Client) (
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		return data, fmt.Errorf("%w: %d %s", ErrHTTPStatusCodeNotOK,
+		return data, fmt.Errorf("HTTP status code not OK: %d %s",
 			response.StatusCode, response.Status)
 	}
 

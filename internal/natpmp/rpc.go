@@ -11,17 +11,12 @@ import (
 	"time"
 )
 
-var (
-	ErrGatewayIPUnspecified = errors.New("gateway IP is unspecified")
-	ErrConnectionTimeout    = errors.New("connection timeout")
-)
-
 func (c *Client) rpc(ctx context.Context, gateway netip.Addr,
 	request []byte, responseSize uint) (
 	response []byte, err error,
 ) {
 	if gateway.IsUnspecified() || !gateway.IsValid() {
-		return nil, fmt.Errorf("%w", ErrGatewayIPUnspecified)
+		return nil, errors.New("gateway IP is unspecified")
 	}
 
 	err = checkRequest(request)
@@ -114,8 +109,7 @@ func (c *Client) rpc(ctx context.Context, gateway netip.Addr,
 	}
 
 	if retryCount == c.maxRetries {
-		return nil, fmt.Errorf("%w: failed attempts: %s",
-			ErrConnectionTimeout, dedupFailedAttempts(failedAttempts))
+		return nil, fmt.Errorf("connection timeout: failed attempts: %s", dedupFailedAttempts(failedAttempts))
 	}
 
 	// Opcodes between 0 and 127 are client requests.  Opcodes from 128 to

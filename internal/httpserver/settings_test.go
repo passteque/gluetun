@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/qdm12/gosettings/validate"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -189,30 +188,26 @@ func Test_Settings_Validate(t *testing.T) {
 
 	testCases := map[string]struct {
 		settings   Settings
-		errWrapped error
 		errMessage string
 	}{
 		"bad_address": {
 			settings: Settings{
 				Address: "address:notanint",
 			},
-			errWrapped: validate.ErrPortNotAnInteger,
 			errMessage: "port value is not an integer: notanint",
 		},
 		"nil handler": {
 			settings: Settings{
 				Address: ":8000",
 			},
-			errWrapped: ErrHandlerIsNotSet,
-			errMessage: ErrHandlerIsNotSet.Error(),
+			errMessage: "HTTP handler cannot be left unset",
 		},
 		"nil logger": {
 			settings: Settings{
 				Address: ":8000",
 				Handler: someHandler,
 			},
-			errWrapped: ErrLoggerIsNotSet,
-			errMessage: ErrLoggerIsNotSet.Error(),
+			errMessage: "logger cannot be left unset",
 		},
 		"read header timeout too small": {
 			settings: Settings{
@@ -221,7 +216,6 @@ func Test_Settings_Validate(t *testing.T) {
 				Logger:            someLogger,
 				ReadHeaderTimeout: time.Nanosecond,
 			},
-			errWrapped: ErrReadHeaderTimeoutTooSmall,
 			errMessage: "read header timeout is too small: 1ns must be at least 1ms",
 		},
 		"read timeout too small": {
@@ -232,7 +226,6 @@ func Test_Settings_Validate(t *testing.T) {
 				ReadHeaderTimeout: time.Millisecond,
 				ReadTimeout:       time.Nanosecond,
 			},
-			errWrapped: ErrReadTimeoutTooSmall,
 			errMessage: "read timeout is too small: 1ns must be at least 1ms",
 		},
 		"shutdown timeout too small": {
@@ -244,7 +237,6 @@ func Test_Settings_Validate(t *testing.T) {
 				ReadTimeout:       time.Millisecond,
 				ShutdownTimeout:   time.Millisecond,
 			},
-			errWrapped: ErrShutdownTimeoutTooSmall,
 			errMessage: "shutdown timeout is too small: 1ms must be at least 5ms",
 		},
 		"valid settings": {
@@ -265,9 +257,10 @@ func Test_Settings_Validate(t *testing.T) {
 
 			err := testCase.settings.Validate()
 
-			assert.ErrorIs(t, err, testCase.errWrapped)
 			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}

@@ -13,11 +13,6 @@ import (
 	"github.com/qdm12/gluetun/internal/wireguard"
 )
 
-var (
-	errTunNameMismatch = errors.New("TUN device name is mismatching")
-	errDeviceWaited    = errors.New("device waited for")
-)
-
 // Run runs the amneziawg interface and waits until the context is done, then it cleans up the
 // interface and returns any error that occurred during setup or waiting. It sends an error to
 // waitError if any error occurs during setup or waiting, otherwise it sends nil when the context
@@ -52,8 +47,7 @@ func setupUserspace(ctx context.Context,
 	if err != nil {
 		return 0, nil, fmt.Errorf("getting created TUN device name: %w", err)
 	} else if tunName != interfaceName {
-		return 0, nil, fmt.Errorf("%w: expected %q and got %q",
-			errTunNameMismatch, interfaceName, tunName)
+		return 0, nil, fmt.Errorf("TUN device name is mismatching: expected %q and got %q", interfaceName, tunName)
 	}
 
 	link, err := netLinker.LinkByName(interfaceName)
@@ -106,7 +100,7 @@ func setupUserspace(ctx context.Context,
 		case err = <-uapiAcceptErrorCh:
 			close(uapiAcceptErrorCh)
 		case <-device.Wait():
-			err = errDeviceWaited
+			err = errors.New("device waited for")
 		}
 
 		cleanups.Cleanup(logger)

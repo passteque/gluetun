@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -177,14 +176,6 @@ func (a AmneziaWg) toLinesNode() (node *gotree.Node) {
 	return node
 }
 
-var (
-	ErrAmenziawgImplementationNotValid = errors.New("AmneziaWG implementation is not valid")
-	ErrJunkPacketBounds                = errors.New("junk packet minimum must be lower than or equal to maximum")
-	ErrJunkPacketMinMaxNotSet          = errors.New("junk packet min and max must be set when junk packet count is set")
-	ErrJunkPacketCountNotSet           = errors.New("junk packet count must be set when junk packet min or max is set")
-	ErrHeaderRangeMalformed            = errors.New("header range is malformed")
-)
-
 func (a AmneziaWg) validate(vpnProvider string, ipv6Supported bool) error {
 	const amneziaWG = true
 	err := a.Wireguard.validate(vpnProvider, ipv6Supported, amneziaWG)
@@ -194,16 +185,16 @@ func (a AmneziaWg) validate(vpnProvider string, ipv6Supported bool) error {
 
 	if *a.JunkPacketCount == 0 {
 		if *a.JunkPacketMin != 0 || *a.JunkPacketMax != 0 {
-			return fmt.Errorf("%w: jc=%d and jmin=%d and jmax=%d",
-				ErrJunkPacketCountNotSet, a.JunkPacketCount, *a.JunkPacketMin, *a.JunkPacketMax)
+			return fmt.Errorf("junk packet count must be set when junk packet min or max is set: "+
+				"jc=%d and jmin=%d and jmax=%d", a.JunkPacketCount, *a.JunkPacketMin, *a.JunkPacketMax)
 		}
 	} else {
 		if *a.JunkPacketMin == 0 || *a.JunkPacketMax == 0 {
-			return fmt.Errorf("%w: jc=%d and jmin=%d and jmax=%d",
-				ErrJunkPacketMinMaxNotSet, a.JunkPacketCount, *a.JunkPacketMin, *a.JunkPacketMax)
+			return fmt.Errorf("junk packet min and max must be set when junk packet count is set: "+
+				"jc=%d and jmin=%d and jmax=%d", a.JunkPacketCount, *a.JunkPacketMin, *a.JunkPacketMax)
 		} else if *a.JunkPacketMin > *a.JunkPacketMax {
-			return fmt.Errorf("%w: jmin=%d and jmax=%d",
-				ErrJunkPacketBounds, *a.JunkPacketMin, *a.JunkPacketMax)
+			return fmt.Errorf("junk packet minimum must be lower than or equal to maximum: "+
+				"jmin=%d and jmax=%d", *a.JunkPacketMin, *a.JunkPacketMax)
 		}
 	}
 
@@ -222,20 +213,20 @@ func (a AmneziaWg) validate(vpnProvider string, ipv6Supported bool) error {
 		case 1:
 			_, err := strconv.Atoi(fields[0])
 			if err != nil {
-				return fmt.Errorf("%w: %s value %s is not a number",
-					ErrHeaderRangeMalformed, name, headerRange)
+				return fmt.Errorf("header range is malformed: "+
+					"%s value %s is not a number", name, headerRange)
 			}
 		case 2: //nolint:mnd
 			for _, field := range fields {
 				_, err := strconv.Atoi(field)
 				if err != nil {
-					return fmt.Errorf("%w: %s value %s is not a valid range",
-						ErrHeaderRangeMalformed, name, headerRange)
+					return fmt.Errorf("header range is malformed: "+
+						"%s value %s is not a valid range", name, headerRange)
 				}
 			}
 		default:
-			return fmt.Errorf("%w: %s value %s must be in the form n or n-m",
-				ErrHeaderRangeMalformed, name, headerRange)
+			return fmt.Errorf("header range is malformed: "+
+				"%s value %s must be in the form n or n-m", name, headerRange)
 		}
 	}
 

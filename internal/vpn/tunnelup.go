@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
@@ -40,6 +41,8 @@ type tunnelUpPMTUDData struct {
 	// network is used to find the network level header overhead.
 	// It can be [constants.UDP] or [constants.TCP].
 	network string
+	// ipv6 is true if the VPN connection supports IPv6.
+	ipv6 bool
 	// icmpAddrs is the list of addresses to use for ICMP path MTU discovery.
 	// Each address should handle ICMP packets for PMTUD to work.
 	icmpAddrs []netip.Addr
@@ -69,7 +72,7 @@ func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
 	if data.pmtud.enabled {
 		mtuLogger := l.logger.New(log.SetComponent("MTU discovery"))
 		err := updateToMaxMTU(ctx, data.vpnIntf, data.pmtud.vpnType,
-			data.pmtud.network, data.pmtud.icmpAddrs, data.pmtud.tcpAddrs,
+			data.pmtud.network, data.pmtud.ipv6, data.pmtud.icmpAddrs, data.pmtud.tcpAddrs,
 			l.netLinker, l.routing, l.fw, mtuLogger)
 		if err != nil {
 			mtuLogger.Error(err.Error())
@@ -173,15 +176,10 @@ func (l *Loop) restartVPN(ctx context.Context, healthErr error) {
 }
 
 func updateToMaxMTU(ctx context.Context, vpnInterface string,
-	vpnType, network string, icmpAddrs []netip.Addr, tcpAddrs []netip.AddrPort,
+	vpnType, network string, ipv6 bool, icmpAddrs []netip.Addr, tcpAddrs []netip.AddrPort,
 	netlinker NetLinker, routing Routing, firewall tcp.Firewall, logger *log.Logger,
 ) error {
 	logger.Info("finding maximum MTU, this can take up to 6 seconds")
-
-	vpnGatewayIP, err := routing.VPNLocalGatewayIP(vpnInterface)
-	if err != nil {
-		return fmt.Errorf("getting VPN gateway IP address: %w", err)
-	}
 
 	vpnRoutes, err := routing.VPNRoutes(vpnInterface)
 	if err != nil {
@@ -195,7 +193,7 @@ func updateToMaxMTU(ctx context.Context, vpnInterface string,
 
 	originalMTU := link.MTU
 
-	vpnLinkMTU := pmtud.MaxTheoreticalVPNMTU(vpnType, network, vpnGatewayIP)
+	vpnLinkMTU := pmtud.MaxTheoreticalVPNMTU(vpnType, network, ipv6)
 
 	// Setting the VPN link MTU to 1500 might interrupt the connection until
 	// the new MTU is set again, but this is necessary to find the highest valid MTU.
@@ -204,6 +202,15 @@ func updateToMaxMTU(ctx context.Context, vpnInterface string,
 	err = netlinker.LinkSetMTU(link.Index, vpnLinkMTU)
 	if err != nil {
 		return fmt.Errorf("setting VPN interface %s MTU to %d: %w", vpnInterface, vpnLinkMTU, err)
+	}
+
+	if !ipv6 {
+		icmpAddrs = slices.DeleteFunc(icmpAddrs, func(addr netip.Addr) bool {
+			return addr.Is6()
+		})
+		tcpAddrs = slices.DeleteFunc(tcpAddrs, func(addr netip.AddrPort) bool {
+			return addr.Addr().Is6()
+		})
 	}
 
 	const pingTimeout = time.Second

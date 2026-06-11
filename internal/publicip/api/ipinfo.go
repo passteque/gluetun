@@ -70,7 +70,7 @@ func (i *ipInfo) FetchInfo(ctx context.Context, ip netip.Addr) (
 	defer response.Body.Close()
 
 	if i.token != "" && response.StatusCode == http.StatusUnauthorized {
-		return result, fmt.Errorf("%w: %s", ErrTokenNotValid, response.Status)
+		return result, fmt.Errorf("token is not valid: %s", response.Status)
 	}
 
 	switch response.StatusCode {
@@ -79,8 +79,8 @@ func (i *ipInfo) FetchInfo(ctx context.Context, ip netip.Addr) (
 		return result, fmt.Errorf("%w from %s: %d %s",
 			ErrTooManyRequests, url, response.StatusCode, response.Status)
 	default:
-		return result, fmt.Errorf("%w from %s: %d %s",
-			ErrBadHTTPStatus, url, response.StatusCode, response.Status)
+		return result, fmt.Errorf("bad HTTP status received from %s: %d %s",
+			url, response.StatusCode, response.Status)
 	}
 
 	decoder := json.NewDecoder(response.Body)

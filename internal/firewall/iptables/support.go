@@ -10,12 +10,7 @@ import (
 	"strings"
 )
 
-var (
-	ErrNetAdminMissing     = errors.New("NET_ADMIN capability is missing")
-	ErrTestRuleCleanup     = errors.New("failed cleaning up test rule")
-	ErrInputPolicyNotFound = errors.New("input policy not found")
-	ErrNotSupported        = errors.New("no iptables supported found")
-)
+var ErrNotSupported = errors.New("no iptables supported found")
 
 func checkIptablesSupport(ctx context.Context, runner CmdRunner,
 	iptablesPathsToTry ...string,
@@ -53,7 +48,7 @@ func checkIptablesSupport(ctx context.Context, runner CmdRunner,
 	if allArePermissionDenied {
 		// If the error is related to a denied permission for all iptables path,
 		// return an error describing what to do from an end-user perspective.
-		return "", fmt.Errorf("%w: %s", ErrNetAdminMissing, strings.Join(allUnsupportedMessages, "; "))
+		return "", fmt.Errorf("NET_ADMIN capability is missing: %s", strings.Join(allUnsupportedMessages, "; "))
 	}
 
 	return "", fmt.Errorf("%w: errors encountered are: %s",
@@ -85,7 +80,7 @@ func testIptablesPath(ctx context.Context, path string,
 	output, err = runner.Run(cmd)
 	if err != nil {
 		// this is a critical error, we want to make sure our test rule gets removed.
-		criticalErr = fmt.Errorf("%w: %s (%s)", ErrTestRuleCleanup, output, err)
+		criticalErr = fmt.Errorf("failed cleaning up test rule: %s (%s)", output, err)
 		return false, "", criticalErr
 	}
 
@@ -108,7 +103,7 @@ func testIptablesPath(ctx context.Context, path string,
 	}
 
 	if inputPolicy == "" {
-		criticalErr = fmt.Errorf("%w: in INPUT rules: %s", ErrInputPolicyNotFound, output)
+		criticalErr = fmt.Errorf("input policy not found: in INPUT rules: %s", output)
 		return false, "", criticalErr
 	}
 

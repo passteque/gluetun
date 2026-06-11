@@ -71,7 +71,7 @@ func pmtudMultiSizes(ctx context.Context, ip netip.Addr,
 		_, err = conn.WriteTo(encodedMessage, &net.IPAddr{IP: ip.AsSlice()})
 		if err != nil {
 			if strings.HasSuffix(err.Error(), "sendto: operation not permitted") {
-				err = fmt.Errorf("%w", ErrNotPermitted)
+				err = ErrNotPermitted
 			}
 			return 0, fmt.Errorf("writing ICMP message: %w", err)
 		}
@@ -157,7 +157,7 @@ func collectReplies(conn net.PacketConn, ipVersion string,
 			logger.Debugf("ignoring ICMP message (type: %d, code: %d)", message.Type, message.Code)
 			continue
 		default:
-			return fmt.Errorf("%w: %T", ErrBodyUnsupported, message.Body)
+			return fmt.Errorf("ICMP body type is not supported: %T", message.Body)
 		}
 
 		echoBody, _ := message.Body.(*icmp.Echo)
@@ -183,8 +183,8 @@ func collectReplies(conn net.PacketConn, ipVersion string,
 			ipPacketLength == conservativeReplyLength
 		// Check the packet size is the same if the reply is not truncated
 		if !truncated && sentBytes != ipPacketLength {
-			return fmt.Errorf("%w: sent %dB and received %dB",
-				ErrEchoDataMismatch, sentBytes, ipPacketLength)
+			return fmt.Errorf("ICMP data mismatch: sent %dB and received %dB",
+				sentBytes, ipPacketLength)
 		}
 		// Truncated reply or matching reply size
 		tests[testIndex].ok = true

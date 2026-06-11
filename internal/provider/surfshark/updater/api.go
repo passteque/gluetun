@@ -3,7 +3,6 @@ package updater
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 
@@ -38,8 +37,6 @@ func addServersFromAPI(ctx context.Context, client *http.Client,
 	return nil
 }
 
-var ErrHTTPStatusCodeNotOK = errors.New("HTTP status code not OK")
-
 type serverData struct {
 	Host     string `json:"connectionName"`
 	Region   string `json:"region"`
@@ -66,7 +63,7 @@ func fetchAPI(ctx context.Context, client *http.Client) (
 		defer response.Body.Close()
 
 		if response.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("%w: %d %s", ErrHTTPStatusCodeNotOK,
+			return nil, fmt.Errorf("HTTP status code not OK: %d %s",
 				response.StatusCode, response.Status)
 		}
 

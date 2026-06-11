@@ -2,6 +2,8 @@ package storage
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/qdm12/gluetun/internal/constants/providers"
@@ -10,12 +12,12 @@ import (
 
 // SetServers sets the given servers for the given provider
 // in the storage in-memory map and saves all the servers
-// to file.
+// to files.
 // Note the servers given are not copied so the caller must
 // NOT MUTATE them after calling this method.
 func (s *Storage) SetServers(provider string, servers []models.Server) (err error) {
 	if provider == providers.Custom {
-		return
+		return nil
 	}
 
 	s.mergedMutex.Lock()
@@ -26,9 +28,23 @@ func (s *Storage) SetServers(provider string, servers []models.Server) (err erro
 	serversObject.Servers = servers
 	s.mergedServers.ProviderToServers[provider] = serversObject
 
-	err = s.flushToFile(s.filepath)
+	if !s.disk {
+		return nil
+	}
+
+	manifestPath := filepath.Join(s.directoryPath, manifestFilename)
+	err = s.flushToFile(manifestPath)
 	if err != nil {
 		return fmt.Errorf("saving servers to file: %w", err)
+	}
+
+	if !s.hasLegacy() {
+		return nil
+	}
+	s.logger.Infof("removing legacy %s which is now migrated to %s", s.legacyFilepath, s.directoryPath)
+	err = os.Remove(s.legacyFilepath)
+	if err != nil {
+		s.logger.Warn("failed removing legacy servers file " + s.legacyFilepath + ": " + err.Error())
 	}
 	return nil
 }

@@ -3,10 +3,10 @@ package auth
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 
 	"github.com/qdm12/gosettings"
 	"github.com/qdm12/gosettings/validate"
@@ -38,22 +38,27 @@ func (s *Settings) SetDefaultRole(jsonRole string) error {
 		return fmt.Errorf("validating default role: %w", err)
 	}
 
-	authenticatedRoutes := make(map[string]struct{}, len(validRoutes))
+	maxRoutes := countValidRoutes()
+
+	authenticatedRoutes := make(map[string]struct{}, maxRoutes)
 	for _, role := range s.Roles {
 		for _, route := range role.Routes {
 			authenticatedRoutes[route] = struct{}{}
 		}
 	}
 
-	if len(authenticatedRoutes) == len(validRoutes) {
+	if len(authenticatedRoutes) == maxRoutes {
 		return nil
 	}
 
-	unauthenticatedRoutes := make([]string, 0, len(validRoutes))
-	for route := range validRoutes {
-		_, authenticated := authenticatedRoutes[route]
-		if !authenticated {
-			unauthenticatedRoutes = append(unauthenticatedRoutes, route)
+	var unauthenticatedRoutes []string
+	for urlPath, methods := range validRoutes {
+		for _, method := range methods {
+			route := method + " " + urlPath
+			_, authenticated := authenticatedRoutes[route]
+			if !authenticated {
+				unauthenticatedRoutes = append(unauthenticatedRoutes, route)
+			}
 		}
 	}
 
@@ -100,63 +105,63 @@ type Role struct {
 	Routes []string `json:"-"`
 }
 
-var (
-	ErrMethodNotSupported = errors.New("authentication method not supported")
-	ErrAPIKeyEmpty        = errors.New("api key is empty")
-	ErrBasicUsernameEmpty = errors.New("username is empty")
-	ErrBasicPasswordEmpty = errors.New("password is empty")
-	ErrRouteNotSupported  = errors.New("route not supported by the control server")
-)
-
 func (r Role) Validate() (err error) {
 	err = validate.IsOneOf(r.Auth, AuthNone, AuthAPIKey, AuthBasic)
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrMethodNotSupported, r.Auth)
+		return fmt.Errorf("authentication method not supported: %s", r.Auth)
 	}
 
 	switch {
 	case r.Auth == AuthAPIKey && r.APIKey == "":
-		return fmt.Errorf("for role %s: %w", r.Name, ErrAPIKeyEmpty)
+		return fmt.Errorf("for role %s: api key is empty", r.Name)
 	case r.Auth == AuthBasic && r.Username == "":
-		return fmt.Errorf("for role %s: %w", r.Name, ErrBasicUsernameEmpty)
+		return fmt.Errorf("for role %s: username is empty", r.Name)
 	case r.Auth == AuthBasic && r.Password == "":
-		return fmt.Errorf("for role %s: %w", r.Name, ErrBasicPasswordEmpty)
+		return fmt.Errorf("for role %s: password is empty", r.Name)
 	}
 
 	for i, route := range r.Routes {
-		_, ok := validRoutes[route]
+		const maxRouteFields = 2
+		parts := strings.SplitN(route, " ", maxRouteFields)
+		method, path := parts[0], parts[1]
+		methods, ok := validRoutes[path]
 		if !ok {
-			return fmt.Errorf("route %d of %d: %w: %s",
-				i+1, len(r.Routes), ErrRouteNotSupported, route)
+			return fmt.Errorf("route %d of %d: route path not supported by the control server: %s",
+				i+1, len(r.Routes), path)
+		} else if !slices.Contains(methods, method) {
+			return fmt.Errorf("route %d of %d: route method not supported for the path: %s for path %s",
+				i+1, len(r.Routes), method, path)
 		}
 	}
 
 	return nil
 }
 
+// validRoutes maps URL paths to allowed HTTP methods.
 // WARNING: do not mutate programmatically.
-var validRoutes = map[string]struct{}{ //nolint:gochecknoglobals
-	http.MethodGet + " /openvpn/actions/restart":  {},
-	http.MethodGet + " /openvpn/portforwarded":    {},
-	http.MethodGet + " /openvpn/settings":         {},
-	http.MethodGet + " /unbound/actions/restart":  {},
-	http.MethodGet + " /updater/restart":          {},
-	http.MethodGet + " /v1/version":               {},
-	http.MethodGet + " /v1/vpn/status":            {},
-	http.MethodPut + " /v1/vpn/status":            {},
-	http.MethodGet + " /v1/vpn/settings":          {},
-	http.MethodPut + " /v1/vpn/settings":          {},
-	http.MethodGet + " /v1/openvpn/status":        {},
-	http.MethodPut + " /v1/openvpn/status":        {},
-	http.MethodGet + " /v1/openvpn/portforwarded": {},
-	http.MethodGet + " /v1/openvpn/settings":      {},
-	http.MethodGet + " /v1/dns/status":            {},
-	http.MethodPut + " /v1/dns/status":            {},
-	http.MethodGet + " /v1/updater/status":        {},
-	http.MethodPut + " /v1/updater/status":        {},
-	http.MethodGet + " /v1/publicip/ip":           {},
-	http.MethodGet + " /v1/portforward":           {},
-	http.MethodPut + " /v1/portforward":           {},
+var validRoutes = map[string][]string{ //nolint:gochecknoglobals
+	"/openvpn/actions/restart":  {http.MethodGet},
+	"/openvpn/portforwarded":    {http.MethodGet},
+	"/openvpn/settings":         {http.MethodGet},
+	"/unbound/actions/restart":  {http.MethodGet},
+	"/updater/restart":          {http.MethodGet},
+	"/v1/version":               {http.MethodGet},
+	"/v1/vpn/status":            {http.MethodGet, http.MethodPut},
+	"/v1/vpn/settings":          {http.MethodGet, http.MethodPut},
+	"/v1/openvpn/status":        {http.MethodGet, http.MethodPut},
+	"/v1/openvpn/portforwarded": {http.MethodGet},
+	"/v1/openvpn/settings":      {http.MethodGet},
+	"/v1/dns/status":            {http.MethodGet, http.MethodPut},
+	"/v1/updater/status":        {http.MethodGet, http.MethodPut},
+	"/v1/publicip/ip":           {http.MethodGet},
+	"/v1/portforward":           {http.MethodGet, http.MethodPut},
+}
+
+func countValidRoutes() (count int) {
+	for _, methods := range validRoutes {
+		count += len(methods)
+	}
+	return count
 }
 
 func (r Role) ToLinesNode() (node *gotree.Node) {

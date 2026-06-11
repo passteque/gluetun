@@ -16,7 +16,6 @@ func Test_AllServers_MarshalJSON(t *testing.T) {
 	testCases := map[string]struct {
 		allServers *AllServers
 		dataString string
-		errWrapped error
 		errMessage string
 	}{
 		"no provider": {
@@ -58,16 +57,18 @@ func Test_AllServers_MarshalJSON(t *testing.T) {
 			t.Parallel()
 
 			data, err := testCase.allServers.MarshalJSON()
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if err != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 			require.Equal(t, testCase.dataString, string(data))
 
 			data, err = json.Marshal(testCase.allServers)
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if err != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 			require.Equal(t, testCase.dataString, string(data))
 
@@ -87,7 +88,6 @@ func Test_AllServers_UnmarshalJSON(t *testing.T) {
 	testCases := map[string]struct {
 		dataString string
 		allServers AllServers
-		errWrapped error
 		errMessage string
 	}{
 		"empty": {
@@ -131,9 +131,10 @@ func Test_AllServers_UnmarshalJSON(t *testing.T) {
 
 			err := json.Unmarshal(data, &allServers)
 
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if err != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 			assert.Equal(t, testCase.allServers, allServers)
 		})

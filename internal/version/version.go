@@ -44,8 +44,6 @@ func GetMessage(ctx context.Context, buildInfo models.BuildInformation,
 		nil
 }
 
-var errReleaseNotFound = errors.New("release not found")
-
 func getLatestRelease(ctx context.Context, client *http.Client) (tagName, name string, time time.Time, err error) {
 	releases, err := getGithubReleases(ctx, client)
 	if err != nil {
@@ -61,10 +59,8 @@ func getLatestRelease(ctx context.Context, client *http.Client) (tagName, name s
 		}
 		return release.TagName, release.Name, release.PublishedAt, nil
 	}
-	return "", "", time, fmt.Errorf("%w", errReleaseNotFound)
+	return "", "", time, errors.New("release not found")
 }
-
-var errCommitNotFound = errors.New("commit not found")
 
 func getCommitsSince(ctx context.Context, client *http.Client, commitShort string) (n int, err error) {
 	commits, err := getGithubCommits(ctx, client)
@@ -77,5 +73,5 @@ func getCommitsSince(ctx context.Context, client *http.Client, commitShort strin
 		}
 		n++
 	}
-	return 0, fmt.Errorf("%w: %s", errCommitNotFound, commitShort)
+	return 0, fmt.Errorf("commit not found: %s", commitShort)
 }

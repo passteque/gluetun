@@ -1,21 +1,19 @@
 package pmtud
 
 import (
-	"net/netip"
-
 	"github.com/qdm12/gluetun/internal/constants"
 	"github.com/qdm12/gluetun/internal/constants/vpn"
 	pconstants "github.com/qdm12/gluetun/internal/pmtud/constants"
 )
 
 // MaxTheoreticalVPNMTU returns the theoretical maximum MTU for a VPN tunnel
-// given the VPN type, network protocol, and VPN gateway IP address.
+// given the VPN type, network protocol, and whether IPv6 is used.
 // This is notably useful to skip testing MTU values higher than this value.
 // The function panics if the network or VPN type is unknown.
-func MaxTheoreticalVPNMTU(vpnType, network string, vpnGateway netip.Addr) uint32 {
+func MaxTheoreticalVPNMTU(vpnType, network string, ipv6 bool) uint32 {
 	const physicalLinkMTU = pconstants.MaxEthernetFrameSize
 	vpnLinkMTU := physicalLinkMTU
-	if vpnGateway.Is4() {
+	if !ipv6 {
 		vpnLinkMTU -= pconstants.IPv4HeaderLength
 	} else {
 		vpnLinkMTU -= pconstants.IPv6HeaderLength

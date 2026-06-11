@@ -1,14 +1,11 @@
 package routing
 
 import (
-	"errors"
 	"fmt"
 	"net/netip"
 
 	"github.com/qdm12/gluetun/internal/netlink"
 )
-
-var ErrRouteDefaultNotFound = errors.New("default route not found")
 
 type DefaultRoute struct {
 	NetInterface string
@@ -60,7 +57,7 @@ func (r *Routing) DefaultRoutes() (defaultRoutes []DefaultRoute, err error) {
 	}
 
 	if len(defaultRoutes) == 0 {
-		return nil, fmt.Errorf("%w: in %d route(s)", ErrRouteDefaultNotFound, len(routes))
+		return nil, fmt.Errorf("default route not found: in %d route(s)", len(routes))
 	}
 
 	return defaultRoutes, nil

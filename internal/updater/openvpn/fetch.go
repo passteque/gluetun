@@ -19,7 +19,7 @@ func FetchFile(ctx context.Context, client *http.Client, url string) (
 	const rejectDomain = false
 	hosts := extractRemoteHosts(b, rejectIP, rejectDomain)
 	if len(hosts) == 0 {
-		return "", fmt.Errorf("%w for url %s", ErrNoRemoteHost, url)
+		return "", fmt.Errorf("remote host not found for url %s", url)
 	}
 
 	return hosts[0], nil

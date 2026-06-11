@@ -30,7 +30,7 @@ type Logger interface {
 type PortForwarder interface {
 	Name() string
 	PortForward(ctx context.Context, objects utils.PortForwardObjects) (
-		ports []uint16, err error)
+		internalToExternalPorts map[uint16]uint16, err error)
 	KeepPortForward(ctx context.Context, objects utils.PortForwardObjects) (err error)
 }
 

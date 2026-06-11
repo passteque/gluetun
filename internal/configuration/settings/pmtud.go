@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"errors"
 	"fmt"
 	"net/netip"
 
@@ -24,21 +23,16 @@ type PMTUD struct {
 	TCPAddresses []netip.AddrPort `json:"tcp_addresses"`
 }
 
-var (
-	ErrPMTUDICMPAddressNotValid = errors.New("PMTUD ICMP address is not valid")
-	ErrPMTUDTCPAddressNotValid  = errors.New("PMTUD TCP address is not valid")
-)
-
 // Validate validates PMTUD settings.
 func (p PMTUD) validate() (err error) {
 	for i, addr := range p.ICMPAddresses {
 		if !addr.IsValid() {
-			return fmt.Errorf("%w: at index %d", ErrPMTUDICMPAddressNotValid, i)
+			return fmt.Errorf("PMTUD ICMP address is not valid: at index %d", i)
 		}
 	}
 	for i, addr := range p.TCPAddresses {
 		if !addr.IsValid() {
-			return fmt.Errorf("%w: at index %d", ErrPMTUDTCPAddressNotValid, i)
+			return fmt.Errorf("PMTUD TCP address is not valid: at index %d", i)
 		}
 	}
 	return nil

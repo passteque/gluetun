@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"regexp"
@@ -54,7 +55,7 @@ var regexpInterfaceName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 func (w Wireguard) validate(vpnProvider string, ipv6Supported, amneziawg bool) (err error) {
 	// Validate PrivateKey
 	if *w.PrivateKey == "" {
-		return fmt.Errorf("%w", ErrWireguardPrivateKeyNotSet)
+		return errors.New("private key is not set")
 	}
 	_, err = wgtypes.ParseKey(*w.PrivateKey)
 	if err != nil {
@@ -68,7 +69,7 @@ func (w Wireguard) validate(vpnProvider string, ipv6Supported, amneziawg bool) (
 
 	if vpnProvider == providers.Airvpn {
 		if *w.PreSharedKey == "" {
-			return fmt.Errorf("%w", ErrWireguardPreSharedKeyNotSet)
+			return errors.New("pre-shared key is not set")
 		}
 	}
 
@@ -82,17 +83,15 @@ func (w Wireguard) validate(vpnProvider string, ipv6Supported, amneziawg bool) (
 
 	// Validate Addresses
 	if len(w.Addresses) == 0 {
-		return fmt.Errorf("%w", ErrWireguardInterfaceAddressNotSet)
+		return errors.New("interface address is not set")
 	}
 	for i, ipNet := range w.Addresses {
 		if !ipNet.IsValid() {
-			return fmt.Errorf("%w: for address at index %d",
-				ErrWireguardInterfaceAddressNotSet, i)
+			return fmt.Errorf("interface address is not set: for address at index %d", i)
 		}
 
 		if !ipv6Supported && ipNet.Addr().Is6() {
-			return fmt.Errorf("%w: address %s",
-				ErrWireguardInterfaceAddressIPv6, ipNet.String())
+			return fmt.Errorf("interface address is IPv6 but IPv6 is not supported: address %s", ipNet.String())
 		}
 	}
 
@@ -100,30 +99,27 @@ func (w Wireguard) validate(vpnProvider string, ipv6Supported, amneziawg bool) (
 	// WARNING: do not check for IPv6 networks in the allowed IPs,
 	// the wireguard code will take care to ignore it.
 	if len(w.AllowedIPs) == 0 {
-		return fmt.Errorf("%w", ErrWireguardAllowedIPsNotSet)
+		return errors.New("allowed IPs is not set")
 	}
 	for i, allowedIP := range w.AllowedIPs {
 		if !allowedIP.IsValid() {
-			return fmt.Errorf("%w: for allowed ip %d of %d",
-				ErrWireguardAllowedIPNotSet, i+1, len(w.AllowedIPs))
+			return fmt.Errorf("allowed IP is not set: for allowed ip %d of %d", i+1, len(w.AllowedIPs))
 		}
 	}
 
 	if *w.PersistentKeepaliveInterval < 0 {
-		return fmt.Errorf("%w: %s", ErrWireguardKeepAliveNegative,
-			*w.PersistentKeepaliveInterval)
+		return fmt.Errorf("persistent keep alive interval is negative: %s", *w.PersistentKeepaliveInterval)
 	}
 
 	// Validate interface
 	if !regexpInterfaceName.MatchString(w.Interface) {
-		return fmt.Errorf("%w: '%s' does not match regex '%s'",
-			ErrWireguardInterfaceNotValid, w.Interface, regexpInterfaceName)
+		return fmt.Errorf("interface name is not valid: '%s' does not match regex '%s'", w.Interface, regexpInterfaceName)
 	}
 
 	if !amneziawg { // amneziawg should have its own Implementation field and ignore this one
 		validImplementations := []string{"auto", "userspace", "kernelspace"}
 		if err := validate.IsOneOf(w.Implementation, validImplementations...); err != nil {
-			return fmt.Errorf("%w: %w", ErrWireguardImplementationNotValid, err)
+			return fmt.Errorf("implementation is not valid: %w", err)
 		}
 	}
 
@@ -242,10 +238,12 @@ func (w *Wireguard) read(r *reader.Reader, amneziaWG bool) (err error) {
 	// WARNING: do not initialize w.Addresses to an empty slice
 	// or the defaults for nordvpn will not work.
 	for _, addressString := range addressStrings {
-		if !strings.ContainsRune(addressString, '/') {
+		addressString = strings.TrimSpace(addressString)
+		if addressString == "" {
+			continue
+		} else if !strings.ContainsRune(addressString, '/') {
 			addressString += "/32"
 		}
-		addressString = strings.TrimSpace(addressString)
 		address, err := netip.ParsePrefix(addressString)
 		if err != nil {
 			return fmt.Errorf("parsing address: %w", err)

@@ -1,7 +1,6 @@
 package storage
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -14,8 +13,6 @@ import (
 func commaJoin(slice []string) string {
 	return strings.Join(slice, ", ")
 }
-
-var ErrNoServerFound = errors.New("no server found")
 
 func noServerFoundError(selection settings.ServerSelection) (err error) {
 	var messageParts []string
@@ -160,5 +157,5 @@ func noServerFoundError(selection settings.ServerSelection) (err error) {
 
 	message := "for " + strings.Join(messageParts, "; ")
 
-	return fmt.Errorf("%w: %s", ErrNoServerFound, message)
+	return fmt.Errorf("no server found: %s", message)
 }

@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"fmt"
+	"maps"
 	"slices"
 
 	"github.com/qdm12/gluetun/internal/netlink"
@@ -42,8 +43,9 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 		CanPortForward: s.settings.CanPortForward,
 		Username:       s.settings.Username,
 		Password:       s.settings.Password,
+		PortsCount:     s.settings.PortsCount,
 	}
-	ports, err := s.settings.PortForwarder.PortForward(ctx, obj)
+	internalToExternalPorts, err := s.settings.PortForwarder.PortForward(ctx, obj)
 	if err != nil {
 		return nil, fmt.Errorf("port forwarding for the first time: %w", err)
 	}
@@ -51,7 +53,7 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 	s.portMutex.Lock()
 	defer s.portMutex.Unlock()
 
-	err = s.onNewPorts(ctx, ports)
+	err = s.onNewPorts(ctx, internalToExternalPorts)
 	if err != nil {
 		return nil, err
 	}
@@ -86,36 +88,52 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 	return runErrorCh, nil
 }
 
-func (s *Service) onNewPorts(ctx context.Context, ports []uint16) (err error) {
-	slices.Sort(ports)
+func (s *Service) onNewPorts(ctx context.Context, internalToExternalPorts map[uint16]uint16) (err error) {
+	s.logger.Info(portPairsToString(internalToExternalPorts))
 
-	s.logger.Info(portsToString(ports))
-
-	for _, port := range ports {
-		err = s.portAllower.SetAllowedPort(ctx, port, s.settings.Interface)
+	externalPorts := slices.Collect(maps.Values(internalToExternalPorts))
+	externalToInternalPorts := make(map[uint16]uint16, len(internalToExternalPorts))
+	for internal, external := range internalToExternalPorts {
+		externalToInternalPorts[external] = internal
+	}
+	slices.Sort(externalPorts)
+	userRedirectionEnabled := !slices.Equal(s.settings.ListeningPorts, []uint16{0})
+	for i, port := range externalPorts {
+		internalPort := externalToInternalPorts[port]
+		err = s.portAllower.SetAllowedPort(ctx, internalPort, s.settings.Interface)
 		if err != nil {
 			return fmt.Errorf("allowing port in firewall: %w", err)
 		}
 
-		if s.settings.ListeningPort != 0 {
-			err = s.portAllower.RedirectPort(ctx, s.settings.Interface, port, s.settings.ListeningPort)
-			if err != nil {
-				return fmt.Errorf("redirecting port in firewall: %w", err)
-			}
+		var destinationPort uint16
+		switch {
+		case userRedirectionEnabled: // precedence over auto redirection
+			destinationPort = s.settings.ListeningPorts[i]
+		case port != internalPort: // auto redirection needed, source and destination ports differ
+			destinationPort = port
+		default:
+			// No redirection needed, source and destination ports are the same.
+			continue
+		}
+
+		err = s.portAllower.RedirectPort(ctx, s.settings.Interface, internalPort, destinationPort)
+		if err != nil {
+			return fmt.Errorf("redirecting port %d to %d in firewall: %w",
+				internalPort, destinationPort, err)
 		}
 	}
 
-	err = s.writePortForwardedFile(ports)
+	err = s.writePortForwardedFile(externalPorts)
 	if err != nil {
 		_ = s.cleanup()
 		return fmt.Errorf("writing port file: %w", err)
 	}
 
-	s.ports = make([]uint16, len(ports))
-	copy(s.ports, ports)
+	s.ports = make([]uint16, len(internalToExternalPorts))
+	copy(s.ports, externalPorts)
 
 	if s.settings.UpCommand != "" {
-		err = runCommand(ctx, s.cmder, s.logger, s.settings.UpCommand, ports, s.settings.Interface)
+		err = runCommand(ctx, s.cmder, s.logger, s.settings.UpCommand, externalPorts, s.settings.Interface)
 		if err != nil {
 			err = fmt.Errorf("running up command: %w", err)
 			s.logger.Error(err.Error())

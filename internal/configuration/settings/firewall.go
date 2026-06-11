@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 
@@ -20,16 +21,16 @@ type Firewall struct {
 
 func (f Firewall) validate() (err error) {
 	if hasZeroPort(f.VPNInputPorts) {
-		return fmt.Errorf("VPN input ports: %w", ErrFirewallZeroPort)
+		return errors.New("VPN input ports: cannot have a zero port")
 	}
 
 	if hasZeroPort(f.InputPorts) {
-		return fmt.Errorf("input ports: %w", ErrFirewallZeroPort)
+		return errors.New("input ports: cannot have a zero port")
 	}
 
 	for _, subnet := range f.OutboundSubnets {
 		if subnet.Addr().IsUnspecified() {
-			return fmt.Errorf("%w: %s", ErrFirewallPublicOutboundSubnet, subnet)
+			return fmt.Errorf("outbound subnet has an unspecified address: %s", subnet)
 		}
 	}
 

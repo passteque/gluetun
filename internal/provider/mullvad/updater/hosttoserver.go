@@ -12,20 +12,13 @@ import (
 
 type hostToServer map[string]models.Server
 
-var (
-	ErrNoIP                = errors.New("no IP address for VPN server")
-	ErrIPIsNotV4           = errors.New("IP address is not IPv4")
-	ErrIPIsNotV6           = errors.New("IP address is not IPv6")
-	ErrVPNTypeNotSupported = errors.New("VPN type not supported")
-)
-
 func (hts hostToServer) add(data serverData) (err error) {
 	if !data.Active {
 		return nil
 	}
 
 	if data.IPv4 == "" && data.IPv6 == "" {
-		return fmt.Errorf("%w", ErrNoIP)
+		return errors.New("no IP address for VPN server")
 	}
 
 	server, ok := hts[data.Hostname]
@@ -40,7 +33,7 @@ func (hts hostToServer) add(data serverData) (err error) {
 		// ignore bridge servers
 		return nil
 	default:
-		return fmt.Errorf("%w: %s", ErrVPNTypeNotSupported, data.Type)
+		return fmt.Errorf("VPN type not supported: %s", data.Type)
 	}
 
 	if data.IPv4 != "" {
@@ -48,7 +41,7 @@ func (hts hostToServer) add(data serverData) (err error) {
 		if err != nil {
 			return fmt.Errorf("parsing IPv4 address: %w", err)
 		} else if !ipv4.Is4() {
-			return fmt.Errorf("%w: %s", ErrIPIsNotV4, data.IPv4)
+			return fmt.Errorf("IP address is not IPv4: %s", data.IPv4)
 		}
 		server.IPs = append(server.IPs, ipv4)
 	}
@@ -58,7 +51,7 @@ func (hts hostToServer) add(data serverData) (err error) {
 		if err != nil {
 			return fmt.Errorf("parsing IPv6 address: %w", err)
 		} else if !ipv6.Is6() {
-			return fmt.Errorf("%w: %s", ErrIPIsNotV6, data.IPv6)
+			return fmt.Errorf("IP address is not IPv6: %s", data.IPv6)
 		}
 		server.IPs = append(server.IPs, ipv6)
 	}

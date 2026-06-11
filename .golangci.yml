@@ -12,6 +12,10 @@ formatters:
       - builtin$
       - examples$
 
+run:
+  build-tags:
+    - integration
+
 linters:
   settings:
     misspell:
@@ -68,6 +72,9 @@ linters:
           - err113
           - mnd
         path: ci\/.+\.go
+      - linters:
+          - err113
+        text: "do not define dynamic errors, use wrapped static errors instead"
 
     paths:
       - third_party$

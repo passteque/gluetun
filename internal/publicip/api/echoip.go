@@ -70,11 +70,9 @@ func (e *echoip) FetchInfo(ctx context.Context, ip netip.Addr) (
 	switch response.StatusCode {
 	case http.StatusOK:
 	case http.StatusTooManyRequests:
-		return result, fmt.Errorf("%w from %s: %s",
-			ErrTooManyRequests, url, response.Status)
+		return result, fmt.Errorf("%w from %s: %s", ErrTooManyRequests, url, response.Status)
 	default:
-		return result, fmt.Errorf("%w from %s: %s",
-			ErrBadHTTPStatus, url, response.Status)
+		return result, fmt.Errorf("bad HTTP status received from %s: %s", url, response.Status)
 	}
 
 	decoder := json.NewDecoder(response.Body)

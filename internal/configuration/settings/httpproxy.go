@@ -48,7 +48,7 @@ func (h HTTPProxy) validate() (err error) {
 	// Do not validate user and password
 	err = validate.ListeningAddress(h.ListeningAddress, os.Getuid())
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrServerAddressNotValid, h.ListeningAddress)
+		return fmt.Errorf("server listening address is not valid: %w", err)
 	}
 
 	return nil
@@ -176,7 +176,6 @@ func readHTTProxyLog(r *reader.Reader) (enabled *bool, err error) {
 	case "disabled", "no", "off":
 		return ptrTo(false), nil
 	default:
-		return nil, fmt.Errorf("HTTP retro-compatible proxy log setting: %w: %s",
-			ErrValueUnknown, value)
+		return nil, fmt.Errorf("HTTP retro-compatible proxy log setting: value is unknown: %s", value)
 	}
 }

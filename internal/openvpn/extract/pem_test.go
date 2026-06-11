@@ -13,16 +13,13 @@ func Test_PEM(t *testing.T) {
 	testCases := map[string]struct {
 		b           []byte
 		encodedData string
-		errWrapped  error
 		errMessage  string
 	}{
 		"no input": {
-			errWrapped: errPEMDecode,
 			errMessage: "cannot decode PEM encoded block",
 		},
 		"bad input": {
 			b:          []byte{1, 2, 3},
-			errWrapped: errPEMDecode,
 			errMessage: "cannot decode PEM encoded block",
 		},
 		"valid data with extras": {
@@ -46,9 +43,10 @@ func Test_PEM(t *testing.T) {
 			encodedData, err := PEM(testCase.b)
 
 			assert.Equal(t, testCase.encodedData, encodedData)
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if testCase.errWrapped != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}

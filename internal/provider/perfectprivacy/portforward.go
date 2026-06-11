@@ -10,12 +10,17 @@ import (
 // PortForward calculates and returns the VPN server side ports forwarded.
 func (p *Provider) PortForward(_ context.Context,
 	objects utils.PortForwardObjects,
-) (ports []uint16, err error) {
+) (internalToExternalPorts map[uint16]uint16, err error) {
 	if !objects.InternalIP.IsValid() {
 		panic("internal ip is not set")
 	}
 
-	return internalIPToPorts(objects.InternalIP), nil
+	ports := internalIPToPorts(objects.InternalIP)
+	internalToExternalPorts = make(map[uint16]uint16, len(ports))
+	for _, port := range ports {
+		internalToExternalPorts[port] = port
+	}
+	return internalToExternalPorts, nil
 }
 
 func (p *Provider) KeepPortForward(ctx context.Context,

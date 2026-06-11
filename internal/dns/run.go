@@ -33,9 +33,22 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		for {
 			settings = l.GetSettings()
 			var err error
-			runError, err = l.setupServer(ctx, settings)
-			if err == nil {
-				break
+			if *settings.ServerEnabled { //nolint:nestif
+				runError, err = l.setupServer(ctx, settings)
+				if err == nil {
+					l.logger.Infof("ready and using DNS server with %s upstream resolvers", settings.UpstreamType)
+					err = l.updateFiles(ctx, settings)
+					if err != nil {
+						l.logger.Warn("downloading block lists failed, skipping: " + err.Error())
+					}
+					break
+				}
+			} else {
+				err = l.usePlainServers(settings.UpstreamPlainAddresses)
+				if err == nil {
+					l.logger.Infof("ready and using plain DNS resolvers: %v", settings.UpstreamPlainAddresses)
+					break
+				}
 			}
 
 			l.signalOrSetStatus(constants.Crashed)
@@ -46,12 +59,6 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		}
 
 		l.backoffTime = defaultBackoffTime
-		l.logger.Infof("ready and using DNS server with %s upstream resolvers", settings.UpstreamType)
-
-		err = l.updateFiles(ctx, settings)
-		if err != nil {
-			l.logger.Warn("downloading block lists failed, skipping: " + err.Error())
-		}
 		l.signalOrSetStatus(constants.Running)
 
 		l.userTrigger = false
@@ -74,13 +81,13 @@ func (l *Loop) runWait(ctx context.Context, runError <-chan error) (exitLoop boo
 	for {
 		select {
 		case <-ctx.Done():
-			l.stopServer()
+			l.stopServerIfAny()
 			// TODO revert OS and Go nameserver when exiting
 			return true
 		case <-l.stop:
 			l.userTrigger = true
 			l.logger.Info("stopping")
-			l.stopServer()
+			l.stopServerIfAny()
 			l.stopped <- struct{}{}
 		case <-l.start:
 			l.userTrigger = true
@@ -94,7 +101,10 @@ func (l *Loop) runWait(ctx context.Context, runError <-chan error) (exitLoop boo
 	}
 }
 
-func (l *Loop) stopServer() {
+func (l *Loop) stopServerIfAny() {
+	if l.server == nil {
+		return
+	}
 	stopErr := l.server.Stop()
 	if stopErr != nil {
 		l.logger.Error("stopping server: " + stopErr.Error())

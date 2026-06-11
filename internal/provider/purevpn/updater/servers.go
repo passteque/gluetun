@@ -7,6 +7,8 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/qdm12/dns/v2/pkg/plain"
+	"github.com/qdm12/dns/v2/pkg/provider"
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
 	"github.com/qdm12/gluetun/internal/updater/resolver"
@@ -15,6 +17,10 @@ import (
 func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	servers []models.Server, err error,
 ) {
+	if !u.ipFetcher.CanFetchAnyIP() {
+		return nil, fmt.Errorf("IP fetcher %s does not support fetching any IP", u.ipFetcher.String())
+	}
+
 	debURL, err := fetchDebURL(ctx, u.client)
 	if err != nil {
 		return nil, fmt.Errorf("fetching .deb URL: %w", err)
@@ -124,11 +130,9 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	return servers, nil
 }
 
-func enrichLocationBlanks(ctx context.Context, ipFetcher common.IPFetcher, warner common.Warner, servers []models.Server) {
-	if ipFetcher == nil || !ipFetcher.CanFetchAnyIP() {
-		return
-	}
-
+func enrichLocationBlanks(ctx context.Context, ipFetcher common.IPFetcher,
+	warner common.Warner, servers []models.Server,
+) {
 	for i := range servers {
 		if !needsGeolocationEnrichment(servers[i]) || len(servers[i].IPs) == 0 {
 			continue
@@ -171,7 +175,7 @@ func needsGeolocationEnrichment(server models.Server) bool {
 
 func hostnameHasCityCode(hostname string) bool {
 	twoMinusIndex := strings.Index(hostname, "2-")
-	return twoMinusIndex > 2
+	return twoMinusIndex > 2 //nolint:mnd
 }
 
 func canApplyGeolocationCountry(inventoryCountry, geolocationCountry string) bool {
@@ -245,8 +249,14 @@ func resolveWithMultipleResolvers(ctx context.Context, primary common.ParallelRe
 	}
 
 	// Try multiple DNS resolvers to recover hosts that are flaky or resolver-specific.
-	for _, dnsAddress := range []string{"1.1.1.1", "8.8.8.8", "9.9.9.9"} {
-		parallelResolver := resolver.NewParallelResolver(dnsAddress)
+	for _, dnsProvider := range []provider.Provider{provider.Google(), provider.Cloudflare(), provider.Quad9()} {
+		dialer, err := plain.New(plain.Settings{
+			UpstreamResolvers: []provider.Provider{dnsProvider},
+		})
+		if err != nil {
+			return nil, warnings, fmt.Errorf("creating plain resolver: %w", err)
+		}
+		parallelResolver := resolver.NewParallelResolver(dialer)
 		hostToIPsCandidate, candidateWarnings, candidateErr := parallelResolver.Resolve(ctx, settings)
 		warnings = append(warnings, candidateWarnings...)
 		if candidateErr != nil {

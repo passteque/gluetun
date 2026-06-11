@@ -1,6 +1,7 @@
 package storage
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -28,7 +29,7 @@ func (s *Storage) FilterServers(provider string, selection settings.ServerSelect
 	allServers := serversObject.Servers
 
 	if len(allServers) == 0 {
-		return nil, ErrNoServerFound
+		return nil, errors.New("no server found")
 	}
 
 	for _, server := range allServers {

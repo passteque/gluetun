@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net/url"
+	"path"
 
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
@@ -15,21 +17,38 @@ type Provider interface {
 	FetchServers(ctx context.Context, minServers int) (servers []models.Server, err error)
 }
 
-var ErrServerHasNotEnoughInformation = errors.New("server has not enough information")
-
 func (u *Updater) updateProvider(ctx context.Context, provider Provider,
-	minRatio float64,
+	manifest manifest, minRatio float64,
 ) (err error) {
 	providerName := provider.Name()
 	existingServersCount := u.storage.GetServersCount(providerName)
 	minServers := int(minRatio * float64(existingServersCount))
-	servers, err := provider.FetchServers(ctx, minServers)
-	if err != nil {
-		if errors.Is(err, common.ErrNotEnoughServers) {
+
+	var servers []models.Server
+	if manifest.providerToFilepath == nil {
+		servers, err = provider.FetchServers(ctx, minServers)
+		switch {
+		case errors.Is(err, common.ErrNotEnoughServers):
 			u.logger.Warn("note: if running the update manually, you can use the flag " +
 				"-minratio to allow the update to succeed with less servers found")
+			fallthrough
+		case err != nil:
+			return fmt.Errorf("getting %s servers: %w", providerName, err)
 		}
-		return fmt.Errorf("getting %s servers: %w", providerName, err)
+	} else {
+		providerFilepath := manifest.providerToFilepath[providerName]
+		providerFileURL := buildProviderFileURL(providerName, providerFilepath)
+
+		var data models.Servers
+		err = u.fetchJSON(ctx, providerFileURL, &data)
+		if err != nil {
+			return fmt.Errorf("downloading provider file %s: %w", providerFileURL, err)
+		}
+		servers = data.Servers
+		if len(servers) < minServers {
+			return fmt.Errorf("provider %s has not enough servers from downloaded file: got %d and expected at least %d",
+				providerName, len(servers), minServers)
+		}
 	}
 
 	for _, server := range servers {
@@ -56,4 +75,14 @@ func (u *Updater) updateProvider(ctx context.Context, provider Provider,
 		return fmt.Errorf("setting servers to storage: %w", err)
 	}
 	return nil
+}
+
+func buildProviderFileURL(providerName, filePath string) (providerFileURL string) {
+	filename := path.Base(filePath)
+	if filename == "." || filename == "/" || filename == "" {
+		filename = providerName + ".json"
+	}
+
+	const serversFilesBaseURL = "https://raw.githubusercontent.com/qdm12/gluetun-servers/main/pkg/servers/"
+	return serversFilesBaseURL + url.PathEscape(filename)
 }

@@ -2,7 +2,6 @@ package vpn
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/qdm12/gluetun/internal/portforward"
@@ -55,18 +54,16 @@ func newNoPortForwarder(providerName string) *noPortForwarder {
 	}
 }
 
-var ErrPortForwardingNotSupported = errors.New("custom port forwarding obtention is not supported")
-
 func (n *noPortForwarder) Name() string {
 	return n.providerName
 }
 
 func (n *noPortForwarder) PortForward(context.Context, pfutils.PortForwardObjects) (
-	ports []uint16, err error,
+	internalToExternalPorts map[uint16]uint16, err error,
 ) {
-	return nil, fmt.Errorf("%w: for %s", ErrPortForwardingNotSupported, n.providerName)
+	return nil, fmt.Errorf("custom port forwarding obtention is not supported: for %s", n.providerName)
 }
 
 func (n *noPortForwarder) KeepPortForward(context.Context, pfutils.PortForwardObjects) (err error) {
-	return fmt.Errorf("%w: for %s", ErrPortForwardingNotSupported, n.providerName)
+	return fmt.Errorf("custom port forwarding obtention is not supported: for %s", n.providerName)
 }

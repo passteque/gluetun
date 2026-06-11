@@ -1,11 +1,7 @@
 package cli
 
-type CLI struct {
-	repoServersPath string
-}
+type CLI struct{}
 
 func New() *CLI {
-	return &CLI{
-		repoServersPath: "./internal/storage/servers.json",
-	}
+	return &CLI{}
 }

@@ -23,6 +23,8 @@
   color: "959a9c"
 - name: "Closed: ☠️ cannot be done"
   color: "959a9c"
+- name: "Closed: 🤖🍺 drunk AI"
+  color: "959a9c"
 
 - name: "Priority: 🚨 Urgent"
   color: "03adfc"
@@ -137,6 +139,8 @@
 - name: "Category: HTTP proxy 🔁"
   color: "ffc7ea"
 - name: "Category: Shadowsocks 🔁"
+  color: "ffc7ea"
+- name: "Category: Socks5 proxy 🔁"
   color: "ffc7ea"
 - name: "Category: control server ⚙️"
   color: "ffc7ea"

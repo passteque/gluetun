@@ -3,15 +3,9 @@ package natpmp
 import (
 	"context"
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"net/netip"
 	"time"
-)
-
-var (
-	ErrNetworkProtocolUnknown = errors.New("network protocol is unknown")
-	ErrLifetimeTooLong        = errors.New("lifetime is too long")
 )
 
 // Add or delete a port mapping. To delete a mapping, set both the
@@ -26,8 +20,9 @@ func (c *Client) AddPortMapping(ctx context.Context, gateway netip.Addr,
 	lifetimeSecondsFloat := lifetime.Seconds()
 	const maxLifetimeSeconds = uint64(^uint32(0))
 	if uint64(lifetimeSecondsFloat) > maxLifetimeSeconds {
-		return 0, 0, 0, 0, fmt.Errorf("%w: %d seconds must at most %d seconds",
-			ErrLifetimeTooLong, uint64(lifetimeSecondsFloat), maxLifetimeSeconds)
+		return 0, 0, 0, 0, fmt.Errorf("lifetime is too long: "+
+			"%d seconds must at most %d seconds",
+			uint64(lifetimeSecondsFloat), maxLifetimeSeconds)
 	}
 	const messageSize = 12
 	message := make([]byte, messageSize)
@@ -38,7 +33,7 @@ func (c *Client) AddPortMapping(ctx context.Context, gateway netip.Addr,
 	case "tcp":
 		message[1] = 2 // operationCode 2
 	default:
-		return 0, 0, 0, 0, fmt.Errorf("%w: %s", ErrNetworkProtocolUnknown, protocol)
+		return 0, 0, 0, 0, fmt.Errorf("network protocol is unknown: %s", protocol)
 	}
 	// [2:3] are reserved.
 	binary.BigEndian.PutUint16(message[4:6], internalPort)

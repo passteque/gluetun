@@ -3,7 +3,6 @@ package version
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -25,8 +24,6 @@ type githubCommit struct {
 	} `json:"commit"`
 }
 
-var errHTTPStatusCode = errors.New("bad response HTTP status code")
-
 func getGithubReleases(ctx context.Context, client *http.Client) (releases []githubRelease, err error) {
 	// Define a timeout since the default client has a large timeout and we don't
 	// want to wait too long.
@@ -34,7 +31,7 @@ func getGithubReleases(ctx context.Context, client *http.Client) (releases []git
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	const url = "https://api.github.com/repos/qdm12/gluetun/releases"
+	const url = "https://api.github.com/repos/passteque/gluetun/releases"
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
@@ -47,7 +44,7 @@ func getGithubReleases(ctx context.Context, client *http.Client) (releases []git
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: %d %s", errHTTPStatusCode,
+		return nil, fmt.Errorf("bad response HTTP status code: %d %s",
 			response.StatusCode, response.Status)
 	}
 
@@ -65,7 +62,7 @@ func getGithubCommits(ctx context.Context, client *http.Client) (commits []githu
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	const url = "https://api.github.com/repos/qdm12/gluetun/commits"
+	const url = "https://api.github.com/repos/passteque/gluetun/commits"
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err

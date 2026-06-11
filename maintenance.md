@@ -1,19 +1,13 @@
 # Maintenance
 
 - Change `Run` methods to `Start`+`Stop`, returning channels rather than injecting them
-- Go 1.18
-  - gofumpt
-  - Use netip
-- Split servers.json
 - Common slice of Wireguard providers in config settings
 - DNS block lists as LFS and built in image
 - Add HTTP server v3 as json rpc
 - Use `github.com/qdm12/ddns-updater/pkg/publicip`
-- Windows and Darwin development support
 
 ## Features
 
-- Authentication with the control server
 - Get announcement from Github file
 - Support multiple connections in custom ovpn
 - Automate IPv6 detection for OpenVPN

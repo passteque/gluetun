@@ -11,12 +11,17 @@ on:
       - "**.md"
       - .github/workflows/markdown.yml
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   markdown:
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
+    environment: secrets
     steps:
       - uses: actions/checkout@v6
 
@@ -38,7 +43,7 @@ jobs:
           config-file: .github/workflows/configs/mlc-config.json
 
       - uses: peter-evans/dockerhub-description@v5
-        if: github.repository == 'qdm12/gluetun' && github.event_name == 'push'
+        if: github.repository == 'passteque/gluetun' && github.event_name == 'push'
         with:
           username: qmcgaw
           password: ${{ secrets.DOCKERHUB_PASSWORD }}

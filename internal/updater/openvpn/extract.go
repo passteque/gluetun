@@ -8,12 +8,6 @@ import (
 	"strings"
 )
 
-var (
-	ErrUnknownProto = errors.New("unknown protocol")
-	ErrNoRemoteHost = errors.New("remote host not found")
-	ErrNoRemoteIP   = errors.New("remote IP not found")
-)
-
 func ExtractProto(b []byte) (tcp, udp bool, err error) {
 	lines := strings.Split(string(b), "\n")
 	const protoPrefix = "proto "
@@ -25,12 +19,12 @@ func ExtractProto(b []byte) (tcp, udp bool, err error) {
 		s = strings.TrimSpace(s)
 		s = strings.ToLower(s)
 		switch s {
-		case "tcp", "tcp4", "tcp6":
+		case "tcp", "tcp4", "tcp6", "tcp-client":
 			return true, false, nil
 		case "udp", "udp4", "udp6":
 			return false, true, nil
 		default:
-			return false, false, fmt.Errorf("%w: %s", ErrUnknownProto, s)
+			return false, false, fmt.Errorf("unknown protocol: %s", s)
 		}
 	}
 
@@ -45,7 +39,7 @@ func ExtractHost(b []byte) (host, warning string, err error) {
 	)
 	hosts := extractRemoteHosts(b, rejectIP, rejectDomain)
 	if len(hosts) == 0 {
-		return "", "", ErrNoRemoteHost
+		return "", "", errors.New("remote host not found")
 	} else if len(hosts) > 1 {
 		warning = fmt.Sprintf(
 			"only using the first host %q and discarding %d other hosts",
@@ -58,7 +52,7 @@ func ExtractIPs(b []byte) (ips []netip.Addr, err error) {
 	const rejectIP, rejectDomain = false, true
 	ipStrings := extractRemoteHosts(b, rejectIP, rejectDomain)
 	if len(ipStrings) == 0 {
-		return nil, ErrNoRemoteIP
+		return nil, errors.New("remote IP not found")
 	}
 
 	sort.Slice(ipStrings, func(i, j int) bool {

@@ -57,18 +57,15 @@ func Test_deleteIPTablesRule(t *testing.T) {
 	t.Parallel()
 
 	const iptablesBinary = "/sbin/iptables"
-	errTest := errors.New("test error")
 
 	testCases := map[string]struct {
 		instruction string
 		makeRunner  func(ctrl *gomock.Controller) *MockCmdRunner
 		makeLogger  func(ctrl *gomock.Controller) *MockLogger
-		errWrapped  error
 		errMessage  string
 	}{
 		"invalid_instruction": {
 			instruction: "invalid",
-			errWrapped:  ErrIptablesCommandMalformed,
 			errMessage: "parsing iptables command: parsing \"invalid\": " +
 				"iptables command is malformed: flag \"invalid\" requires a value, but got none",
 		},
@@ -78,7 +75,7 @@ func Test_deleteIPTablesRule(t *testing.T) {
 				runner := NewMockCmdRunner(ctrl)
 				runner.EXPECT().
 					Run(newCmdMatcherListRules(iptablesBinary, "nat", "PREROUTING")).
-					Return("", errTest)
+					Return("", errors.New("test error"))
 				return runner
 			},
 			makeLogger: func(ctrl *gomock.Controller) *MockLogger {
@@ -86,7 +83,6 @@ func Test_deleteIPTablesRule(t *testing.T) {
 				logger.EXPECT().Debug("/sbin/iptables -t nat -L PREROUTING --line-numbers -n -v")
 				return logger
 			},
-			errWrapped: errTest,
 			errMessage: `finding iptables chain rule line number: command failed: ` +
 				`"/sbin/iptables -t nat -L PREROUTING --line-numbers -n -v": test error`,
 		},
@@ -120,7 +116,7 @@ func Test_deleteIPTablesRule(t *testing.T) {
 						"2        0     0 REDIRECT   6    --  tun0   *       0.0.0.0/0            0.0.0.0/0            tcp dpt:43716 redir ports 5678\n", //nolint:lll
 						nil)
 				runner.EXPECT().Run(newCmdMatcher(iptablesBinary, "^-t$", "^nat$",
-					"^-D$", "^PREROUTING$", "^2$")).Return("details", errTest)
+					"^-D$", "^PREROUTING$", "^2$")).Return("details", errors.New("test error"))
 				return runner
 			},
 			makeLogger: func(ctrl *gomock.Controller) *MockLogger {
@@ -131,7 +127,6 @@ func Test_deleteIPTablesRule(t *testing.T) {
 				logger.EXPECT().Debug("/sbin/iptables -t nat -D PREROUTING 2")
 				return logger
 			},
-			errWrapped: errTest,
 			errMessage: "command failed: \"/sbin/iptables -t nat -D PREROUTING 2\": test error: details",
 		},
 		"rule_found_delete_success": {
@@ -177,9 +172,10 @@ func Test_deleteIPTablesRule(t *testing.T) {
 
 			err := deleteIPTablesRule(ctx, iptablesBinary, instruction, runner, logger)
 
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if testCase.errWrapped != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}

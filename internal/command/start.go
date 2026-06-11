@@ -9,8 +9,9 @@ import (
 )
 
 // Start launches a command and streams stdout and stderr to channels.
-// All the channels returned are ready only and won't be closed
-// if the command fails later.
+// stdoutLines and stderrLines channels will be closed when there is no more
+// output to read, in order for the caller to catch all lines even after the
+// command has finished. The waitError channel returned will never be closed.
 func (c *Cmder) Start(cmd *exec.Cmd) (
 	stdoutLines, stderrLines <-chan string,
 	waitError <-chan error, startErr error,
@@ -21,7 +22,6 @@ func (c *Cmder) Start(cmd *exec.Cmd) (
 func start(cmd execCmd) (stdoutLines, stderrLines <-chan string,
 	waitError <-chan error, startErr error,
 ) {
-	stop := make(chan struct{})
 	stdoutReady := make(chan struct{})
 	stdoutLinesCh := make(chan string)
 	stdoutDone := make(chan struct{})
@@ -33,43 +33,47 @@ func start(cmd execCmd) (stdoutLines, stderrLines <-chan string,
 	if err != nil {
 		return nil, nil, nil, err
 	}
-	go streamToChannel(stdoutReady, stop, stdoutDone, stdout, stdoutLinesCh)
+	go streamToChannel(stdoutReady, stdoutDone, stdout, stdoutLinesCh)
 
 	stderr, err := cmd.StderrPipe()
 	if err != nil {
 		_ = stdout.Close()
-		close(stop)
 		<-stdoutDone
+		close(stdoutLinesCh)
 		return nil, nil, nil, err
 	}
-	go streamToChannel(stderrReady, stop, stderrDone, stderr, stderrLinesCh)
+	go streamToChannel(stderrReady, stderrDone, stderr, stderrLinesCh)
 
 	err = cmd.Start()
 	if err != nil {
 		_ = stdout.Close()
-		_ = stderr.Close()
-		close(stop)
 		<-stdoutDone
+		close(stdoutLinesCh)
+		_ = stderr.Close()
 		<-stderrDone
+		close(stderrLinesCh)
 		return nil, nil, nil, err
 	}
 
 	waitErrorCh := make(chan error)
 	go func() {
 		err := cmd.Wait()
-		_ = stdout.Close()
-		_ = stderr.Close()
-		close(stop)
 		<-stdoutDone
+		close(stdoutLinesCh)
+		_ = stdout.Close()
 		<-stderrDone
+		close(stderrLinesCh)
+		_ = stderr.Close()
 		waitErrorCh <- err
 	}()
+
+	<-stdoutReady
+	<-stderrReady
 
 	return stdoutLinesCh, stderrLinesCh, waitErrorCh, nil
 }
 
-func streamToChannel(ready chan<- struct{},
-	stop <-chan struct{}, done chan<- struct{},
+func streamToChannel(ready chan<- struct{}, done chan<- struct{},
 	stream io.Reader, lines chan<- string,
 ) {
 	defer close(done)
@@ -89,12 +93,5 @@ func streamToChannel(ready chan<- struct{},
 	if err == nil || errors.Is(err, os.ErrClosed) {
 		return
 	}
-
-	// ignore the error if it is stopped.
-	select {
-	case <-stop:
-		return
-	default:
-		lines <- "stream error: " + err.Error()
-	}
+	lines <- "stream error: " + err.Error()
 }

@@ -1,6 +1,7 @@
 package natpmp
 
 import (
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,12 +12,10 @@ func Test_checkRequest(t *testing.T) {
 
 	testCases := map[string]struct {
 		request    []byte
-		err        error
 		errMessage string
 	}{
 		"too_short": {
 			request:    []byte{1},
-			err:        ErrRequestSizeTooSmall,
 			errMessage: "message size is too small: need at least 2 bytes and got 1 byte(s)",
 		},
 		"success": {
@@ -30,9 +29,10 @@ func Test_checkRequest(t *testing.T) {
 
 			err := checkRequest(testCase.request)
 
-			assert.ErrorIs(t, err, testCase.err)
-			if testCase.err != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -50,33 +50,33 @@ func Test_checkResponse(t *testing.T) {
 	}{
 		"too_short": {
 			response:   []byte{1},
-			err:        ErrResponseSizeTooSmall,
+			err:        errors.New("response size is too small"),
 			errMessage: "response size is too small: need at least 4 bytes and got 1 byte(s)",
 		},
 		"size_mismatch": {
 			response:             []byte{0, 0, 0, 0},
 			expectedResponseSize: 5,
-			err:                  ErrResponseSizeUnexpected,
+			err:                  errors.New("response size is unexpected"),
 			errMessage:           "response size is unexpected: expected 5 bytes and got 4 byte(s)",
 		},
 		"protocol_unknown": {
 			response:             []byte{1, 0, 0, 0},
 			expectedResponseSize: 4,
-			err:                  ErrProtocolVersionUnknown,
+			err:                  errors.New("protocol version is unknown"),
 			errMessage:           "protocol version is unknown: 1",
 		},
 		"operation_code_unexpected": {
 			response:              []byte{0, 2, 0, 0},
 			expectedOperationCode: 1,
 			expectedResponseSize:  4,
-			err:                   ErrOperationCodeUnexpected,
+			err:                   errors.New("operation code is unexpected"),
 			errMessage:            "operation code is unexpected: expected 0x1 and got 0x2",
 		},
 		"result_code_failure": {
 			response:              []byte{0, 1, 0, 1},
 			expectedOperationCode: 1,
 			expectedResponseSize:  4,
-			err:                   ErrVersionNotSupported,
+			err:                   errors.New("version is not supported"),
 			errMessage:            "result code: version is not supported",
 		},
 		"success": {
@@ -94,9 +94,11 @@ func Test_checkResponse(t *testing.T) {
 				testCase.expectedOperationCode,
 				testCase.expectedResponseSize)
 
-			assert.ErrorIs(t, err, testCase.err)
 			if testCase.err != nil {
+				assert.ErrorContains(t, err, testCase.err.Error())
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}
@@ -113,32 +115,32 @@ func Test_checkResultCode(t *testing.T) {
 		"success": {},
 		"version_unsupported": {
 			resultCode: 1,
-			err:        ErrVersionNotSupported,
+			err:        errors.New("version is not supported"),
 			errMessage: "version is not supported",
 		},
 		"not_authorized": {
 			resultCode: 2,
-			err:        ErrNotAuthorized,
+			err:        errors.New("not authorized"),
 			errMessage: "not authorized",
 		},
 		"network_failure": {
 			resultCode: 3,
-			err:        ErrNetworkFailure,
+			err:        errors.New("network failure"),
 			errMessage: "network failure",
 		},
 		"out_of_resources": {
 			resultCode: 4,
-			err:        ErrOutOfResources,
+			err:        errors.New("out of resources"),
 			errMessage: "out of resources",
 		},
 		"unsupported_operation_code": {
 			resultCode: 5,
-			err:        ErrOperationCodeNotSupported,
+			err:        errors.New("operation code is not supported"),
 			errMessage: "operation code is not supported",
 		},
 		"unknown": {
 			resultCode: 6,
-			err:        ErrResultCodeUnknown,
+			err:        errors.New("result code is unknown"),
 			errMessage: "result code is unknown: 6",
 		},
 	}
@@ -149,9 +151,11 @@ func Test_checkResultCode(t *testing.T) {
 
 			err := checkResultCode(testCase.resultCode)
 
-			assert.ErrorIs(t, err, testCase.err)
 			if testCase.err != nil {
+				assert.ErrorContains(t, err, testCase.err.Error())
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}

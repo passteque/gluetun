@@ -32,6 +32,7 @@ type Logger interface {
 	Info(s string)
 	Warn(s string)
 	Error(s string)
+	Errorf(format string, args ...any)
 }
 
 type Cmder interface {

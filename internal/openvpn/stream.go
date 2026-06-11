@@ -1,26 +1,37 @@
 package openvpn
 
 import (
-	"context"
 	"strings"
 )
 
-func streamLines(ctx context.Context, done chan<- struct{},
+func streamLines(done chan<- struct{},
 	logger Logger, stdout, stderr <-chan string,
 	tunnelReady chan<- struct{},
 ) {
 	defer close(done)
 
-	var line string
-
 	for {
+		var line string
+		var ok bool
 		errLine := false
 		select {
-		case <-ctx.Done():
-			return
-		case line = <-stdout:
-		case line = <-stderr:
-			errLine = true
+		case line, ok = <-stdout:
+			if ok {
+				break
+			}
+			if stderr == nil {
+				return
+			}
+			stdout = nil
+		case line, ok = <-stderr:
+			if ok {
+				errLine = true
+				break
+			}
+			if stdout == nil {
+				return
+			}
+			stderr = nil
 		}
 		line, level := processLogLine(line)
 		if line == "" {

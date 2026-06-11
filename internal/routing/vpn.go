@@ -1,16 +1,10 @@
 package routing
 
 import (
-	"errors"
 	"fmt"
 	"net/netip"
 
 	"github.com/qdm12/gluetun/internal/netlink"
-)
-
-var (
-	ErrVPNLocalGatewayIPNotFound       = errors.New("VPN local gateway IP address not found")
-	ErrVPNLocalGatewayIPv6NotSupported = errors.New("VPN local gateway IPv6 address not supported")
 )
 
 func (r *Routing) VPNLocalGatewayIP(vpnIntf string) (ip netip.Addr, err error) {
@@ -36,7 +30,7 @@ func (r *Routing) VPNLocalGatewayIP(vpnIntf string) (ip netip.Addr, err error) {
 			route.Dst.Addr().Compare(route.Src.Addr()) == 0 &&
 			route.Table == tableLocal: // Wireguard
 			if route.Src.Addr().Is6() {
-				return netip.Addr{}, fmt.Errorf("%w: %s", ErrVPNLocalGatewayIPv6NotSupported, route.Src)
+				return netip.Addr{}, fmt.Errorf("VPN local gateway IPv6 address not supported: %s", route.Src)
 			}
 			bytes := route.Src.Addr().As4()
 			// force last byte to 1 to get the VPN gateway IP
@@ -45,10 +39,8 @@ func (r *Routing) VPNLocalGatewayIP(vpnIntf string) (ip netip.Addr, err error) {
 			return netip.AddrFrom4(bytes), nil
 		}
 	}
-	return ip, fmt.Errorf("%w: in %d routes", ErrVPNLocalGatewayIPNotFound, len(routes))
+	return ip, fmt.Errorf("VPN local gateway IP address not found: in %d routes", len(routes))
 }
-
-var ErrVPNRouteNotFound = errors.New("VPN route not found")
 
 // VPNRoutes returns the routes that are using the VPN interface, excluding local routes
 // and link-local multicast and unicast routes.
@@ -80,8 +72,8 @@ func (r *Routing) VPNRoutes(vpnIntf string) (routes []netlink.Route, err error) 
 	}
 
 	if len(routes) == 0 {
-		return nil, fmt.Errorf("%w: for interface %s in %d routes",
-			ErrVPNRouteNotFound, vpnIntf, len(allRoutes))
+		return nil, fmt.Errorf("VPN route not found: for interface %s in %d routes",
+			vpnIntf, len(allRoutes))
 	}
 
 	return routes, nil

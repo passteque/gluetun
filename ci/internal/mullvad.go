@@ -3,6 +3,8 @@ package internal
 import (
 	"context"
 	"fmt"
+	"regexp"
+	"time"
 )
 
 func MullvadTest(ctx context.Context, logger Logger) error {
@@ -23,5 +25,6 @@ func MullvadTest(ctx context.Context, logger Logger) error {
 		"WIREGUARD_PRIVATE_KEY=" + secrets[0],
 		"WIREGUARD_ADDRESSES=" + secrets[1],
 	}
-	return simpleTest(ctx, env, logger)
+	const timeout = 60 * time.Second
+	return runContainerTest(ctx, env, []*regexp.Regexp{successRegexp}, timeout, logger)
 }

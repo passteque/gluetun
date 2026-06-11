@@ -64,14 +64,6 @@ func (s *Settings) OverrideWith(other Settings) {
 	s.ShutdownTimeout = gosettings.OverrideWithComparable(s.ShutdownTimeout, other.ShutdownTimeout)
 }
 
-var (
-	ErrHandlerIsNotSet           = errors.New("HTTP handler cannot be left unset")
-	ErrLoggerIsNotSet            = errors.New("logger cannot be left unset")
-	ErrReadHeaderTimeoutTooSmall = errors.New("read header timeout is too small")
-	ErrReadTimeoutTooSmall       = errors.New("read timeout is too small")
-	ErrShutdownTimeoutTooSmall   = errors.New("shutdown timeout is too small")
-)
-
 func (s Settings) Validate() (err error) {
 	err = validate.ListeningAddress(s.Address, os.Getuid())
 	if err != nil {
@@ -79,31 +71,25 @@ func (s Settings) Validate() (err error) {
 	}
 
 	if s.Handler == nil {
-		return fmt.Errorf("%w", ErrHandlerIsNotSet)
+		return errors.New("HTTP handler cannot be left unset")
 	}
 
 	if s.Logger == nil {
-		return fmt.Errorf("%w", ErrLoggerIsNotSet)
+		return errors.New("logger cannot be left unset")
 	}
 
 	const minReadTimeout = time.Millisecond
 	if s.ReadHeaderTimeout < minReadTimeout {
-		return fmt.Errorf("%w: %s must be at least %s",
-			ErrReadHeaderTimeoutTooSmall,
-			s.ReadHeaderTimeout, minReadTimeout)
+		return fmt.Errorf("read header timeout is too small: %s must be at least %s", s.ReadHeaderTimeout, minReadTimeout)
 	}
 
 	if s.ReadTimeout < minReadTimeout {
-		return fmt.Errorf("%w: %s must be at least %s",
-			ErrReadTimeoutTooSmall,
-			s.ReadTimeout, minReadTimeout)
+		return fmt.Errorf("read timeout is too small: %s must be at least %s", s.ReadTimeout, minReadTimeout)
 	}
 
 	const minShutdownTimeout = 5 * time.Millisecond
 	if s.ShutdownTimeout < minShutdownTimeout {
-		return fmt.Errorf("%w: %s must be at least %s",
-			ErrShutdownTimeoutTooSmall,
-			s.ShutdownTimeout, minShutdownTimeout)
+		return fmt.Errorf("shutdown timeout is too small: %s must be at least %s", s.ShutdownTimeout, minShutdownTimeout)
 	}
 
 	return nil

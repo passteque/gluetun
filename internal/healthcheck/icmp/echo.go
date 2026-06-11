@@ -19,11 +19,6 @@ import (
 	"golang.org/x/net/ipv6"
 )
 
-var (
-	ErrICMPBodyUnsupported  = errors.New("ICMP body type is not supported")
-	ErrICMPEchoDataMismatch = errors.New("ICMP data mismatch")
-)
-
 type Echoer struct {
 	buffer       []byte
 	randomSource io.Reader
@@ -60,10 +55,7 @@ func (e *Echoer) Reset() {
 	e.seqStart = time.Now()
 }
 
-var (
-	ErrTimedOut     = errors.New("timed out waiting for ICMP echo reply")
-	ErrNotPermitted = errors.New("not permitted")
-)
+var ErrNotPermitted = errors.New("not permitted")
 
 func (e *Echoer) Echo(ctx context.Context, ip netip.Addr) (err error) {
 	var ipVersion string
@@ -114,14 +106,14 @@ func (e *Echoer) Echo(ctx context.Context, ip netip.Addr) (err error) {
 	receivedData, err := receiveEchoReply(conn, e.id, e.seq, e.buffer, ipVersion, e.logger)
 	if err != nil {
 		if errors.Is(err, net.ErrClosed) && ctx.Err() != nil {
-			return fmt.Errorf("%w from %s", ErrTimedOut, ip)
+			return fmt.Errorf("timed out waiting for ICMP echo reply from %s", ip)
 		}
 		return fmt.Errorf("receiving ICMP echo reply from %s: %w", ip, err)
 	}
 
 	sentData := message.Body.(*icmp.Echo).Data //nolint:forcetypeassert
 	if !bytes.Equal(receivedData, sentData) {
-		return fmt.Errorf("%w: sent %x to %s and received %x", ErrICMPEchoDataMismatch, sentData, ip, receivedData)
+		return fmt.Errorf("ICMP data mismatch: sent %x to %s and received %x", sentData, ip, receivedData)
 	}
 
 	return nil
@@ -216,8 +208,9 @@ func receiveEchoReply(conn net.PacketConn, id, seq int, buffer []byte, ipVersion
 				message.Code, returnAddr, id, seq)
 			continue
 		default:
-			return nil, fmt.Errorf("%w: %T (type %d, code %d, return address %s, expected id %d and seq %d)",
-				ErrICMPBodyUnsupported, body, message.Type, message.Code, returnAddr, id, seq)
+			return nil, fmt.Errorf("ICMP body type is not supported: "+
+				"%T (type %d, code %d, return address %s, expected id %d and seq %d)",
+				body, message.Type, message.Code, returnAddr, id, seq)
 		}
 	}
 }

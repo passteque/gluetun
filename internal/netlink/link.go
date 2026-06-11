@@ -1,7 +1,6 @@
 package netlink
 
 import (
-	"errors"
 	"fmt"
 
 	"github.com/jsimonetti/rtnetlink"
@@ -47,8 +46,6 @@ func (n *NetLink) LinkList() (links []Link, err error) {
 	return links, nil
 }
 
-var ErrLinkNotFound = errors.New("link not found")
-
 func (n *NetLink) LinkByName(name string) (link Link, err error) {
 	links, err := n.LinkList()
 	if err != nil {
@@ -61,7 +58,7 @@ func (n *NetLink) LinkByName(name string) (link Link, err error) {
 		}
 	}
 
-	return Link{}, fmt.Errorf("%w: for name %s", ErrLinkNotFound, name)
+	return Link{}, fmt.Errorf("link not found: for name %s", name)
 }
 
 func (n *NetLink) LinkByIndex(index uint32) (link Link, err error) {
@@ -76,7 +73,7 @@ func (n *NetLink) LinkByIndex(index uint32) (link Link, err error) {
 		}
 	}
 
-	return Link{}, fmt.Errorf("%w: for index %d", ErrLinkNotFound, index)
+	return Link{}, fmt.Errorf("link not found: for index %d", index)
 }
 
 func (n *NetLink) LinkAdd(link Link) (linkIndex uint32, err error) {
@@ -114,7 +111,7 @@ func (n *NetLink) LinkAdd(link Link) (linkIndex uint32, err error) {
 		}
 	}
 
-	return 0, fmt.Errorf("%w: matching name %s", ErrLinkNotFound, link.Name)
+	return 0, fmt.Errorf("link not found: matching name %s", link.Name)
 }
 
 func (n *NetLink) LinkDel(linkIndex uint32) (err error) {

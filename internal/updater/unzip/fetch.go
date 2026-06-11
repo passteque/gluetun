@@ -2,13 +2,10 @@ package unzip
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 )
-
-var ErrHTTPStatusCodeNotOK = errors.New("HTTP status code not OK")
 
 func (u *Unzipper) FetchAndExtract(ctx context.Context, url string) (
 	contents map[string][]byte, err error,
@@ -26,7 +23,7 @@ func (u *Unzipper) FetchAndExtract(ctx context.Context, url string) (
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: %s: %d %s", ErrHTTPStatusCodeNotOK,
+		return nil, fmt.Errorf("HTTP status code not OK: %s: %d %s",
 			url, response.StatusCode, response.Status)
 	}
 

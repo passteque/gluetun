@@ -12,11 +12,9 @@ type handler struct {
 	logger      Logger
 }
 
-var errHealthcheckNotRunYet = errors.New("healthcheck did not run yet")
-
 func newHandler(logger Logger) *handler {
 	return &handler{
-		healthErr: errHealthcheckNotRunYet,
+		healthErr: errors.New("healthcheck did not run yet"),
 		logger:    logger,
 	}
 }

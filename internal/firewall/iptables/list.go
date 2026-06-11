@@ -40,8 +40,6 @@ type mark struct {
 	value  uint
 }
 
-var ErrChainListMalformed = errors.New("iptables chain list output is malformed")
-
 func parseChain(iptablesOutput string) (c chain, err error) {
 	// Text example:
 	// Chain INPUT (policy ACCEPT 140K packets, 226M bytes)
@@ -63,8 +61,8 @@ func parseChain(iptablesOutput string) (c chain, err error) {
 
 	const minLines = 2 // chain general information line + legend line
 	if len(lines) < minLines {
-		return chain{}, fmt.Errorf("%w: not enough lines to process in: %s",
-			ErrChainListMalformed, iptablesOutput)
+		return chain{}, fmt.Errorf("iptables chain list output is malformed: not enough lines to process in: %s",
+			iptablesOutput)
 	}
 
 	c, err = parseChainGeneralDataLine(lines[0])
@@ -77,8 +75,8 @@ func parseChain(iptablesOutput string) (c chain, err error) {
 	legendLine := strings.TrimSpace(lines[1])
 	legendFields := strings.Fields(legendLine)
 	if !slices.Equal(expectedLegendFields, legendFields) {
-		return chain{}, fmt.Errorf("%w: legend %q is not the expected %q",
-			ErrChainListMalformed, legendLine, strings.Join(expectedLegendFields, " "))
+		return chain{}, fmt.Errorf("iptables chain list output is malformed: legend %q is not the expected %q",
+			legendLine, strings.Join(expectedLegendFields, " "))
 	}
 
 	lines = lines[2:] // remove chain general information line and legend line
@@ -111,8 +109,8 @@ func parseChainGeneralDataLine(line string) (base chain, err error) {
 	fields := strings.Fields(line)
 	const expectedNumberOfFields = 8
 	if len(fields) != expectedNumberOfFields {
-		return chain{}, fmt.Errorf("%w: expected %d fields in %q",
-			ErrChainListMalformed, expectedNumberOfFields, line)
+		return chain{}, fmt.Errorf("iptables chain list output is malformed: expected %d fields in %q",
+			expectedNumberOfFields, line)
 	}
 
 	// Sanity checks
@@ -126,8 +124,8 @@ func parseChainGeneralDataLine(line string) (base chain, err error) {
 		if fields[index] == expectedValue {
 			continue
 		}
-		return chain{}, fmt.Errorf("%w: expected %q for field %d in %q",
-			ErrChainListMalformed, expectedValue, index, line)
+		return chain{}, fmt.Errorf("iptables chain list output is malformed: expected %q for field %d in %q",
+			expectedValue, index, line)
 	}
 
 	base.name = fields[1] // chain name could be custom
@@ -152,19 +150,17 @@ func parseChainGeneralDataLine(line string) (base chain, err error) {
 	return base, nil
 }
 
-var ErrChainRuleMalformed = errors.New("chain rule is malformed")
-
 func parseChainRuleLine(line string) (rule chainRule, err error) {
 	line = strings.TrimSpace(line)
 	if line == "" {
-		return chainRule{}, fmt.Errorf("%w: empty line", ErrChainRuleMalformed)
+		return chainRule{}, errors.New("chain rule is malformed: empty line")
 	}
 
 	fields := strings.Fields(line)
 
 	const minFields = 10
 	if len(fields) < minFields {
-		return chainRule{}, fmt.Errorf("%w: not enough fields", ErrChainRuleMalformed)
+		return chainRule{}, errors.New("chain rule is malformed: not enough fields")
 	}
 
 	for fieldIndex, field := range fields[:minFields] {
@@ -186,7 +182,7 @@ func parseChainRuleLine(line string) (rule chainRule, err error) {
 
 func parseChainRuleField(fieldIndex int, field string, rule *chainRule) (err error) {
 	if field == "" {
-		return fmt.Errorf("%w: empty field at index %d", ErrChainRuleMalformed, fieldIndex)
+		return fmt.Errorf("chain rule is malformed: empty field at index %d", fieldIndex)
 	}
 
 	const (
@@ -278,8 +274,8 @@ func parseChainRuleOptionalFields(optionalFields []string, rule *chainRule) (err
 				rule.redirPorts = ports
 				i++
 			default:
-				return fmt.Errorf("%w: unexpected %q after redir",
-					ErrChainRuleMalformed, optionalFields[1])
+				return fmt.Errorf("chain rule is malformed: unexpected %q after redir",
+					optionalFields[1])
 			}
 		case "ctstate":
 			i++
@@ -294,14 +290,12 @@ func parseChainRuleOptionalFields(optionalFields []string, rule *chainRule) (err
 			rule.mark = mark
 			i += consumed
 		default:
-			return fmt.Errorf("%w: unexpected optional field: %s",
-				ErrChainRuleMalformed, optionalFields[i])
+			return fmt.Errorf("chain rule is malformed: unexpected optional field: %s",
+				optionalFields[i])
 		}
 	}
 	return nil
 }
-
-var errUDPOptionalUnknown = errors.New("unknown UDP optional field")
 
 func parseUDPOptional(optionalFields []string, rule *chainRule) (consumed int, err error) {
 	for _, value := range optionalFields {
@@ -323,13 +317,11 @@ func parseUDPOptional(optionalFields []string, rule *chainRule) (consumed int, e
 			}
 			consumed++
 		default:
-			return 0, fmt.Errorf("%w: %s", errUDPOptionalUnknown, value)
+			return 0, fmt.Errorf("unknown UDP optional field: %s", value)
 		}
 	}
 	return consumed, nil
 }
-
-var errTCPOptionalUnknown = errors.New("unknown TCP optional field")
 
 func parseTCPOptional(optionalFields []string, rule *chainRule) (consumed int, err error) {
 	for _, value := range optionalFields {
@@ -357,7 +349,7 @@ func parseTCPOptional(optionalFields []string, rule *chainRule) (consumed int, e
 			}
 			consumed++
 		default:
-			return 0, fmt.Errorf("%w: %s", errTCPOptionalUnknown, value)
+			return 0, fmt.Errorf("unknown TCP optional field: %s", value)
 		}
 	}
 	return consumed, nil
@@ -373,15 +365,13 @@ func parseSourcePort(value string) (port uint16, err error) {
 	return parsePort(value)
 }
 
-var errTCPFlagsMalformed = errors.New("TCP flags are malformed")
-
 func parseTCPFlags(value string) (tcpFlags, error) {
 	value = strings.TrimPrefix(value, "flags:")
 	fields := strings.Split(value, "/")
 	const expectedFields = 2
 	if len(fields) != expectedFields {
-		return tcpFlags{}, fmt.Errorf("%w: expected format 'flags:<mask>/<comparison>' in %q",
-			errTCPFlagsMalformed, value)
+		return tcpFlags{}, fmt.Errorf("TCP flags are malformed: expected format 'flags:<mask>/<comparison>' in %q",
+			value)
 	}
 	maskFlags := strings.Split(fields[0], ",")
 	mask := make([]tcpFlag, len(maskFlags))
@@ -422,8 +412,6 @@ func parsePortsCSV(s string) (ports []uint16, err error) {
 	return ports, nil
 }
 
-var errMarkValueMalformed = errors.New("mark value is malformed")
-
 func parseMark(optionalFields []string) (m mark, consumed int, err error) {
 	switch optionalFields[consumed] {
 	case "match":
@@ -437,18 +425,16 @@ func parseMark(optionalFields []string) (m mark, consumed int, err error) {
 		const bits = 32
 		value, err := strconv.ParseUint(optionalFields[consumed], base, bits)
 		if err != nil {
-			return mark{}, 0, fmt.Errorf("%w: %s", errMarkValueMalformed, optionalFields[consumed])
+			return mark{}, 0, fmt.Errorf("mark value is malformed: %s", optionalFields[consumed])
 		}
 		m.value = uint(value)
 		consumed++
 	default:
-		return mark{}, 0, fmt.Errorf("%w: unexpected mark mode field: %s",
-			ErrChainRuleMalformed, optionalFields[consumed])
+		return mark{}, 0, fmt.Errorf("chain rule is malformed: unexpected mark mode field: %s",
+			optionalFields[consumed])
 	}
 	return m, consumed, nil
 }
-
-var ErrLineNumberIsZero = errors.New("line number is zero")
 
 func parseLineNumber(s string) (n uint16, err error) {
 	const base, bitLength = 10, 16
@@ -456,22 +442,18 @@ func parseLineNumber(s string) (n uint16, err error) {
 	if err != nil {
 		return 0, err
 	} else if lineNumber == 0 {
-		return 0, fmt.Errorf("%w", ErrLineNumberIsZero)
+		return 0, errors.New("line number is zero")
 	}
 	return uint16(lineNumber), nil
 }
-
-var ErrTargetUnknown = errors.New("unknown target")
 
 func checkTarget(target string) (err error) {
 	switch target {
 	case "ACCEPT", "DROP", "REJECT", "REDIRECT":
 		return nil
 	}
-	return fmt.Errorf("%w: %s", ErrTargetUnknown, target)
+	return fmt.Errorf("unknown target: %s", target)
 }
-
-var ErrProtocolUnknown = errors.New("unknown protocol")
 
 func parseProtocol(s string) (protocol string, err error) {
 	switch s {
@@ -483,18 +465,16 @@ func parseProtocol(s string) (protocol string, err error) {
 	case "17", "udp":
 		protocol = "udp"
 	default:
-		return "", fmt.Errorf("%w: %s", ErrProtocolUnknown, s)
+		return "", fmt.Errorf("unknown protocol: %s", s)
 	}
 	return protocol, nil
 }
-
-var ErrMetricSizeMalformed = errors.New("metric size is malformed")
 
 // parseMetricSize parses a metric size string like 140K or 226M and
 // returns the raw integer matching it.
 func parseMetricSize(size string) (n uint64, err error) {
 	if size == "" {
-		return n, fmt.Errorf("%w: empty string", ErrMetricSizeMalformed)
+		return n, errors.New("metric size is malformed: empty string")
 	}
 
 	//nolint:mnd
@@ -516,7 +496,7 @@ func parseMetricSize(size string) (n uint64, err error) {
 	const base, bitLength = 10, 64
 	n, err = strconv.ParseUint(size, base, bitLength)
 	if err != nil {
-		return n, fmt.Errorf("%w: %w", ErrMetricSizeMalformed, err)
+		return n, fmt.Errorf("metric size is malformed: %w", err)
 	}
 	n *= multiplier
 	return n, nil

@@ -31,12 +31,10 @@ func Test_fetchServers(t *testing.T) {
 		responseStatus int
 		responseBody   io.ReadCloser
 		servers        []models.Server
-		errWrapped     error
 		errMessage     string
 	}{
 		"context canceled": {
 			ctx:        canceledCtx,
-			errWrapped: context.Canceled,
 			errMessage: `fetching HTML code: Get "https://www.vpnsecure.me/vpn-locations/": context canceled`,
 		},
 		"success": {
@@ -105,9 +103,10 @@ func Test_fetchServers(t *testing.T) {
 
 			servers, err := fetchServers(testCase.ctx, client, warner)
 
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if testCase.errWrapped != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 			assert.Equal(t, testCase.servers, servers)
 		})
@@ -121,12 +120,10 @@ func Test_parseHTML(t *testing.T) {
 		rootNode   *html.Node
 		servers    []models.Server
 		warnings   []string
-		errWrapped error
 		errMessage string
 	}{
 		"empty html": {
 			rootNode:   parseTestHTML(t, ""),
-			errWrapped: ErrHTMLServersDivNotFound,
 			errMessage: `HTML servers container div not found: in HTML code: <html><head></head><body></body></html>`,
 		},
 		"test data": {
@@ -223,9 +220,10 @@ func Test_parseHTML(t *testing.T) {
 
 			assert.Equal(t, testCase.servers, servers)
 			assert.Equal(t, testCase.warnings, warnings)
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if testCase.errWrapped != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}

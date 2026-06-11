@@ -2,7 +2,6 @@ package loop
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"reflect"
 	"sync"
@@ -30,8 +29,6 @@ func (l *Loop) GetStatus() (status models.LoopStatus) {
 	defer l.state.statusMu.RUnlock()
 	return l.state.status
 }
-
-var ErrInvalidStatus = errors.New("invalid status")
 
 func (l *Loop) SetStatus(ctx context.Context, status models.LoopStatus) (outcome string, err error) {
 	l.state.statusMu.Lock()
@@ -79,8 +76,8 @@ func (l *Loop) SetStatus(ctx context.Context, status models.LoopStatus) (outcome
 		l.state.status = newStatus
 		return status.String(), nil
 	default:
-		return "", fmt.Errorf("%w: %s: it can only be one of: %s, %s",
-			ErrInvalidStatus, status, constants.Running, constants.Stopped)
+		return "", fmt.Errorf("invalid status: %s: it can only be one of: %s, %s",
+			status, constants.Running, constants.Stopped)
 	}
 }
 

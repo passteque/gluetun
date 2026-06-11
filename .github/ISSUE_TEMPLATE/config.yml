@@ -4,8 +4,8 @@ contact_links:
     url: https://github.com/qdm12/gluetun-wiki/issues/new/choose
     about: Please create an issue on the gluetun-wiki repository.
   - name: Configuration help?
-    url: https://github.com/qdm12/gluetun/discussions/new/choose
+    url: https://github.com/passteque/gluetun/discussions/new/choose
     about: Please create a Github discussion.
   - name: Unraid template issue
-    url: https://github.com/qdm12/gluetun/discussions/550
+    url: https://github.com/passteque/gluetun/discussions/550
     about: Please read the relevant Github discussion.

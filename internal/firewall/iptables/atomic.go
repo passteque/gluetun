@@ -41,8 +41,7 @@ func (c *Config) saveAndRestore(ctx context.Context) (restore func(context.Conte
 // Callers of saveAndRestoreIPv4 MUST always lock the [Config] iptablesMutex
 // before calling this function.
 func (c *Config) saveAndRestoreIPv4(ctx context.Context) (restore func(context.Context), err error) {
-	cmd := exec.CommandContext(ctx, c.ipTables+"-save") //nolint:gosec
-	data, err := c.runner.Run(cmd)
+	data, err := saveData(ctx, c.ipTables)
 	if err != nil {
 		return nil, fmt.Errorf("saving IPv4 iptables: %w", err)
 	}
@@ -65,14 +64,13 @@ func (c *Config) saveAndRestoreIPv6(ctx context.Context) (restore func(context.C
 		return nil, nil //nolint:nilnil
 	}
 
-	cmd := exec.CommandContext(ctx, c.ip6Tables+"-save") //nolint:gosec
-	data, err := c.runner.Run(cmd)
+	data, err := saveData(ctx, c.ip6Tables)
 	if err != nil {
 		return nil, fmt.Errorf("saving IPv6 iptables: %w", err)
 	}
 
 	restore = func(ctx context.Context) {
-		cmd = exec.CommandContext(ctx, c.ip6Tables+"-restore") //nolint:gosec
+		cmd := exec.CommandContext(ctx, c.ip6Tables+"-restore") //nolint:gosec
 		cmd.Stdin = strings.NewReader(data)
 		output, err := c.runner.Run(cmd)
 		if err != nil {
@@ -84,4 +82,38 @@ func (c *Config) saveAndRestoreIPv6(ctx context.Context) (restore func(context.C
 
 func makeRestoreErrorMessage(err error, output, data string) string {
 	return fmt.Sprintf("%s: %s: restoring from data:\n%s", err, output, data)
+}
+
+func saveData(ctx context.Context, binary string) (data string, err error) {
+	cmd := exec.CommandContext(ctx, binary+"-save") //nolint:gosec
+	output, err := cmd.Output()
+	if err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			stderr := strings.TrimSuffix(string(exitErr.Stderr), "\n")
+			if stderr != "" {
+				return "", fmt.Errorf("running %s-save: %w: %s", binary, err, stderr)
+			}
+		}
+		return "", fmt.Errorf("running %s-save: %w", binary, err)
+	}
+	return filterData(output)
+}
+
+func filterData(cmdOutput []byte) (filtered string, err error) {
+	lines := strings.Split(string(cmdOutput), "\n")
+	filteredLines := make([]string, 0, len(lines))
+	for _, line := range lines {
+		switch {
+		case strings.HasPrefix(line, ":DOCKER_OUTPUT"),
+			strings.HasPrefix(line, ":DOCKER_POSTROUTING"),
+			strings.HasPrefix(line, "-A DOCKER_OUTPUT"),
+			strings.HasPrefix(line, "-A DOCKER_POSTROUTING"):
+			// Do not touch (aka save and restore) NAT rules added by Docker
+			continue
+		case strings.Contains(line, "[unsupported revision]"):
+			return "", fmt.Errorf("mismatch container iptables-save and kernel: %s", line)
+		}
+		filteredLines = append(filteredLines, line)
+	}
+	return strings.Join(filteredLines, "\n"), nil
 }

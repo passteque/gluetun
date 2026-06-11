@@ -37,14 +37,9 @@ func (h *portForwardHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (h *portForwardHandler) getPortForwarded(w http.ResponseWriter) {
 	ports := h.portForward.GetPortsForwarded()
 	encoder := json.NewEncoder(w)
-	var data any
-	switch len(ports) {
-	case 0:
-		data = portWrapper{Port: 0} // TODO v4 change to portsWrapper
-	case 1:
-		data = portWrapper{Port: ports[0]} // TODO v4 change to portsWrapper
-	default:
-		data = portsWrapper{Ports: ports}
+	data := portsWrapper{Ports: ports}
+	if len(ports) > 0 {
+		data.Port = ports[0] // TODO v4 remove
 	}
 
 	err := encoder.Encode(data)

@@ -2,7 +2,8 @@ package utils
 
 import (
 	"fmt"
-	"math/rand"
+	"math/rand/v2"
+	"slices"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/constants"
@@ -36,13 +37,20 @@ func GetConnection(provider string,
 	selection settings.ServerSelection,
 	defaults ConnectionDefaults,
 	ipv6Supported bool,
-	randSource rand.Source) (
+	connPicker *ConnectionPicker,
+) (
 	connection models.Connection, err error,
 ) {
 	servers, err := storage.FilterServers(provider, selection)
 	if err != nil {
 		return connection, fmt.Errorf("filtering servers: %w", err)
 	}
+
+	// Randomize order of the servers struct so the first connection to be picked
+	// won't always be the same one.
+	rand.Shuffle(len(servers), func(i, j int) {
+		servers[i], servers[j] = servers[j], servers[i]
+	})
 
 	protocol := getProtocol(selection)
 	port := getPort(selection, defaults.OpenVPNTCPPort,
@@ -84,7 +92,20 @@ func GetConnection(provider string,
 		}
 	}
 
-	return pickConnection(connections, selection, randSource)
+	slices.SortStableFunc(connections, func(a, b models.Connection) int {
+		aIPv6 := a.IP.Is6()
+		bIPv6 := b.IP.Is6()
+		switch {
+		case aIPv6 && !bIPv6:
+			return -1
+		case !aIPv6 && bIPv6:
+			return 1
+		default:
+			return 0
+		}
+	})
+
+	return pickConnection(connections, selection, connPicker)
 }
 
 func getPortForServer(server models.Server, protocol string, defaultTCPPort, defaultUDPPort uint16) (port uint16) {

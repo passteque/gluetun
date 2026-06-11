@@ -3,15 +3,12 @@ package updater
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 	"net/netip"
 	"strconv"
 	"time"
 )
-
-var ErrHTTPStatusCodeNotOK = errors.New("HTTP status code not OK")
 
 type apiData struct {
 	Data []regionData `json:"data"`
@@ -55,7 +52,7 @@ func fetchAPI(ctx context.Context, client *http.Client) (
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		return data, fmt.Errorf("%w: %d %s", ErrHTTPStatusCodeNotOK,
+		return data, fmt.Errorf("HTTP status code not OK: %d %s",
 			response.StatusCode, response.Status)
 	}
 

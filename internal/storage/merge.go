@@ -30,6 +30,20 @@ func (s *Storage) mergeServers(hardcoded, persisted models.AllServers) models.Al
 func (s *Storage) mergeProviderServers(provider string,
 	hardcoded, persisted models.Servers,
 ) (merged models.Servers) {
+	if persisted.Preferred && persisted.Version != hardcoded.Version {
+		s.logger.Warn(fmt.Sprintf(
+			"persisted preferred %s servers are discarded because they have version %d and hardcoded servers have version %d",
+			provider, persisted.Version, hardcoded.Version))
+	}
+
+	// If persisted data is marked as preferred, use it regardless of timestamp
+	// (as long as versions match)
+	if persisted.Preferred && persisted.Version == hardcoded.Version && len(persisted.Servers) > 0 {
+		s.logger.Info(fmt.Sprintf(
+			"Using %s servers from file (marked as preferred)", provider))
+		return persisted
+	}
+
 	nowTimestamp := time.Now().Unix()
 	if persisted.Timestamp > nowTimestamp {
 		s.logger.Warn(fmt.Sprintf(

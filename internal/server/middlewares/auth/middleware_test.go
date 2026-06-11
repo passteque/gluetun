@@ -32,28 +32,28 @@ func Test_authHandler_ServeHTTP(t *testing.T) {
 			},
 			makeLogger: func(ctrl *gomock.Controller) *MockDebugLogger {
 				logger := NewMockDebugLogger(ctrl)
-				logger.EXPECT().Debugf("no authentication role defined for route %s", "GET /b")
+				logger.EXPECT().Debugf("url path %s is not a valid route", "/b")
 				return logger
 			},
 			requestMethod: http.MethodGet,
 			requestPath:   "/b",
-			statusCode:    http.StatusUnauthorized,
-			responseBody:  "Unauthorized\n",
+			statusCode:    http.StatusNotFound,
+			responseBody:  "Not Found\n",
 		},
 		"authorized_none": {
 			settings: Settings{
 				Roles: []Role{
-					{Name: "role1", Auth: AuthNone, Routes: []string{"GET /a"}},
+					{Name: "role1", Auth: AuthNone, Routes: []string{"GET /v1/portforward"}},
 				},
 			},
 			makeLogger: func(ctrl *gomock.Controller) *MockDebugLogger {
 				logger := NewMockDebugLogger(ctrl)
 				logger.EXPECT().Debugf("access to route %s authorized for role %s",
-					"GET /a", "role1")
+					"GET /v1/portforward", "role1")
 				return logger
 			},
 			requestMethod: http.MethodGet,
-			requestPath:   "/a",
+			requestPath:   "/v1/portforward",
 			statusCode:    http.StatusOK,
 		},
 	}

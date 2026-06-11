@@ -9,7 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func boolPtr(b bool) *bool       { return &b }
 func uint16Ptr(n uint16) *uint16 { return &n }
 
 func Test_GetPort(t *testing.T) {

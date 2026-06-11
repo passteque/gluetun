@@ -12,11 +12,6 @@ import (
 	"github.com/qdm12/gluetun/internal/pmtud/test"
 )
 
-var (
-	ErrMTUNotFound = errors.New("MTU not found")
-	ErrMSSTooSmall = errors.New("TCP MSS is too small to find the MTU")
-)
-
 type testUnit struct {
 	mtu uint32
 	ok  bool
@@ -178,5 +173,5 @@ func pathMTUDiscover(ctx context.Context, fd fileDescriptor,
 		}
 	}
 
-	return 0, fmt.Errorf("%w: your connection might not be working at all", ErrMTUNotFound)
+	return 0, errors.New("MTU not found: your connection might not be working at all")
 }

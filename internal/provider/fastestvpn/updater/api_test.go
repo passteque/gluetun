@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/qdm12/gluetun/internal/provider/common"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -21,8 +20,6 @@ func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) {
 func Test_fechAPIServers(t *testing.T) {
 	t.Parallel()
 
-	errTest := errors.New("test error")
-
 	testCases := map[string]struct {
 		ctx            context.Context
 		protocol       string
@@ -31,7 +28,6 @@ func Test_fechAPIServers(t *testing.T) {
 		responseBody   io.ReadCloser
 		transportErr   error
 		servers        []apiServer
-		errWrapped     error
 		errMessage     string
 	}{
 		"transport_error": {
@@ -39,8 +35,7 @@ func Test_fechAPIServers(t *testing.T) {
 			protocol:       "tcp",
 			requestBody:    "action=vpn_servers&protocol=tcp",
 			responseStatus: http.StatusOK,
-			transportErr:   errTest,
-			errWrapped:     errTest,
+			transportErr:   errors.New("test error"),
 			errMessage: `sending request: Post ` +
 				`"https://support.fastestvpn.com/wp-admin/admin-ajax.php": ` +
 				`test error`,
@@ -50,7 +45,6 @@ func Test_fechAPIServers(t *testing.T) {
 			protocol:       "tcp",
 			requestBody:    "action=vpn_servers&protocol=tcp",
 			responseStatus: http.StatusNotFound,
-			errWrapped:     common.ErrHTTPStatusCodeNotOK,
 			errMessage:     "HTTP status code not OK: 404",
 		},
 		"empty_data": {
@@ -110,9 +104,10 @@ func Test_fechAPIServers(t *testing.T) {
 
 			entries, err := fetchAPIServers(testCase.ctx, client, testCase.protocol)
 
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if testCase.errWrapped != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 			assert.Equal(t, testCase.servers, entries)
 		})

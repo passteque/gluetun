@@ -38,7 +38,7 @@ func Test_makeDeviceConfig(t *testing.T) {
 			settings: Settings{
 				PrivateKey: "bad key",
 			},
-			err: ErrPrivateKeyInvalid,
+			err: errors.New("cannot parse private key"),
 		},
 		"bad public key": {
 			settings: Settings{

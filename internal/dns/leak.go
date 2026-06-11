@@ -3,7 +3,6 @@ package dns
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"math/rand/v2"
@@ -63,8 +62,6 @@ func generateRandomString(length uint) string {
 	return string(b)
 }
 
-var errIPLeakSessionMismatch = errors.New("ipleak.net session mismatch")
-
 func triggerDNSQuery(ctx context.Context, client *http.Client, session string) (
 	dnsToCount map[string]uint, err error,
 ) {
@@ -93,7 +90,7 @@ func triggerDNSQuery(ctx context.Context, client *http.Client, session string) (
 	if err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
 	} else if data.Session != session {
-		return nil, fmt.Errorf("%w: expected %s, got %s", errIPLeakSessionMismatch, session, data.Session)
+		return nil, fmt.Errorf("ipleak.net session mismatch: expected %s, got %s", session, data.Session)
 	}
 
 	return data.IP, nil

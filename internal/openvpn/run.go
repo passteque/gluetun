@@ -29,19 +29,16 @@ func (r *Runner) Run(ctx context.Context, errCh chan<- error, ready chan<- struc
 		return
 	}
 
-	streamCtx, streamCancel := context.WithCancel(context.Background())
 	streamDone := make(chan struct{})
-	go streamLines(streamCtx, streamDone, r.logger,
+	go streamLines(streamDone, r.logger,
 		stdoutLines, stderrLines, ready)
 
 	select {
 	case <-ctx.Done():
 		<-waitError
-		streamCancel()
 		<-streamDone
 		errCh <- ctx.Err()
 	case err := <-waitError:
-		streamCancel()
 		<-streamDone
 		errCh <- err
 	}

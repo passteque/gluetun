@@ -1,7 +1,6 @@
 package api
 
 import (
-	"errors"
 	"fmt"
 	"maps"
 	"net/http"
@@ -58,8 +57,6 @@ func New(nameTokenPairs []NameToken, client *http.Client) (
 
 var regexEchoipURL = regexp.MustCompile(`^http(s|):\/\/.+$`)
 
-var ErrProviderNotValid = errors.New("API name is not valid")
-
 func ParseProvider(s string) (provider Provider, err error) {
 	possibleProviders := []Provider{
 		Cloudflare,
@@ -97,11 +94,9 @@ func ParseProvider(s string) (provider Provider, err error) {
 		providerStrings = append(providerStrings, "a custom "+prefix+" url")
 	}
 
-	return "", fmt.Errorf(`%w: %q can only be %s`,
-		ErrProviderNotValid, s, orStrings(providerStrings))
+	return "", fmt.Errorf("API name is not valid: %q can only be %s",
+		s, orStrings(providerStrings))
 }
-
-var ErrCustomURLNotValid = errors.New("custom URL is not valid")
 
 func checkCustomURL(s, prefix string, regex *regexp.Regexp) (match bool, err error) {
 	if !strings.HasPrefix(s, prefix) {
@@ -110,15 +105,15 @@ func checkCustomURL(s, prefix string, regex *regexp.Regexp) (match bool, err err
 	s = strings.TrimPrefix(s, prefix)
 	_, err = url.Parse(s)
 	if err != nil {
-		return true, fmt.Errorf("%s %w: %w", prefix, ErrCustomURLNotValid, err)
+		return true, fmt.Errorf("%s custom URL is not valid: %w", prefix, err)
 	}
 
 	if regex.MatchString(s) {
 		return true, nil
 	}
 
-	return true, fmt.Errorf("%s %w: %q does not match regular expression: %s",
-		prefix, ErrCustomURLNotValid, s, regex)
+	return true, fmt.Errorf("%s custom URL is not valid: "+
+		"%q does not match regular expression: %s", prefix, s, regex)
 }
 
 func orStrings(strings []string) (result string) {

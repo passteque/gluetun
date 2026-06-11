@@ -13,14 +13,14 @@ func (p *Provider) GetConnection(selection settings.ServerSelection, ipv6Support
 	// Set port defaults depending on encryption preset.
 	var defaults utils.ConnectionDefaults
 	switch *selection.OpenVPN.PIAEncPreset {
-	case presets.None, presets.Normal:
+	case presets.Normal:
 		defaults.OpenVPNTCPPort = 502
 		defaults.OpenVPNUDPPort = 1198
 	case presets.Strong:
-		defaults.OpenVPNTCPPort = 501
-		defaults.OpenVPNUDPPort = 1197
+		defaults.OpenVPNTCPPort = 8443
+		defaults.OpenVPNUDPPort = 8080
 	}
 
 	return utils.GetConnection(p.Name(),
-		p.storage, selection, defaults, ipv6Supported, p.randSource)
+		p.storage, selection, defaults, ipv6Supported, p.connPicker)
 }

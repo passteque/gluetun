@@ -2,6 +2,7 @@ package icmp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -115,7 +116,7 @@ func getIPv6PacketTooBig(ctx context.Context, ip netip.Addr,
 			if err != nil {
 				return 0, fmt.Errorf("checking invoking message id: %w", err)
 			} else if idMatch {
-				return 0, fmt.Errorf("%w", ErrDestinationUnreachable)
+				return 0, errors.New("ICMP destination unreachable")
 			}
 			logger.Debug("discarding received ICMP destination unreachable reply with an unknown id")
 			continue
@@ -128,7 +129,7 @@ func getIPv6PacketTooBig(ctx context.Context, ip netip.Addr,
 				inboundID, outboundID)
 			continue
 		default:
-			return 0, fmt.Errorf("%w: %T", ErrBodyUnsupported, typedBody)
+			return 0, fmt.Errorf("ICMP body type %T is not supported", typedBody)
 		}
 	}
 }

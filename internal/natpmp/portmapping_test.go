@@ -25,18 +25,15 @@ func Test_Client_AddPortMapping(t *testing.T) {
 		assignedInternalPort      uint16
 		assignedExternalPort      uint16
 		assignedLifetime          time.Duration
-		err                       error
 		errMessage                string
 	}{
 		"lifetime_too_long": {
 			lifetime:   time.Duration(uint64(^uint32(0))+1) * time.Second,
-			err:        ErrLifetimeTooLong,
 			errMessage: "lifetime is too long: 4294967296 seconds must at most 4294967295 seconds",
 		},
 		"protocol_unknown": {
 			lifetime:   time.Second,
 			protocol:   "xyz",
-			err:        ErrNetworkProtocolUnknown,
 			errMessage: "network protocol is unknown: xyz",
 		},
 		"rpc_error": {
@@ -48,7 +45,6 @@ func Test_Client_AddPortMapping(t *testing.T) {
 			lifetime:                  1200 * time.Second,
 			initialConnectionDuration: time.Millisecond,
 			exchanges:                 []udpExchange{{close: true}},
-			err:                       ErrConnectionTimeout,
 			errMessage: "executing remote procedure call: connection timeout: failed attempts: " +
 				"read udp 127.0.0.1:[1-9][0-9]{0,4}->127.0.0.1:[1-9][0-9]{0,4}: i/o timeout \\(try 1\\)",
 		},
@@ -136,9 +132,6 @@ func Test_Client_AddPortMapping(t *testing.T) {
 			assert.Equal(t, testCase.assignedExternalPort, assignedExternalPort)
 			assert.Equal(t, testCase.assignedLifetime, assignedLifetime)
 			if testCase.errMessage != "" {
-				if testCase.err != nil {
-					assert.ErrorIs(t, err, testCase.err)
-				}
 				assert.Regexp(t, "^"+testCase.errMessage+"$", err.Error())
 			} else {
 				assert.NoError(t, err)

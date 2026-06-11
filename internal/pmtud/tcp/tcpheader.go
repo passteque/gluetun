@@ -2,7 +2,6 @@ package tcp
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 
 	"github.com/qdm12/gluetun/internal/pmtud/constants"
@@ -120,17 +119,11 @@ type tcpHeader struct {
 	options    options
 }
 
-var (
-	errTCPHeaderTooShort    = errors.New("TCP header is too short")
-	errTCPHeaderDataOffset  = errors.New("TCP header data offset is invalid")
-	errTCPPacketTypeUnknown = errors.New("TCP packet type is unknown")
-)
-
 // parseTCPHeader parses the TCP header from b.
 // b should be the entire TCP packet bytes.
 func parseTCPHeader(b []byte) (header tcpHeader, err error) {
 	if len(b) < int(constants.BaseTCPHeaderLength) {
-		return tcpHeader{}, fmt.Errorf("%w: %d bytes", errTCPHeaderTooShort, len(b))
+		return tcpHeader{}, fmt.Errorf("TCP header is too short: %d bytes", len(b))
 	}
 
 	header.srcPort = binary.BigEndian.Uint16(b[0:2])
@@ -146,11 +139,11 @@ func parseTCPHeader(b []byte) (header tcpHeader, err error) {
 
 	switch {
 	case uint32(header.dataOffset) < constants.BaseTCPHeaderLength:
-		return tcpHeader{}, fmt.Errorf("%w: data offset is %d bytes, expected at least %d bytes",
-			errTCPHeaderDataOffset, header.dataOffset, constants.BaseTCPHeaderLength)
+		return tcpHeader{}, fmt.Errorf("TCP header data offset is invalid: "+
+			"data offset is %d bytes, expected at least %d bytes", header.dataOffset, constants.BaseTCPHeaderLength)
 	case int(header.dataOffset) > len(b):
-		return tcpHeader{}, fmt.Errorf("%w: data offset is %d bytes, but packet is only %d bytes",
-			errTCPHeaderDataOffset, header.dataOffset, len(b))
+		return tcpHeader{}, fmt.Errorf("TCP header data offset is invalid: "+
+			"data offset is %d bytes, but packet is only %d bytes", header.dataOffset, len(b))
 	}
 
 	if uint32(header.dataOffset) > constants.BaseTCPHeaderLength {
@@ -186,7 +179,7 @@ func parseTCPHeader(b []byte) (header tcpHeader, err error) {
 	case flags&ackFlag != 0:
 		header.typ = packetTypeACK
 	default:
-		return tcpHeader{}, fmt.Errorf("%w: flags are 0x%02x", errTCPPacketTypeUnknown, flags)
+		return tcpHeader{}, fmt.Errorf("TCP packet type is unknown: flags are 0x%02x", flags)
 	}
 
 	header.seq = binary.BigEndian.Uint32(b[4:8])
@@ -206,15 +199,6 @@ type optionTimestamps struct {
 	echo  uint32
 }
 
-var (
-	errTCPOptionLengthTruncated    = errors.New("TCP option length is truncated")
-	ErrTCPOptionLengthInvalid      = errors.New("TCP option length is invalid")
-	ErrTCPOptionMSSInvalid         = errors.New("TCP option MSS value is invalid")
-	ErrTCPOptionWindowScaleInvalid = errors.New("TCP option Window Scale value is invalid")
-	ErrTCPOptionTimestampsInvalid  = errors.New("TCP option Timestamps value is invalid")
-	errTCPOptionTypeUnknown        = errors.New("TCP option type is unknown")
-)
-
 func parseTCPOptions(b []byte) (parsed options, err error) {
 	i := 0
 	for i < len(b) {
@@ -232,7 +216,7 @@ func parseTCPOptions(b []byte) (parsed options, err error) {
 		// Handle TLV (Type-Length-Value) options
 		if i+1 >= len(b) {
 			// This should not happen for DF packets.
-			return options{}, fmt.Errorf("%w: at offset %d", errTCPOptionLengthTruncated, i)
+			return options{}, fmt.Errorf("TCP option length is truncated: at offset %d", i)
 		}
 
 		length := int(b[i+1])
@@ -240,11 +224,11 @@ func parseTCPOptions(b []byte) (parsed options, err error) {
 		maxLength := len(b) - i
 		switch {
 		case length < minLength:
-			return options{}, fmt.Errorf("%w: type %d at offset %d has length %d < %d",
-				ErrTCPOptionLengthInvalid, optionType, i, length, minLength)
+			return options{}, fmt.Errorf("TCP option length is invalid: "+
+				"type %d at offset %d has length %d < %d", optionType, i, length, minLength)
 		case length > maxLength:
-			return options{}, fmt.Errorf("%w: type %d at offset %d has length %d > %d",
-				ErrTCPOptionLengthInvalid, optionType, i, length, maxLength)
+			return options{}, fmt.Errorf("TCP option length is invalid: "+
+				"type %d at offset %d has length %d > %d", optionType, i, length, maxLength)
 		}
 
 		data := b[i+2 : i+length]
@@ -259,15 +243,15 @@ func parseTCPOptions(b []byte) (parsed options, err error) {
 		case optionTypeMSS:
 			const expectedLength = 4
 			if length != expectedLength {
-				return options{}, fmt.Errorf("%w: MSS option at offset %d has length %d, expected %d",
-					ErrTCPOptionMSSInvalid, i, length, expectedLength)
+				return options{}, fmt.Errorf("TCP option MSS value is invalid: "+
+					"MSS option at offset %d has length %d, expected %d", i, length, expectedLength)
 			}
 			parsed.mss = uint32(binary.BigEndian.Uint16(data))
 		case optionTypeWindowScale:
 			const expectedLength = 3
 			if length != expectedLength {
-				return options{}, fmt.Errorf("%w: window scale option at offset %d has length %d, expected %d",
-					ErrTCPOptionWindowScaleInvalid, i, length, expectedLength)
+				return options{}, fmt.Errorf("TCP option Window Scale value is invalid: "+
+					"window scale option at offset %d has length %d, expected %d", i, length, expectedLength)
 			}
 			windowScale := data[0]
 			parsed.windowScale = &windowScale
@@ -276,15 +260,15 @@ func parseTCPOptions(b []byte) (parsed options, err error) {
 		case optionTypeTimestamps:
 			const expectedLength = 10
 			if length != expectedLength {
-				return options{}, fmt.Errorf("%w: timestamps option at offset %d has length %d, expected %d",
-					ErrTCPOptionTimestampsInvalid, i, length, expectedLength)
+				return options{}, fmt.Errorf("TCP option Timestamps value is invalid: "+
+					"timestamps option at offset %d has length %d, expected %d", i, length, expectedLength)
 			}
 			parsed.timestamps = &optionTimestamps{
 				value: binary.BigEndian.Uint32(data[:4]),
 				echo:  binary.BigEndian.Uint32(data[4:]),
 			}
 		default:
-			return options{}, fmt.Errorf("%w: type %d", errTCPOptionTypeUnknown, optionType)
+			return options{}, fmt.Errorf("TCP option type is unknown: type %d", optionType)
 		}
 
 		i += length

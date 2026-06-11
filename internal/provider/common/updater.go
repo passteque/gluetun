@@ -10,10 +10,8 @@ import (
 )
 
 var (
-	ErrNotEnoughServers     = errors.New("not enough servers found")
-	ErrHTTPStatusCodeNotOK  = errors.New("HTTP status code not OK")
-	ErrIPFetcherUnsupported = errors.New("IP fetcher not supported")
-	ErrCredentialsMissing   = errors.New("credentials missing")
+	ErrNotEnoughServers   = errors.New("not enough servers found")
+	ErrCredentialsMissing = errors.New("credentials are missing")
 )
 
 type Fetcher interface {

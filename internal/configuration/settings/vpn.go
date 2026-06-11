@@ -37,7 +37,7 @@ func (v *VPN) Validate(filterChoicesGetter FilterChoicesGetter, ipv6Supported bo
 	// Validate Type
 	validVPNTypes := []string{vpn.AmneziaWg, vpn.OpenVPN, vpn.Wireguard}
 	if err = validate.IsOneOf(v.Type, validVPNTypes...); err != nil {
-		return fmt.Errorf("%w: %w", ErrVPNTypeNotValid, err)
+		return fmt.Errorf("VPN type is not valid: %w", err)
 	}
 
 	err = v.Provider.validate(v.Type, filterChoicesGetter, warner)

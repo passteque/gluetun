@@ -2,6 +2,7 @@ package settings
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"regexp"
 	"strings"
@@ -92,7 +93,7 @@ func (o OpenVPN) validate(vpnProvider string) (err error) {
 	// Validate version
 	validVersions := []string{openvpn.Openvpn25, openvpn.Openvpn26}
 	if err = validate.IsOneOf(o.Version, validVersions...); err != nil {
-		return fmt.Errorf("%w: %w", ErrOpenVPNVersionIsNotValid, err)
+		return fmt.Errorf("version is not valid: %w", err)
 	}
 
 	isCustom := vpnProvider == providers.Custom
@@ -101,14 +102,14 @@ func (o OpenVPN) validate(vpnProvider string) (err error) {
 		vpnProvider != providers.VPNSecure
 
 	if isUserRequired && *o.User == "" {
-		return fmt.Errorf("%w", ErrOpenVPNUserIsEmpty)
+		return errors.New("user is empty")
 	}
 
 	passwordRequired := isUserRequired &&
 		(vpnProvider != providers.Ivpn || !ivpnAccountID.MatchString(*o.User))
 
 	if passwordRequired && *o.Password == "" {
-		return fmt.Errorf("%w", ErrOpenVPNPasswordIsEmpty)
+		return errors.New("password is empty")
 	}
 
 	err = validateOpenVPNConfigFilepath(isCustom, *o.ConfFile)
@@ -132,23 +133,20 @@ func (o OpenVPN) validate(vpnProvider string) (err error) {
 	}
 
 	if *o.EncryptedKey != "" && *o.KeyPassphrase == "" {
-		return fmt.Errorf("%w", ErrOpenVPNKeyPassphraseIsEmpty)
+		return errors.New("key passphrase is empty")
 	}
 
 	const maxMSSFix = 10000
 	if *o.MSSFix > maxMSSFix {
-		return fmt.Errorf("%w: %d is over the maximum value of %d",
-			ErrOpenVPNMSSFixIsTooHigh, *o.MSSFix, maxMSSFix)
+		return fmt.Errorf("mssfix option value is too high: %d is over the maximum value of %d", *o.MSSFix, maxMSSFix)
 	}
 
 	if !regexpInterfaceName.MatchString(o.Interface) {
-		return fmt.Errorf("%w: '%s' does not match regex '%s'",
-			ErrOpenVPNInterfaceNotValid, o.Interface, regexpInterfaceName)
+		return fmt.Errorf("interface name is not valid: '%s' does not match regex '%s'", o.Interface, regexpInterfaceName)
 	}
 
 	if *o.Verbosity < 0 || *o.Verbosity > 6 {
-		return fmt.Errorf("%w: %d can only be between 0 and 5",
-			ErrOpenVPNVerbosityIsOutOfBounds, o.Verbosity)
+		return fmt.Errorf("verbosity value is out of bounds: %d can only be between 0 and 5", o.Verbosity)
 	}
 
 	return nil
@@ -162,7 +160,7 @@ func validateOpenVPNConfigFilepath(isCustom bool,
 	}
 
 	if confFile == "" {
-		return fmt.Errorf("%w", ErrFilepathMissing)
+		return errors.New("filepath is missing")
 	}
 
 	err = validate.FileExists(confFile)
@@ -189,7 +187,7 @@ func validateOpenVPNClientCertificate(vpnProvider,
 		providers.VPNSecure,
 		providers.VPNUnlimited:
 		if clientCert == "" {
-			return fmt.Errorf("%w", ErrMissingValue)
+			return errors.New("missing value")
 		}
 	}
 
@@ -211,7 +209,7 @@ func validateOpenVPNClientKey(vpnProvider, clientKey string) (err error) {
 		providers.Cyberghost,
 		providers.VPNUnlimited:
 		if clientKey == "" {
-			return fmt.Errorf("%w", ErrMissingValue)
+			return errors.New("missing value")
 		}
 	}
 
@@ -230,7 +228,7 @@ func validateOpenVPNEncryptedKey(vpnProvider,
 	encryptedPrivateKey string,
 ) (err error) {
 	if vpnProvider == providers.VPNSecure && encryptedPrivateKey == "" {
-		return fmt.Errorf("%w", ErrMissingValue)
+		return errors.New("missing value")
 	}
 
 	if encryptedPrivateKey == "" {

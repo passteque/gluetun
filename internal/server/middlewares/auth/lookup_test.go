@@ -13,7 +13,6 @@ func Test_settingsToLookupMap(t *testing.T) {
 	testCases := map[string]struct {
 		settings     Settings
 		routeToRoles map[string][]internalRole
-		errWrapped   error
 		errMessage   string
 	}{
 		"empty_settings": {
@@ -23,7 +22,6 @@ func Test_settingsToLookupMap(t *testing.T) {
 			settings: Settings{
 				Roles: []Role{{Name: "a", Auth: "bad"}},
 			},
-			errWrapped: ErrMethodNotSupported,
 			errMessage: "authentication method not supported: bad",
 		},
 		"success": {
@@ -51,9 +49,10 @@ func Test_settingsToLookupMap(t *testing.T) {
 			routeToRoles, err := settingsToLookupMap(testCase.settings)
 
 			assert.Equal(t, testCase.routeToRoles, routeToRoles)
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if testCase.errWrapped != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}

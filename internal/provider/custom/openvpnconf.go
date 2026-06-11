@@ -1,18 +1,16 @@
 package custom
 
 import (
-	"errors"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
+	"github.com/qdm12/gluetun/internal/constants"
 	"github.com/qdm12/gluetun/internal/constants/openvpn"
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/utils"
 )
-
-var ErrExtractData = errors.New("failed extracting information from custom configuration file")
 
 func (p *Provider) OpenVPNConfig(connection models.Connection,
 	settings settings.OpenVPN, ipv6Supported bool,
@@ -68,7 +66,11 @@ func modifyConfig(lines []string, connection models.Connection,
 	}
 
 	// Add values
-	modified = append(modified, "proto "+connection.Protocol)
+	protocol := connection.Protocol
+	if protocol == constants.TCP {
+		protocol = "tcp-client"
+	}
+	modified = append(modified, "proto "+protocol)
 	modified = append(modified, fmt.Sprintf("remote %s %d", connection.IP, connection.Port))
 	modified = append(modified, "dev "+settings.Interface)
 	modified = append(modified, "mute-replay-warnings")
@@ -76,6 +78,7 @@ func modifyConfig(lines []string, connection models.Connection,
 	modified = append(modified, "pull-filter ignore \"auth-token\"") // prevent auth failed loop
 	modified = append(modified, "auth-retry nointeract")
 	modified = append(modified, "suppress-timestamps")
+	modified = append(modified, "hand-window 20") // default is 60 seconds which is too long
 	if *settings.User != "" {
 		modified = append(modified, "auth-user-pass "+openvpn.AuthConf)
 	}

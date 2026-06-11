@@ -3,7 +3,6 @@ package models
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"math"
 	"reflect"
@@ -155,10 +154,10 @@ func (a *AllServers) Count() (count int) {
 type Servers struct {
 	Version   uint16   `json:"version"`
 	Timestamp int64    `json:"timestamp"`
+	Preferred bool     `json:"preferred,omitempty"`
+	Filepath  string   `json:"filepath,omitempty"`
 	Servers   []Server `json:"servers,omitempty"`
 }
-
-var ErrServersFormatNotSupported = errors.New("servers format not supported")
 
 func (s *Servers) Format(vpnProvider, format string) (formatted string, err error) {
 	switch format {
@@ -167,7 +166,7 @@ func (s *Servers) Format(vpnProvider, format string) (formatted string, err erro
 	case "json":
 		return s.toJSON()
 	default:
-		return "", fmt.Errorf("%w: %s", ErrServersFormatNotSupported, format)
+		return "", fmt.Errorf("servers format not supported: %s", format)
 	}
 }
 

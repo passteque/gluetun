@@ -13,21 +13,17 @@ func Test_parseIptablesInstruction(t *testing.T) {
 	testCases := map[string]struct {
 		s           string
 		instruction iptablesInstruction
-		errWrapped  error
 		errMessage  string
 	}{
 		"no_instruction": {
-			errWrapped: ErrIptablesCommandMalformed,
 			errMessage: "iptables command is malformed: empty instruction",
 		},
 		"uneven_fields": {
 			s:          "-A",
-			errWrapped: ErrIptablesCommandMalformed,
 			errMessage: "parsing \"-A\": iptables command is malformed: flag \"-A\" requires a value, but got none",
 		},
 		"unknown_key": {
 			s:          "-x something",
-			errWrapped: ErrIptablesCommandMalformed,
 			errMessage: "parsing \"-x something\": iptables command is malformed: unknown key \"-x\"",
 		},
 		"one_pair": {
@@ -74,9 +70,10 @@ func Test_parseIptablesInstruction(t *testing.T) {
 			rule, err := parseIptablesInstruction(testCase.s)
 
 			assert.Equal(t, testCase.instruction, rule)
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if testCase.errWrapped != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}

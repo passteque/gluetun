@@ -8,6 +8,7 @@ import (
 	"github.com/qdm12/gluetun/internal/constants"
 	"github.com/qdm12/gluetun/internal/loopstate"
 	"github.com/qdm12/gluetun/internal/models"
+	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/qdm12/gluetun/internal/vpn/state"
 	"github.com/qdm12/log"
 )
@@ -21,10 +22,10 @@ type Loop struct {
 	healthChecker  HealthChecker
 	healthServer   HealthServer
 	// Fixed parameters
-	buildInfo     models.BuildInformation
-	versionInfo   bool
-	ipv6Supported bool
-	vpnInputPorts []uint16 // TODO make changeable through stateful firewall
+	buildInfo        models.BuildInformation
+	versionInfo      bool
+	ipv6SupportLevel netlink.IPv6SupportLevel
+	vpnInputPorts    []uint16 // TODO make changeable through stateful firewall
 	// Configurators
 	openvpnConf OpenVPN
 	netLinker   NetLinker
@@ -52,7 +53,7 @@ const (
 	defaultBackoffTime = 15 * time.Second
 )
 
-func NewLoop(vpnSettings settings.VPN, ipv6Supported bool, vpnInputPorts []uint16,
+func NewLoop(vpnSettings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel, vpnInputPorts []uint16,
 	providers Providers, storage Storage, boringPoll Service,
 	healthSettings settings.Health, healthChecker HealthChecker, healthServer HealthServer,
 	openvpnConf OpenVPN, netLinker NetLinker, fw Firewall, routing Routing,
@@ -70,33 +71,33 @@ func NewLoop(vpnSettings settings.VPN, ipv6Supported bool, vpnInputPorts []uint1
 	state := state.New(statusManager, vpnSettings)
 
 	return &Loop{
-		statusManager:  statusManager,
-		state:          state,
-		providers:      providers,
-		storage:        storage,
-		healthSettings: healthSettings,
-		healthChecker:  healthChecker,
-		healthServer:   healthServer,
-		buildInfo:      buildInfo,
-		versionInfo:    versionInfo,
-		ipv6Supported:  ipv6Supported,
-		vpnInputPorts:  vpnInputPorts,
-		boringPoll:     boringPoll,
-		openvpnConf:    openvpnConf,
-		netLinker:      netLinker,
-		fw:             fw,
-		routing:        routing,
-		portForward:    portForward,
-		publicip:       publicip,
-		dnsLooper:      dnsLooper,
-		cmder:          cmder,
-		logger:         logger,
-		client:         client,
-		start:          start,
-		running:        running,
-		stop:           stop,
-		stopped:        stopped,
-		userTrigger:    true,
-		backoffTime:    defaultBackoffTime,
+		statusManager:    statusManager,
+		state:            state,
+		providers:        providers,
+		storage:          storage,
+		healthSettings:   healthSettings,
+		healthChecker:    healthChecker,
+		healthServer:     healthServer,
+		buildInfo:        buildInfo,
+		versionInfo:      versionInfo,
+		ipv6SupportLevel: ipv6SupportLevel,
+		vpnInputPorts:    vpnInputPorts,
+		boringPoll:       boringPoll,
+		openvpnConf:      openvpnConf,
+		netLinker:        netLinker,
+		fw:               fw,
+		routing:          routing,
+		portForward:      portForward,
+		publicip:         publicip,
+		dnsLooper:        dnsLooper,
+		cmder:            cmder,
+		logger:           logger,
+		client:           client,
+		start:            start,
+		running:          running,
+		stop:             stop,
+		stopped:          stopped,
+		userTrigger:      true,
+		backoffTime:      defaultBackoffTime,
 	}
 }

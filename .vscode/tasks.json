@@ -24,6 +24,15 @@
                 "${input:githubRemoteUsername}",
                 "git@github.com:${input:githubRemoteUsername}/gluetun.git"
             ],
+        },
+        {
+            "label": "Devrun",
+            "type": "shell",
+            "command": "go run ./cmd/main.go run ${input:devrunProvider} ${input:devrunVPNProtocol} ${input:devrunExtraFlags}",
+            "options": {
+                "cwd": "${workspaceFolder}/devrun"
+            },
+            "problemMatcher": []
         }
     ],
     "inputs": [
@@ -46,6 +55,27 @@
             "id": "githubRemoteUsername",
             "type": "promptString",
             "description": "Please enter a Github username",
+        },
+        {
+            "id": "devrunProvider",
+            "type": "promptString",
+            "description": "Please enter a single provider",
+        },
+        {
+            "id": "devrunVPNProtocol",
+            "type": "pickString",
+            "description": "VPN protocol to use",
+            "options": [
+                "wireguard",
+                "openvpn"
+            ],
+            "default": "wireguard"
+        },
+        {
+            "id": "devrunExtraFlags",
+            "type": "promptString",
+            "description": "Extra flags (optional)",
+            "default": ""
         },
     ]
 }

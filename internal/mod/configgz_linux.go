@@ -3,17 +3,9 @@ package mod
 import (
 	"bufio"
 	"compress/gzip"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
-)
-
-var (
-	errModuleNameUnknown     = errors.New("unknown module name")
-	errKernelFeatureIsModule = errors.New("kernel feature is a module, not built-in")
-	errKernelFeatureNotSet   = errors.New("kernel feature not set")
-	errKernelFeatureNotFound = errors.New("kernel feature not found")
 )
 
 // checkProcConfig checks /proc/config.gz for a the kernel feature corresponding
@@ -39,7 +31,7 @@ func checkProcConfig(moduleName string) error {
 	// If any group of kernel features is satisfied, then the module is considered supported.
 	kernelFeatureGroups, ok := moduleNameToKernelFeatureGroups(moduleName)
 	if !ok {
-		return fmt.Errorf("%w: %s", errModuleNameUnknown, moduleName)
+		return fmt.Errorf("unknown module name: %s", moduleName)
 	}
 	groups := make([]map[string]bool, len(kernelFeatureGroups))
 	for i, group := range kernelFeatureGroups {
@@ -58,20 +50,20 @@ func checkProcConfig(moduleName string) error {
 				switch {
 				case ok:
 				case strings.HasPrefix(line, name+"=m"):
-					return fmt.Errorf("%w: %s", errKernelFeatureIsModule, name)
+					return fmt.Errorf("kernel feature is a module, not built-in: %s", name)
 				case strings.HasPrefix(line, name+"=y"):
 					featureToOK[name] = true
 					if allFeaturesOK(featureToOK) {
 						return nil
 					}
 				case strings.HasPrefix(line, "# "+name+" is not set"):
-					return fmt.Errorf("%w: %s", errKernelFeatureNotSet, name)
+					return fmt.Errorf("kernel feature not set: %s", name)
 				}
 			}
 		}
 	}
 
-	return fmt.Errorf("%w: for module name %s", errKernelFeatureNotFound, moduleName)
+	return fmt.Errorf("kernel feature not found: for module name %s", moduleName)
 }
 
 func moduleNameToKernelFeatureGroups(moduleName string) (featureGroups [][]string, ok bool) {

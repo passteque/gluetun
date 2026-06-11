@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/netip"
-
-	"github.com/qdm12/gluetun/internal/provider/common"
 )
 
 type apiData struct {
@@ -48,8 +46,8 @@ func fetchAPI(ctx context.Context, client *http.Client) (
 
 	if response.StatusCode != http.StatusOK {
 		_ = response.Body.Close()
-		return data, fmt.Errorf("%w: %d %s",
-			common.ErrHTTPStatusCodeNotOK, response.StatusCode, response.Status)
+		return data, fmt.Errorf("HTTP status code not OK: %d %s",
+			response.StatusCode, response.Status)
 	}
 
 	decoder := json.NewDecoder(response.Body)

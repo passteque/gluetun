@@ -12,17 +12,14 @@ func Test_ParseProvider(t *testing.T) {
 	testCases := map[string]struct {
 		s          string
 		provider   Provider
-		errWrapped error
 		errMessage string
 	}{
 		"empty": {
-			errWrapped: ErrProviderNotValid,
 			errMessage: `API name is not valid: "" can only be ` +
 				`"cloudflare", "ifconfigco", "ip2location", "ipinfo" or a custom echoip# url`,
 		},
 		"invalid": {
-			s:          "xyz",
-			errWrapped: ErrProviderNotValid,
+			s: "xyz",
 			errMessage: `API name is not valid: "xyz" can only be ` +
 				`"cloudflare", "ifconfigco", "ip2location", "ipinfo" or a custom echoip# url`,
 		},
@@ -35,14 +32,12 @@ func Test_ParseProvider(t *testing.T) {
 			provider: IPInfo,
 		},
 		"echoip_url_empty": {
-			s:          "echoip#",
-			errWrapped: ErrCustomURLNotValid,
+			s: "echoip#",
 			errMessage: `echoip# custom URL is not valid: "" ` +
 				`does not match regular expression: ^http(s|):\/\/.+$`,
 		},
 		"echoip_url_invalid": {
-			s:          "echoip#postgres://localhost:3451",
-			errWrapped: ErrCustomURLNotValid,
+			s: "echoip#postgres://localhost:3451",
 			errMessage: `echoip# custom URL is not valid: "postgres://localhost:3451" ` +
 				`does not match regular expression: ^http(s|):\/\/.+$`,
 		},
@@ -59,9 +54,10 @@ func Test_ParseProvider(t *testing.T) {
 			provider, err := ParseProvider(testCase.s)
 
 			assert.Equal(t, testCase.provider, provider)
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if testCase.errWrapped != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}

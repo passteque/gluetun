@@ -1,19 +1,12 @@
 package updater
 
 import (
-	"errors"
 	"fmt"
 	"regexp"
 	"strings"
 )
 
 var trailingNumber = regexp.MustCompile(` [0-9]+$`)
-
-var (
-	errBadPrefix      = errors.New("bad prefix in file name")
-	errBadSuffix      = errors.New("bad suffix in file name")
-	errNotEnoughParts = errors.New("not enough parts in file name")
-)
 
 func parseFilename(fileName string) (
 	countryCode, city string, err error,
@@ -22,7 +15,7 @@ func parseFilename(fileName string) (
 
 	const prefix = "PrivateVPN-"
 	if !strings.HasPrefix(fileName, prefix) {
-		return "", "", fmt.Errorf("%w: %s", errBadPrefix, fileName)
+		return "", "", fmt.Errorf("bad prefix in file name %s", fileName)
 	}
 	s := strings.TrimPrefix(fileName, prefix)
 
@@ -34,7 +27,7 @@ func parseFilename(fileName string) (
 	case strings.HasSuffix(fileName, udpSuffix):
 		s = strings.TrimSuffix(s, udpSuffix)
 	default:
-		return "", "", fmt.Errorf("%w: %s", errBadSuffix, fileName)
+		return "", "", fmt.Errorf("bad suffix in file name %s", fileName)
 	}
 
 	s = trailingNumber.ReplaceAllString(s, "")
@@ -42,7 +35,7 @@ func parseFilename(fileName string) (
 	parts := strings.Split(s, "-")
 	const minParts = 2
 	if len(parts) < minParts {
-		return "", "", fmt.Errorf("%w: %s", errNotEnoughParts, fileName)
+		return "", "", fmt.Errorf("not enough parts in file name %s", fileName)
 	}
 	countryCode, city = parts[0], parts[1]
 

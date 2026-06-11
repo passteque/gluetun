@@ -2,7 +2,6 @@ package updater
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/netip"
 	"sort"
@@ -11,8 +10,6 @@ import (
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
 )
-
-var ErrNoWireguardKey = errors.New("no wireguard public key found")
 
 func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	servers []models.Server, err error,
@@ -51,7 +48,7 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 				if !node.IP3.IsValid() { // Wireguard + Stealth
 					continue
 				} else if wgPubKey == "" {
-					return nil, fmt.Errorf("%w: for node %s", ErrNoWireguardKey, node.Hostname)
+					return nil, fmt.Errorf("no wireguard public key found: for node %s", node.Hostname)
 				}
 
 				server.VPN = vpn.Wireguard

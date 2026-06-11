@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
+	"net/netip"
 	"strings"
 	"time"
 
@@ -11,19 +13,18 @@ import (
 	"github.com/qdm12/gluetun/internal/provider/utils"
 )
 
-var ErrServerPortForwardNotSupported = errors.New("server does not support port forwarding")
-
 // PortForward obtains a VPN server side port forwarded from ProtonVPN gateway.
 func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObjects) (
-	ports []uint16, err error,
+	internalToExternalPorts map[uint16]uint16, err error,
 ) {
 	if !objects.CanPortForward {
-		return nil, fmt.Errorf("%w", ErrServerPortForwardNotSupported)
+		return nil, errors.New("server does not support port forwarding")
+	} else if objects.PortsCount == 0 {
+		return nil, nil //nolint:nilnil
 	}
 
 	client := natpmp.New()
-	_, externalIPv4Address, err := client.ExternalAddress(ctx,
-		objects.Gateway)
+	_, externalIPv4Address, err := client.ExternalAddress(ctx, objects.Gateway)
 	if err != nil {
 		switch {
 		case strings.HasSuffix(err.Error(), "connection refused"):
@@ -38,29 +39,74 @@ func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObj
 
 	logger := objects.Logger
 
-	logger.Info("gateway external IPv4 address is " + externalIPv4Address.String())
-	const internalPort, externalPort = 0, 1
+	logger.Debug("gateway external IPv4 address is " + externalIPv4Address.String())
+
+	p.internalToExternalPorts = make(map[uint16]uint16, objects.PortsCount)
 	const lifetime = 60 * time.Second
 
-	_, _, assignedUDPExternalPort, assignedLifetime, err := client.AddPortMapping(ctx, objects.Gateway, "udp",
-		internalPort, externalPort, lifetime)
+	// Only one port can be a symmetric mapping
+	const internalPort, externalPort = 0, 1
+	_, assignedExternalPort, err := addPortMappingTCPUDP(ctx,
+		client, logger, objects.Gateway, internalPort, externalPort, lifetime)
+	// Note the returned assignedInternalPort is always 0 in this case
 	if err != nil {
-		return nil, fmt.Errorf("adding UDP port mapping: %w", err)
+		return nil, fmt.Errorf("adding first port mapping: %w", err)
 	}
-	checkLifetime(logger, "UDP", lifetime, assignedLifetime)
+	p.internalToExternalPorts[assignedExternalPort] = assignedExternalPort
 
-	_, _, assignedTCPExternalPort, assignedLifetime, err := client.AddPortMapping(ctx, objects.Gateway, "tcp",
-		internalPort, externalPort, lifetime)
-	if err != nil {
-		return nil, fmt.Errorf("adding TCP port mapping: %w", err)
+	// Extra ports must be non-symmetric, meaning that the internal port is
+	// different from the external port.
+	const nonSymmetricPortStart = uint16(56789)
+	nonSymmetricPortStartMinusOne := nonSymmetricPortStart - 1
+	if _, ok := p.internalToExternalPorts[nonSymmetricPortStart]; ok {
+		nonSymmetricPortStartMinusOne++
 	}
-	checkLifetime(logger, "TCP", lifetime, assignedLifetime)
+	for i := uint16(1); i < objects.PortsCount; i++ {
+		internalPort := nonSymmetricPortStartMinusOne + i
+		const externalPort = 0
+		assignedInternalPort, assignedExternalPort, err := addPortMappingTCPUDP(ctx,
+			client, logger, objects.Gateway, internalPort, externalPort, lifetime)
+		if err != nil {
+			return nil, fmt.Errorf("adding %d/%d port mapping: %w", i+1, objects.PortsCount, err)
+		}
+		p.internalToExternalPorts[assignedInternalPort] = assignedExternalPort
+	}
 
-	checkExternalPorts(logger, assignedUDPExternalPort, assignedTCPExternalPort)
+	return maps.Clone(p.internalToExternalPorts), nil
+}
 
-	p.portForwarded = assignedTCPExternalPort
+func addPortMappingTCPUDP(ctx context.Context, client *natpmp.Client, logger utils.Logger,
+	gateway netip.Addr, internalPort, externalPort uint16, lifetime time.Duration,
+) (assignedInternalPort, assignedExternalPort uint16, err error) {
+	var assignedLifetime time.Duration
+	protocolToExternalPort := map[string]uint16{
+		"tcp": 0,
+		"udp": 0,
+	}
+	for _, protocol := range [...]string{"udp", "tcp"} {
+		protocolStr := strings.ToUpper(protocol)
+		_, assignedInternalPort, assignedExternalPort, assignedLifetime, err = client.AddPortMapping(
+			ctx, gateway, protocol, internalPort, externalPort, lifetime)
+		if err != nil {
+			return 0, 0, fmt.Errorf("adding %s port mapping: %w", protocolStr, err)
+		}
+		protocolToExternalPort[protocol] = assignedExternalPort
+		checkLifetime(logger, protocolStr, lifetime, assignedLifetime)
+		if internalPort != assignedInternalPort {
+			return 0, 0, fmt.Errorf("%s internal port requested as %d but received %d",
+				protocolStr, internalPort, assignedInternalPort)
+		} else if externalPort != 0 && externalPort != 1 && externalPort != assignedExternalPort {
+			return 0, 0, fmt.Errorf("%s external port requested as %d but received %d",
+				protocolStr, externalPort, assignedExternalPort)
+		}
+	}
 
-	return []uint16{assignedTCPExternalPort}, nil
+	if protocolToExternalPort["tcp"] != protocolToExternalPort["udp"] {
+		return 0, 0, fmt.Errorf("TCP and UDP external ports differ: %d and %d",
+			protocolToExternalPort["tcp"], protocolToExternalPort["udp"])
+	}
+
+	return assignedInternalPort, assignedExternalPort, nil
 }
 
 func checkLifetime(logger utils.Logger, protocol string,
@@ -72,15 +118,6 @@ func checkLifetime(logger utils.Logger, protocol string,
 			actual, requested))
 	}
 }
-
-func checkExternalPorts(logger utils.Logger, udpPort, tcpPort uint16) {
-	if udpPort != tcpPort {
-		logger.Warn(fmt.Sprintf("UDP external port %d differs from TCP external port %d",
-			udpPort, tcpPort))
-	}
-}
-
-var ErrExternalPortChanged = errors.New("external port changed")
 
 func (p *Provider) KeepPortForward(ctx context.Context,
 	objects utils.PortForwardObjects,
@@ -96,31 +133,16 @@ func (p *Provider) KeepPortForward(ctx context.Context,
 		case <-timer.C:
 		}
 
-		objects.Logger.Debug("refreshing port forward since 45 seconds have elapsed")
-		networkProtocols := []string{"udp", "tcp"}
-		const internalPort = 0
+		objects.Logger.Debug("refreshing forwarded ports since 45 seconds have elapsed")
 		const lifetime = 60 * time.Second
-
-		for _, networkProtocol := range networkProtocols {
-			_, _, assignedExternalPort, assignedLiftetime, err := client.AddPortMapping(ctx, objects.Gateway, networkProtocol,
-				internalPort, p.portForwarded, lifetime)
+		for internalPort, externalPort := range p.internalToExternalPorts {
+			_, _, err := addPortMappingTCPUDP(ctx, client, logger, objects.Gateway, internalPort, externalPort, lifetime)
 			if err != nil {
-				return fmt.Errorf("adding port mapping: %w", err)
+				return fmt.Errorf("refreshing port mapping for internal port %d and external port %d: %w",
+					internalPort, externalPort, err)
 			}
-
-			if assignedLiftetime != lifetime {
-				logger.Warn(fmt.Sprintf("assigned lifetime %s differs"+
-					" from requested lifetime %s",
-					assignedLiftetime, lifetime))
-			}
-
-			if p.portForwarded != assignedExternalPort {
-				return fmt.Errorf("%w: %d changed to %d",
-					ErrExternalPortChanged, p.portForwarded, assignedExternalPort)
-			}
+			objects.Logger.Debug(fmt.Sprintf("port forwarded %d maintained", externalPort))
 		}
-
-		objects.Logger.Debug(fmt.Sprintf("port forwarded %d maintained", p.portForwarded))
 
 		timer.Reset(refreshTimeout)
 	}

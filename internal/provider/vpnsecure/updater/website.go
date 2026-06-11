@@ -33,8 +33,6 @@ func fetchServers(ctx context.Context, client *http.Client,
 	return servers, nil
 }
 
-var ErrHTMLServersDivNotFound = errors.New("HTML servers container div not found")
-
 const divString = "div"
 
 func parseHTML(rootNode *html.Node) (servers []models.Server,
@@ -43,7 +41,7 @@ func parseHTML(rootNode *html.Node) (servers []models.Server,
 	// Find div container for all servers, searching with BFS.
 	serversDiv := findServersDiv(rootNode)
 	if serversDiv == nil {
-		return nil, nil, htmlutils.WrapError(ErrHTMLServersDivNotFound, rootNode)
+		return nil, nil, htmlutils.WrapError(errors.New("HTML servers container div not found"), rootNode)
 	}
 
 	for countryNode := serversDiv.FirstChild; countryNode != nil; countryNode = countryNode.NextSibling {

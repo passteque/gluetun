@@ -10,9 +10,7 @@ import (
 
 var (
 	ErrNotPermitted                            = errors.New("ICMP not permitted")
-	ErrDestinationUnreachable                  = errors.New("ICMP destination unreachable")
-	ErrCommunicationAdministrativelyProhibited = errors.New("communication administratively prohibited")
-	ErrBodyUnsupported                         = errors.New("ICMP body type is not supported")
+	errCommunicationAdministrativelyProhibited = errors.New("communication administratively prohibited")
 	ErrMTUNotFound                             = errors.New("MTU not found")
 	errTimeout                                 = errors.New("operation timed out")
 )

@@ -75,13 +75,6 @@ func startRawSocket(family, excludeMark int) (fd fileDescriptor, stop func(), er
 	return fileDescriptor(fdPlatform), stop, nil
 }
 
-var (
-	errTCPPacketNotSynAck        = errors.New("TCP packet is not a SYN-ACK")
-	errTCPSynAckAckMismatch      = errors.New("TCP SYN-ACK ACK number does not match expected value")
-	errFinalPacketTypeUnexpected = errors.New("final TCP packet type is unexpected")
-	errTCPPacketLost             = errors.New("TCP packet was lost")
-)
-
 // Craft and send a raw TCP packet to test the MTU.
 // It expects either an RST reply (if no server is listening)
 // or a SYN-ACK/ACK reply (if a server is listening).
@@ -142,9 +135,10 @@ func runTest(ctx context.Context, dst netip.AddrPort, mtu uint32,
 		// server actively closed the connection, try sending a SYN with data
 		return handleRSTReply(ctx, fd, ch, src, dst, mtu)
 	case firstReplyHeader.typ != packetTypeSYNACK:
-		return fmt.Errorf("%w: unexpected packet type %s", errTCPPacketNotSynAck, firstReplyHeader.typ)
+		return fmt.Errorf("TCP packet is not a SYN-ACK: unexpected packet type %s", firstReplyHeader.typ)
 	case firstReplyHeader.ack != synSeq+1:
-		return fmt.Errorf("%w: expected %d, got %d", errTCPSynAckAckMismatch, synSeq+1, firstReplyHeader.ack)
+		return fmt.Errorf("TCP SYN-ACK ACK number does not match expected value: "+
+			"expected %d, got %d", synSeq+1, firstReplyHeader.ack)
 	}
 
 	if firstReplyHeader.options.mss != 0 {
@@ -191,14 +185,12 @@ func runTest(ctx context.Context, dst netip.AddrPort, mtu uint32,
 		}
 		return nil
 	case packetTypeSYNACK: // server never received our MTU-test ACK packet
-		return fmt.Errorf("%w: server responded with second SYN-ACK packet", errTCPPacketLost)
+		return errors.New("TCP packet was lost: server responded with second SYN-ACK packet")
 	default:
 		_ = sendRST(fd, src, dst, finalPacketHeader.ack)
-		return fmt.Errorf("%w: %s", errFinalPacketTypeUnexpected, finalPacketHeader.typ)
+		return fmt.Errorf("final TCP packet type is unexpected: %s", finalPacketHeader.typ)
 	}
 }
-
-var errTCPPacketNotRST = errors.New("TCP packet is not an RST")
 
 func handleRSTReply(ctx context.Context, fd fileDescriptor, ch <-chan []byte,
 	src, dst netip.AddrPort, mtu uint32,
@@ -223,7 +215,7 @@ func handleRSTReply(ctx context.Context, fd fileDescriptor, ch <-chan []byte,
 		return fmt.Errorf("parsing reply TCP header: %w", err)
 	} else if replyPacketHeader.typ != packetTypeRST &&
 		replyPacketHeader.typ != packetTypeRSTACK {
-		return fmt.Errorf("%w: %s", errTCPPacketNotRST, replyPacketHeader.typ)
+		return fmt.Errorf("TCP packet is not an RST: %s", replyPacketHeader.typ)
 	}
 	return nil
 }

@@ -72,9 +72,9 @@ LABEL \
     org.opencontainers.image.created=$CREATED \
     org.opencontainers.image.version=$VERSION \
     org.opencontainers.image.revision=$COMMIT \
-    org.opencontainers.image.url="https://github.com/qdm12/gluetun" \
-    org.opencontainers.image.documentation="https://github.com/qdm12/gluetun" \
-    org.opencontainers.image.source="https://github.com/qdm12/gluetun" \
+    org.opencontainers.image.url="https://github.com/passteque/gluetun" \
+    org.opencontainers.image.documentation="https://github.com/passteque/gluetun" \
+    org.opencontainers.image.source="https://github.com/passteque/gluetun" \
     org.opencontainers.image.title="VPN swiss-knife like client for multiple VPN providers" \
     org.opencontainers.image.description="VPN swiss-knife like client to tunnel to multiple VPN servers using OpenVPN, IPtables, DNS over TLS, Shadowsocks, an HTTP proxy and Alpine Linux"
 ENV VPN_SERVICE_PROVIDER=pia \
@@ -142,29 +142,13 @@ ENV VPN_SERVICE_PROVIDER=pia \
     AMNEZIAWG_I3= \
     AMNEZIAWG_I4= \
     AMNEZIAWG_I5= \
-    # Wireguard AmneziaWG userspace obfuscation (requires WIREGUARD_IMPLEMENTATION=amneziawg)
-    AMNEZIAWG_JC=0 \
-    AMNEZIAWG_JMIN=0 \
-    AMNEZIAWG_JMAX=0 \
-    AMNEZIAWG_S1=0 \
-    AMNEZIAWG_S2=0 \
-    AMNEZIAWG_S3=0 \
-    AMNEZIAWG_S4=0 \
-    AMNEZIAWG_H1= \
-    AMNEZIAWG_H2= \
-    AMNEZIAWG_H3= \
-    AMNEZIAWG_H4= \
-    AMNEZIAWG_I1= \
-    AMNEZIAWG_I2= \
-    AMNEZIAWG_I3= \
-    AMNEZIAWG_I4= \
-    AMNEZIAWG_I5= \
     # VPN server port forwarding
     VPN_PORT_FORWARDING=off \
     VPN_PORT_FORWARDING_PROVIDER= \
     VPN_PORT_FORWARDING_UP_COMMAND= \
     VPN_PORT_FORWARDING_DOWN_COMMAND= \
-    VPN_PORT_FORWARDING_LISTENING_PORT=0 \
+    VPN_PORT_FORWARDING_LISTENING_PORTS=0 \
+    VPN_PORT_FORWARDING_PORTS_COUNT=1 \
     VPN_PORT_FORWARDING_STATUS_FILE="/tmp/gluetun/forwarded_port" \
     # PMTUD
     PMTUD_ICMP_ADDRESSES=1.1.1.1,8.8.8.8 \
@@ -214,6 +198,8 @@ ENV VPN_SERVICE_PROVIDER=pia \
     FIREWALL_INPUT_PORTS= \
     FIREWALL_OUTBOUND_SUBNETS= \
     FIREWALL_IPTABLES_LOG_LEVEL=info \
+    # IPv6
+    IPV6_CHECK_ADDRESSES=[2001:4860:4860::8888]:53,[2606:4700:4700::1111]:53 \
     # Logging
     LOG_LEVEL=info \
     # Health
@@ -223,6 +209,7 @@ ENV VPN_SERVICE_PROVIDER=pia \
     HEALTH_SMALL_CHECK_TYPE=icmp \
     HEALTH_RESTART_VPN=on \
     # DNS
+    DNS_SERVER=on \
     DNS_UPSTREAM_RESOLVER_TYPE=DoT \
     # Note: DNS_UPSTREAM_RESOLVERS defaults to cloudflare in code if DNS_UPSTREAM_PLAIN_ADDRESSES is empty
     DNS_UPSTREAM_RESOLVERS= \
@@ -253,6 +240,11 @@ ENV VPN_SERVICE_PROVIDER=pia \
     SHADOWSOCKS_PASSWORD= \
     SHADOWSOCKS_PASSWORD_SECRETFILE=/run/secrets/shadowsocks_password \
     SHADOWSOCKS_CIPHER=chacha20-ietf-poly1305 \
+    # Socks5
+    SOCKS5_ENABLED=off \
+    SOCKS5_LISTENING_ADDRESS=":1080" \
+    SOCKS5_USER= \
+    SOCKS5_PASSWORD= \
     # Control server
     HTTP_CONTROL_SERVER_LOG=on \
     HTTP_CONTROL_SERVER_ADDRESS=":8000" \
@@ -262,6 +254,7 @@ ENV VPN_SERVICE_PROVIDER=pia \
     UPDATER_PERIOD=0 \
     UPDATER_MIN_RATIO=0.8 \
     UPDATER_VPN_SERVICE_PROVIDERS= \
+    UPDATER_PREFER_DIRECT_DOWNLOAD=no \
     UPDATER_PROTONVPN_EMAIL= \
     UPDATER_PROTONVPN_PASSWORD= \
     # Public IP
@@ -270,7 +263,8 @@ ENV VPN_SERVICE_PROVIDER=pia \
     PUBLICIP_API=ipinfo,ifconfigco,ip2location,cloudflare \
     PUBLICIP_API_TOKEN= \
     # Storage
-    STORAGE_FILEPATH=/gluetun/servers.json \
+    STORAGE_SERVERS_ENABLED=on \
+    STORAGE_SERVERS_DIRECTORY_PATH=/gluetun/servers/ \
     # Pprof
     PPROF_ENABLED=no \
     PPROF_BLOCK_PROFILE_RATE=0 \
@@ -278,12 +272,11 @@ ENV VPN_SERVICE_PROVIDER=pia \
     PPROF_HTTP_SERVER_ADDRESS=":6060" \
     # Extras
     VERSION_INFORMATION=on \
-    BORINGPOLL_GLUETUNCOM=off \
     TZ= \
     PUID=1000 \
     PGID=1000
 ENTRYPOINT ["/gluetun-entrypoint"]
-EXPOSE 8000/tcp 8888/tcp 8388/tcp 8388/udp
+EXPOSE 8000/tcp 8888/tcp 8388/tcp 8388/udp 1080/tcp 1080/udp
 HEALTHCHECK --interval=5s --timeout=5s --start-period=10s --retries=3 CMD /gluetun-entrypoint healthcheck
 ARG TARGETPLATFORM
 RUN apk add --no-cache --update -l wget && \

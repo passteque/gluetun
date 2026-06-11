@@ -18,31 +18,37 @@ func (c *Cmder) RunAndLog(ctx context.Context, command string, logger Logger) (e
 		return err
 	}
 
-	streamCtx, streamCancel := context.WithCancel(context.Background())
 	streamDone := make(chan struct{})
-	go streamLines(streamCtx, streamDone, logger, stdout, stderr)
+	go streamLines(streamDone, logger, stdout, stderr)
 
 	err = <-waitError
-	streamCancel()
 	<-streamDone
 	return err
 }
 
-func streamLines(ctx context.Context, done chan<- struct{},
-	logger Logger, stdout, stderr <-chan string,
+func streamLines(done chan<- struct{}, logger Logger,
+	stdout, stderr <-chan string,
 ) {
 	defer close(done)
 
-	var line string
-
 	for {
 		select {
-		case <-ctx.Done():
-			return
-		case line = <-stdout:
-			logger.Info(line)
-		case line = <-stderr:
-			logger.Error(line)
+		case line, ok := <-stdout:
+			if ok {
+				logger.Info(line)
+			}
+			if stderr == nil {
+				return
+			}
+			stdout = nil
+		case line, ok := <-stderr:
+			if ok {
+				logger.Error(line)
+			}
+			if stdout == nil {
+				return
+			}
+			stderr = nil
 		}
 	}
 }

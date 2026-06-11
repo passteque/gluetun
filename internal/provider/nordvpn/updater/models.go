@@ -168,11 +168,6 @@ func (s *serverData) ips() (ips []netip.Addr) {
 	return ips
 }
 
-var (
-	ErrWireguardPublicKeyMalformed = errors.New("wireguard public key is malformed")
-	ErrWireguardPublicKeyNotFound  = errors.New("wireguard public key not found")
-)
-
 // wireguardPublicKey returns the Wireguard public key for the server.
 func (s *serverData) wireguardPublicKey(technologies map[uint32]technologyData) (
 	wgPubKey string, err error,
@@ -189,11 +184,10 @@ func (s *serverData) wireguardPublicKey(technologies map[uint32]technologyData) 
 			wgPubKey = metadata.Value
 			_, err = base64.StdEncoding.DecodeString(wgPubKey)
 			if err != nil {
-				return "", fmt.Errorf("%w: %s cannot be decoded: %s",
-					ErrWireguardPublicKeyMalformed, wgPubKey, err)
+				return "", fmt.Errorf("wireguard public key is malformed: %s cannot be decoded: %s", wgPubKey, err)
 			}
 			return metadata.Value, nil
 		}
 	}
-	return "", fmt.Errorf("%w", ErrWireguardPublicKeyNotFound)
+	return "", errors.New("wireguard public key not found")
 }

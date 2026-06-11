@@ -38,12 +38,6 @@ type Health struct {
 	RestartVPN *bool
 }
 
-var (
-	ErrICMPTargetIPNotValid       = errors.New("ICMP target IP address is not valid")
-	ErrICMPTargetIPsNotCompatible = errors.New("ICMP target IP addresses are not compatible")
-	ErrSmallCheckTypeNotValid     = errors.New("small check type is not valid")
-)
-
 func (h Health) Validate() (err error) {
 	err = validate.ListeningAddress(h.ServerAddress, os.Getuid())
 	if err != nil {
@@ -53,16 +47,16 @@ func (h Health) Validate() (err error) {
 	for _, ip := range h.ICMPTargetIPs {
 		switch {
 		case !ip.IsValid():
-			return fmt.Errorf("%w: %s", ErrICMPTargetIPNotValid, ip)
+			return fmt.Errorf("ICMP target IP address is not valid: %s", ip)
 		case ip.IsUnspecified() && len(h.ICMPTargetIPs) > 1:
-			return fmt.Errorf("%w: only a single IP address must be set if it is to be unspecified",
-				ErrICMPTargetIPsNotCompatible)
+			return errors.New("ICMP target IP addresses are not compatible: " +
+				"only a single IP address must be set if it is to be unspecified")
 		}
 	}
 
 	err = validate.IsOneOf(h.SmallCheckType, "icmp", "dns")
 	if err != nil {
-		return fmt.Errorf("%w: %s", ErrSmallCheckTypeNotValid, err)
+		return fmt.Errorf("small check type is not valid: %w", err)
 	}
 
 	return nil

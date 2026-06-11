@@ -12,29 +12,36 @@ import (
 	"golang.org/x/text/language"
 )
 
-// readFromFile reads the servers from server.json.
+// readFromFile reads the servers data starting from the given manifest file path.
 // It only reads servers that have the same version as the hardcoded servers version
 // to avoid JSON decoding errors.
-func (s *Storage) readFromFile(filepath string, hardcodedVersions map[string]uint16) (
-	servers models.AllServers, err error,
+func (s *Storage) readFromFile(manifestPath string, hardcodedVersions map[string]uint16) (
+	servers models.AllServers, found bool, err error,
 ) {
-	file, err := os.Open(filepath)
+	file, err := os.Open(manifestPath)
 	if os.IsNotExist(err) {
-		return servers, nil
+		return servers, false, nil
 	} else if err != nil {
-		return servers, err
+		return servers, false, err
 	}
 
 	b, err := io.ReadAll(file)
 	if err != nil {
-		return servers, err
+		return servers, true, err
 	}
 
 	if err := file.Close(); err != nil {
-		return servers, err
+		return servers, true, err
 	}
 
-	return s.extractServersFromBytes(b, hardcodedVersions)
+	if len(b) == 0 {
+		// To satisfy https://github.com/qdm12/gluetun/issues/3318
+		// not too sure why but eh I'm feeling generous adding 3 code lines for it.
+		return servers, false, nil
+	}
+
+	servers, err = s.extractServersFromBytes(b, hardcodedVersions)
+	return servers, true, err
 }
 
 func (s *Storage) extractServersFromBytes(b []byte, hardcodedVersions map[string]uint16) (
@@ -46,6 +53,12 @@ func (s *Storage) extractServersFromBytes(b []byte, hardcodedVersions map[string
 	}
 
 	// Note schema version is at map key "version" as number
+	if rawVersion, ok := rawMessages["version"]; ok {
+		err := json.Unmarshal(rawVersion, &servers.Version)
+		if err != nil {
+			return servers, fmt.Errorf("decoding servers schema version: %w", err)
+		}
+	}
 
 	allProviders := providers.All()
 	servers.ProviderToServers = make(map[string]models.Servers, len(allProviders))
@@ -86,25 +99,20 @@ func (s *Storage) readServers(provider string, hardcodedVersion uint16,
 ) {
 	provider = titleCaser.String(provider)
 
-	var versionObject struct {
-		Version uint16 `json:"version"`
+	var metadata struct {
+		Version   uint16 `json:"version"`
+		Timestamp uint64 `json:"timestamp"`
+		Filepath  string `json:"filepath"`
 	}
 
-	err = json.Unmarshal(rawMessage, &versionObject)
+	err = json.Unmarshal(rawMessage, &metadata)
 	if err != nil {
 		return servers, false, fmt.Errorf("decoding servers version for provider %s: %w",
 			provider, err)
 	}
 
-	persistedVersion := versionObject.Version
-
-	versionsMatch = hardcodedVersion == persistedVersion
-	if !versionsMatch {
-		s.logger.Info(fmt.Sprintf(
-			"%s servers from file discarded because they have "+
-				"version %d and hardcoded servers have version %d",
-			provider, persistedVersion, hardcodedVersion))
-		return servers, versionsMatch, nil
+	if metadata.Filepath != "" {
+		return s.readServersFromFilepath(provider, metadata.Filepath, hardcodedVersion)
 	}
 
 	err = json.Unmarshal(rawMessage, &servers)
@@ -113,5 +121,60 @@ func (s *Storage) readServers(provider string, hardcodedVersion uint16,
 			provider, err)
 	}
 
-	return servers, versionsMatch, nil
+	const sourcePath = ""
+	if !checkVersions(hardcodedVersion, servers.Version, provider, sourcePath,
+		servers.Preferred, s.logger) {
+		return models.Servers{}, false, nil
+	}
+
+	return servers, true, nil
+}
+
+func (s *Storage) readServersFromFilepath(provider, filepath string, hardcodedVersion uint16) (
+	referencedServers models.Servers, versionsMatch bool, err error,
+) {
+	providerFile, err := os.Open(filepath)
+	if os.IsNotExist(err) {
+		return models.Servers{}, false, nil
+	} else if err != nil {
+		return models.Servers{}, false, fmt.Errorf("opening servers file %s for provider %s: %w",
+			filepath, provider, err)
+	}
+	defer providerFile.Close()
+
+	err = json.NewDecoder(providerFile).Decode(&referencedServers)
+	if err != nil {
+		return models.Servers{}, false, fmt.Errorf("decoding servers file %s for provider %s: %w",
+			filepath, provider, err)
+	}
+
+	if !checkVersions(hardcodedVersion, referencedServers.Version, provider, filepath,
+		referencedServers.Preferred, s.logger) {
+		return models.Servers{}, false, nil
+	}
+
+	referencedServers.Filepath = filepath
+	return referencedServers, true, nil
+}
+
+func checkVersions(builtinVersion, version uint16, provider, sourcePath string,
+	preferred bool, logger Logger,
+) (match bool) {
+	if version == builtinVersion {
+		return true
+	}
+	name := provider
+	log := logger.Info
+	if preferred {
+		name += " preferred"
+		log = logger.Warn
+	}
+	name += " servers"
+	if sourcePath != "" {
+		name += " from file " + sourcePath
+	}
+	log(fmt.Sprintf(
+		"%s discarded because they have version %d and hardcoded servers have version %d",
+		name, version, builtinVersion))
+	return false
 }

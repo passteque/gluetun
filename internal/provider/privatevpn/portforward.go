@@ -11,18 +11,15 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/qdm12/gluetun/internal/provider/common"
 	"github.com/qdm12/gluetun/internal/provider/utils"
 )
 
 var regexPort = regexp.MustCompile(`[1-9][0-9]{0,4}`)
 
-var ErrPortForwardedNotFound = errors.New("port forwarded not found")
-
 // PortForward obtains a VPN server side port forwarded from the PrivateVPN API.
 // It returns 0 if all ports are to forwarded on a dedicated server IP.
 func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObjects) (
-	ports []uint16, err error,
+	internalToExternalPorts map[uint16]uint16, err error,
 ) {
 	// Define a timeout since the default client has a large timeout and we don't
 	// want to wait too long.
@@ -42,8 +39,7 @@ func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObj
 	}
 
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: %d %s", common.ErrHTTPStatusCodeNotOK,
-			response.StatusCode, response.Status)
+		return nil, fmt.Errorf("HTTP status code not OK: %d %s", response.StatusCode, response.Status)
 	}
 
 	defer response.Body.Close()
@@ -62,12 +58,12 @@ func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObj
 		return nil, fmt.Errorf("decoding JSON response: %w; data is: %s",
 			err, string(bytes))
 	} else if !data.Supported {
-		return nil, fmt.Errorf("%w for this VPN server", common.ErrPortForwardNotSupported)
+		return nil, errors.New("port forwarding not supported for this VPN server")
 	}
 
 	portString := regexPort.FindString(data.Status)
 	if portString == "" {
-		return nil, fmt.Errorf("%w: in status %q", ErrPortForwardedNotFound, data.Status)
+		return nil, fmt.Errorf("port forwarded not found in status %q", data.Status)
 	}
 
 	const base, bitSize = 10, 16
@@ -75,7 +71,8 @@ func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObj
 	if err != nil {
 		return nil, fmt.Errorf("parsing port: %w", err)
 	}
-	return []uint16{uint16(portUint64)}, nil
+	port := uint16(portUint64)
+	return map[uint16]uint16{port: port}, nil
 }
 
 func (p *Provider) KeepPortForward(ctx context.Context,

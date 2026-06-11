@@ -21,7 +21,7 @@ func settingsToLookupMap(settings Settings) (routeToRoles map[string][]internalR
 		case AuthBasic:
 			checker = newBasicAuthMethod(role.Username, role.Password)
 		default:
-			return nil, fmt.Errorf("%w: %s", ErrMethodNotSupported, role.Auth)
+			return nil, fmt.Errorf("authentication method not supported: %s", role.Auth)
 		}
 
 		iRole := internalRole{

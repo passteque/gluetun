@@ -2,7 +2,6 @@ package healthcheck
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -68,7 +67,7 @@ func Test_makeAddressToDial(t *testing.T) {
 	testCases := map[string]struct {
 		address       string
 		addressToDial string
-		err           error
+		errMessage    string
 	}{
 		"host without port": {
 			address:       "test.com",
@@ -79,8 +78,8 @@ func Test_makeAddressToDial(t *testing.T) {
 			addressToDial: "test.com:80",
 		},
 		"bad address": {
-			address: "test.com::",
-			err:     fmt.Errorf("splitting host and port from address: address test.com::: too many colons in address"), //nolint:lll
+			address:    "test.com::",
+			errMessage: "splitting host and port from address: address test.com::: too many colons in address",
 		},
 	}
 
@@ -91,8 +90,8 @@ func Test_makeAddressToDial(t *testing.T) {
 			addressToDial, err := makeAddressToDial(testCase.address)
 
 			assert.Equal(t, testCase.addressToDial, addressToDial)
-			if testCase.err != nil {
-				assert.EqualError(t, err, testCase.err.Error())
+			if testCase.errMessage != "" {
+				assert.EqualError(t, err, testCase.errMessage)
 			} else {
 				assert.NoError(t, err)
 			}

@@ -3,14 +3,8 @@ package updater
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
-)
-
-var (
-	ErrHTTPStatusCodeNotOK = errors.New("HTTP status code not OK")
-	ErrDecodeResponseBody  = errors.New("failed decoding response body")
 )
 
 type serverData struct {
@@ -41,13 +35,12 @@ func fetchAPI(ctx context.Context, client *http.Client) (data []serverData, err 
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: %d %s", ErrHTTPStatusCodeNotOK,
-			response.StatusCode, response.Status)
+		return nil, fmt.Errorf("HTTP status code not OK: %d %s", response.StatusCode, response.Status)
 	}
 
 	decoder := json.NewDecoder(response.Body)
 	if err := decoder.Decode(&data); err != nil {
-		return nil, fmt.Errorf("%w: %s", ErrDecodeResponseBody, err)
+		return nil, fmt.Errorf("failed decoding response body: %s", err)
 	}
 
 	if err := response.Body.Close(); err != nil {

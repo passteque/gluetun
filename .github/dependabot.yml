@@ -4,12 +4,38 @@ updates:
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
   - package-ecosystem: docker
     directory: /
     schedule:
-      interval: "daily"
-  - package-ecosystem: gomod
-    directory: /
+      interval: "weekly"
+  - # Servers data dependency that should be updated as soon as
+    # possible when a new version is released, to have the latest
+    # servers available
+    package-ecosystem: "gomod"
+    directory: "/"
     schedule:
-      interval: "daily"
+      interval: "weekly"
+    ignore:
+      - # In particular avoid amneziawg-go which have v1.x.y versions available
+        # on the Go modules proxy, but are not in the Github repository tags
+        # and are not the latest releases either. Most likely a mistake from the
+        # maintainers, which is persisted on the Go proxy.
+        dependency-name: "github.com/amnezia-vpn/amneziawg-go"
+        versions: ["1.x"]
+    groups:
+      low-importance:
+        patterns:
+          - "github.com/breml/rootcerts"
+          - "github.com/fatih/color"
+          - "github.com/golang/mock"
+          - "github.com/klauspost/compress"
+          - "github.com/klauspost/pgzip"
+          - "github.com/pelletier/go-toml/v2"
+          - "github.com/qdm12/goshutdown"
+          - "github.com/qdm12/gosplash"
+          - "github.com/qdm12/gotree"
+          - "github.com/qdm12/log"
+          - "github.com/stretchr/testify"
+          - "github.com/ulikunitz/xz"
+          - "gopkg.in/ini.v1"

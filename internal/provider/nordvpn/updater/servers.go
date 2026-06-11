@@ -11,8 +11,6 @@ import (
 	"github.com/qdm12/gluetun/internal/provider/common"
 )
 
-var ErrNotIPv4 = errors.New("IP address is not IPv4")
-
 func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	servers []models.Server, err error,
 ) {

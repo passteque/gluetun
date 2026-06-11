@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/qdm12/gluetun/internal/constants/providers"
 	"github.com/qdm12/gosettings"
@@ -17,7 +18,8 @@ type Settings struct {
 	Interface      string // needed for PIA, PrivateVPN and ProtonVPN, tun0 for example
 	ServerName     string // needed for PIA
 	CanPortForward bool   // needed for PIA
-	ListeningPort  uint16
+	ListeningPorts []uint16
+	PortsCount     uint16
 	Username       string // needed for PIA
 	Password       string // needed for PIA
 }
@@ -31,7 +33,8 @@ func (s Settings) Copy() (copied Settings) {
 	copied.Interface = s.Interface
 	copied.ServerName = s.ServerName
 	copied.CanPortForward = s.CanPortForward
-	copied.ListeningPort = s.ListeningPort
+	copied.ListeningPorts = gosettings.CopySlice(s.ListeningPorts)
+	copied.PortsCount = s.PortsCount
 	copied.Username = s.Username
 	copied.Password = s.Password
 	return copied
@@ -46,24 +49,16 @@ func (s *Settings) OverrideWith(update Settings) {
 	s.Interface = gosettings.OverrideWithComparable(s.Interface, update.Interface)
 	s.ServerName = gosettings.OverrideWithComparable(s.ServerName, update.ServerName)
 	s.CanPortForward = gosettings.OverrideWithComparable(s.CanPortForward, update.CanPortForward)
-	s.ListeningPort = gosettings.OverrideWithComparable(s.ListeningPort, update.ListeningPort)
+	s.ListeningPorts = gosettings.OverrideWithSlice(s.ListeningPorts, update.ListeningPorts)
+	s.PortsCount = gosettings.OverrideWithComparable(s.PortsCount, update.PortsCount)
 	s.Username = gosettings.OverrideWithComparable(s.Username, update.Username)
 	s.Password = gosettings.OverrideWithComparable(s.Password, update.Password)
 }
 
-var (
-	ErrPortForwarderNotSet = errors.New("port forwarder not set")
-	ErrServerNameNotSet    = errors.New("server name not set")
-	ErrUsernameNotSet      = errors.New("username not set")
-	ErrPasswordNotSet      = errors.New("password not set")
-	ErrFilepathNotSet      = errors.New("file path not set")
-	ErrInterfaceNotSet     = errors.New("interface not set")
-)
-
 func (s *Settings) Validate(forStartup bool) (err error) {
 	// Minimal validation
 	if s.Filepath == "" {
-		return fmt.Errorf("%w", ErrFilepathNotSet)
+		return errors.New("file path not set")
 	}
 
 	if !forStartup {
@@ -75,18 +70,44 @@ func (s *Settings) Validate(forStartup bool) (err error) {
 	// Startup validation requires additional fields set.
 	switch {
 	case s.PortForwarder == nil:
-		return fmt.Errorf("%w", ErrPortForwarderNotSet)
+		return errors.New("port forwarder not set")
 	case s.Interface == "":
-		return fmt.Errorf("%w", ErrInterfaceNotSet)
-	case s.PortForwarder.Name() == providers.PrivateInternetAccess:
+		return errors.New("interface not set")
+	case s.PortsCount == 0:
+		return errors.New("ports count cannot be zero")
+	}
+
+	switch s.PortForwarder.Name() {
+	case providers.PrivateInternetAccess:
 		switch {
 		case s.ServerName == "":
-			return fmt.Errorf("%w", ErrServerNameNotSet)
+			return errors.New("server name not set")
 		case s.Username == "":
-			return fmt.Errorf("%w", ErrUsernameNotSet)
+			return errors.New("username not set")
 		case s.Password == "":
-			return fmt.Errorf("%w", ErrPasswordNotSet)
+			return errors.New("password not set")
+		}
+	case providers.Protonvpn:
+		const maxPortsCount = 5
+		if s.PortsCount > maxPortsCount {
+			return fmt.Errorf("ports count too high: %d > %d", s.PortsCount, maxPortsCount)
+		}
+	default:
+		const maxPortsCount = 1
+		if s.PortsCount > maxPortsCount {
+			return fmt.Errorf("ports count too high: %d > %d", s.PortsCount, maxPortsCount)
 		}
 	}
+
+	if !slices.Equal(s.ListeningPorts, []uint16{0}) {
+		switch {
+		case len(s.ListeningPorts) != int(s.PortsCount):
+			return fmt.Errorf("listening ports length must be equal to ports count: %d != %d",
+				len(s.ListeningPorts), s.PortsCount)
+		case slices.Contains(s.ListeningPorts, 0):
+			return fmt.Errorf("listening port cannot be 0: in %v", s.ListeningPorts)
+		}
+	}
+
 	return nil
 }

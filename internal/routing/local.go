@@ -1,17 +1,10 @@
 package routing
 
 import (
-	"errors"
 	"fmt"
 	"net/netip"
 
 	"github.com/qdm12/gluetun/internal/netlink"
-)
-
-var (
-	ErrLinkLocalNotFound     = errors.New("local link not found")
-	ErrSubnetDefaultNotFound = errors.New("default subnet not found")
-	ErrSubnetLocalNotFound   = errors.New("local subnet not found")
 )
 
 type LocalNetwork struct {
@@ -38,7 +31,7 @@ func (r *Routing) LocalNetworks() (localNetworks []LocalNetwork, err error) {
 	}
 
 	if len(localLinks) == 0 {
-		return localNetworks, fmt.Errorf("%w: in %d links", ErrLinkLocalNotFound, len(links))
+		return localNetworks, fmt.Errorf("local link not found: in %d links", len(links))
 	}
 
 	routes, err := r.netLinker.RouteList(netlink.FamilyAll)
@@ -82,7 +75,7 @@ func (r *Routing) LocalNetworks() (localNetworks []LocalNetwork, err error) {
 	}
 
 	if len(localNetworks) == 0 {
-		return localNetworks, fmt.Errorf("%w: in %d routes", ErrSubnetLocalNotFound, len(routes))
+		return localNetworks, fmt.Errorf("local subnet not found: in %d routes", len(routes))
 	}
 
 	return localNetworks, nil

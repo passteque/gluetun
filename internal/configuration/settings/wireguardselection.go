@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 
@@ -44,7 +45,7 @@ func (w WireguardSelection) validate(vpnProvider string) (err error) {
 		// endpoint IP addresses are baked in
 	case providers.Custom:
 		if !w.EndpointIP.IsValid() || w.EndpointIP.IsUnspecified() {
-			return fmt.Errorf("%w", ErrWireguardEndpointIPNotSet)
+			return errors.New("endpoint IP is not set")
 		}
 	default: // Providers not supporting Wireguard
 	}
@@ -54,13 +55,13 @@ func (w WireguardSelection) validate(vpnProvider string) (err error) {
 	// EndpointPort is required
 	case providers.Custom:
 		if *w.EndpointPort == 0 {
-			return fmt.Errorf("%w", ErrWireguardEndpointPortNotSet)
+			return errors.New("endpoint port is not set")
 		}
 	// EndpointPort cannot be set
 	case providers.Fastestvpn, providers.Nordvpn,
 		providers.Protonvpn, providers.Surfshark:
 		if *w.EndpointPort != 0 {
-			return fmt.Errorf("%w", ErrWireguardEndpointPortSet)
+			return errors.New("endpoint port is set")
 		}
 	case providers.Airvpn, providers.Ivpn, providers.Mullvad, providers.Windscribe:
 		// EndpointPort is optional and can be 0
@@ -84,8 +85,7 @@ func (w WireguardSelection) validate(vpnProvider string) (err error) {
 		if err == nil {
 			break
 		}
-		return fmt.Errorf("%w: for VPN service provider %s: %w",
-			ErrWireguardEndpointPortNotAllowed, vpnProvider, err)
+		return fmt.Errorf("endpoint port is not allowed: for VPN service provider %s: %w", vpnProvider, err)
 	default: // Providers not supporting Wireguard
 	}
 
@@ -96,15 +96,14 @@ func (w WireguardSelection) validate(vpnProvider string) (err error) {
 		// public keys are baked in
 	case providers.Custom:
 		if w.PublicKey == "" {
-			return fmt.Errorf("%w", ErrWireguardPublicKeyNotSet)
+			return errors.New("public key is not set")
 		}
 	default: // Providers not supporting Wireguard
 	}
 	if w.PublicKey != "" {
 		_, err := wgtypes.ParseKey(w.PublicKey)
 		if err != nil {
-			return fmt.Errorf("%w: %s: %s",
-				ErrWireguardPublicKeyNotValid, w.PublicKey, err)
+			return fmt.Errorf("public key is not valid: %s: %s", w.PublicKey, err)
 		}
 	}
 

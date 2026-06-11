@@ -7,10 +7,7 @@ import (
 	"strings"
 )
 
-var (
-	ErrNoIDInServerName      = errors.New("no ID in server name")
-	ErrInvalidIDInServerName = errors.New("invalid ID in server name")
-)
+var ErrNoIDInServerName = errors.New("no ID in server name")
 
 func parseServerName(serverName string) (number uint16, err error) {
 	i := strings.IndexRune(serverName, '#')
@@ -21,7 +18,7 @@ func parseServerName(serverName string) (number uint16, err error) {
 	idString := serverName[i+1:]
 	idUint64, err := strconv.ParseUint(idString, 10, 16)
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s", ErrInvalidIDInServerName, serverName)
+		return 0, fmt.Errorf("invalid ID in server name: %s", serverName)
 	}
 
 	number = uint16(idUint64)

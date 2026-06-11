@@ -120,7 +120,7 @@ func Test_Server_BadSettings(t *testing.T) {
 
 	server, err := New(settings)
 	assert.Nil(t, server)
-	assert.ErrorIs(t, err, ErrBlockProfileRateNegative)
+	assert.ErrorContains(t, err, "block profile rate cannot be negative")
 	const expectedErrMessage = "pprof settings failed validation: block profile rate cannot be negative"
 	assert.EqualError(t, err, expectedErrMessage)
 }

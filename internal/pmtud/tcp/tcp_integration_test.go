@@ -10,6 +10,7 @@ import (
 
 	"github.com/qdm12/gluetun/internal/command"
 	"github.com/qdm12/gluetun/internal/firewall"
+	"github.com/qdm12/gluetun/internal/firewall/iptables"
 	"github.com/qdm12/gluetun/internal/pmtud/constants"
 	"github.com/qdm12/log"
 	"github.com/stretchr/testify/assert"
@@ -32,8 +33,8 @@ func Test_PathMTUDiscover(t *testing.T) {
 	logger := log.New(log.SetLevel(log.LevelDebug))
 
 	cmder := command.New()
-	fw, err := firewall.NewConfig(t.Context(), logger, cmder, nil, nil)
-	if errors.Is(err, firewall.ErrIPTablesNotSupported) {
+	fw, err := firewall.NewConfig(t.Context(), logger, logger, cmder, nil, nil)
+	if errors.Is(err, iptables.ErrNotSupported) {
 		t.Skip("iptables not installed, skipping TCP PMTUD tests")
 	}
 	require.NoError(t, err, "creating firewall config")

@@ -2,7 +2,6 @@ package openvpn
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -16,8 +15,6 @@ func (c *Configurator) Version26(ctx context.Context) (version string, err error
 	return c.version(ctx, binOpenvpn26)
 }
 
-var ErrVersionTooShort = errors.New("version output is too short")
-
 func (c *Configurator) version(ctx context.Context, binName string) (version string, err error) {
 	cmd := exec.CommandContext(ctx, binName, "--version")
 	output, err := c.cmder.Run(cmd)
@@ -28,7 +25,7 @@ func (c *Configurator) version(ctx context.Context, binName string) (version str
 	words := strings.Fields(firstLine)
 	const minWords = 2
 	if len(words) < minWords {
-		return "", fmt.Errorf("%w: %s", ErrVersionTooShort, firstLine)
+		return "", fmt.Errorf("version output is too short: %s", firstLine)
 	}
 	return words[1], nil
 }

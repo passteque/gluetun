@@ -10,12 +10,10 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_Tun(t *testing.T) {
+func Test_Setup(t *testing.T) {
 	t.Parallel()
 
 	path := getTempPath(t)
-
-	tun := New()
 
 	defer func() {
 		err := os.RemoveAll(path)
@@ -23,7 +21,7 @@ func Test_Tun(t *testing.T) {
 	}()
 
 	// No file check fail
-	err := tun.Check(path)
+	err := check(path)
 	require.Error(t, err)
 	expectedMessage := "TUN device is not available: open " + path + ": no such file or directory"
 	require.Equal(t, expectedMessage, err.Error())
@@ -35,13 +33,13 @@ func Test_Tun(t *testing.T) {
 	require.NoError(t, err)
 
 	// Simple file check fail
-	err = tun.Check(path)
+	err = check(path)
 	require.Error(t, err)
 	expectedMessage = "TUN file has an unexpected rdev: 0 instead of expected 2760"
 	require.Equal(t, expectedMessage, err.Error())
 
 	// Create TUN device fail as file exists
-	err = tun.Create(path)
+	err = create(path)
 	require.Error(t, err)
 	require.EqualError(t, err, "creating TUN device file node: file exists")
 
@@ -50,7 +48,7 @@ func Test_Tun(t *testing.T) {
 	require.NoError(t, err)
 
 	// Create TUN device success
-	err = tun.Create(path)
+	err = create(path)
 	if err != nil && strings.HasSuffix(err.Error(), "operation not permitted") {
 		t.Skip("You do not have root privileges to create a TUN device, skipping test")
 		return
@@ -58,7 +56,7 @@ func Test_Tun(t *testing.T) {
 	require.NoError(t, err)
 
 	// Check TUN device success
-	err = tun.Check(path)
+	err = check(path)
 	require.NoError(t, err)
 }
 

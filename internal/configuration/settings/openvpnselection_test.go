@@ -13,9 +13,9 @@ func Test_OpenVPNSelection_validate(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {
-		selection OpenVPNSelection
-		provider  string
-		err       error
+		selection  OpenVPNSelection
+		provider   string
+		errMessage string
 	}{
 		"purevpn default selection is valid": {
 			selection: openVPNSelectionForValidation(providers.Purevpn),
@@ -35,8 +35,8 @@ func Test_OpenVPNSelection_validate(t *testing.T) {
 				*s.CustomPort = 1194
 				return s
 			}(),
-			provider: providers.Purevpn,
-			err:      ErrOpenVPNCustomPortNotAllowed,
+			provider:   providers.Purevpn,
+			errMessage: "custom endpoint port is not allowed: for VPN service provider purevpn",
 		},
 	}
 
@@ -45,12 +45,12 @@ func Test_OpenVPNSelection_validate(t *testing.T) {
 			t.Parallel()
 
 			err := testCase.selection.validate(testCase.provider)
-			if testCase.err == nil {
+			if testCase.errMessage == "" {
 				require.NoError(t, err)
-				return
+			} else {
+				require.Error(t, err)
+				assert.Contains(t, err.Error(), testCase.errMessage)
 			}
-			require.Error(t, err)
-			assert.ErrorIs(t, err, testCase.err)
 		})
 	}
 }

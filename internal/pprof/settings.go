@@ -2,7 +2,6 @@ package pprof
 
 import (
 	"errors"
-	"fmt"
 	"time"
 
 	"github.com/qdm12/gluetun/internal/httpserver"
@@ -51,18 +50,13 @@ func (s *Settings) OverrideWith(other Settings) {
 	s.HTTPServer.OverrideWith(other.HTTPServer)
 }
 
-var (
-	ErrBlockProfileRateNegative = errors.New("block profile rate cannot be negative")
-	ErrMutexProfileRateNegative = errors.New("mutex profile rate cannot be negative")
-)
-
 func (s Settings) Validate() (err error) {
 	if *s.BlockProfileRate < 0 {
-		return fmt.Errorf("%w", ErrBlockProfileRateNegative)
+		return errors.New("block profile rate cannot be negative")
 	}
 
 	if *s.MutexProfileRate < 0 {
-		return fmt.Errorf("%w", ErrMutexProfileRateNegative)
+		return errors.New("mutex profile rate cannot be negative")
 	}
 
 	return s.HTTPServer.Validate()

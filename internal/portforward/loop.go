@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/portforward/service"
@@ -42,11 +43,12 @@ func NewLoop(settings settings.PortForwarding, routing Routing,
 		settings: Settings{
 			VPNIsUp: ptrTo(false),
 			Service: service.Settings{
-				Enabled:       settings.Enabled,
-				Filepath:      *settings.Filepath,
-				UpCommand:     *settings.UpCommand,
-				DownCommand:   *settings.DownCommand,
-				ListeningPort: *settings.ListeningPort,
+				Enabled:        settings.Enabled,
+				Filepath:       *settings.Filepath,
+				UpCommand:      *settings.UpCommand,
+				DownCommand:    *settings.DownCommand,
+				ListeningPorts: settings.ListeningPorts,
+				PortsCount:     settings.PortsCount,
 			},
 		},
 		routing:     routing,
@@ -86,6 +88,8 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 	defer close(runDone)
 
 	var serviceRunError <-chan error
+	var retryAfter <-chan time.Time
+	const retryDelay = 5 * time.Second
 	for {
 		updateReceived := false
 		select {
@@ -104,10 +108,12 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			l.settingsMutex.Unlock()
 		case err := <-serviceRunError:
 			l.logger.Error(err.Error())
+		case <-retryAfter:
+			// Retry starting the service after a delay
+			retryAfter = nil
 		}
 
-		firstRun := serviceRunError == nil
-		if !firstRun {
+		if l.service != nil {
 			err := l.service.Stop()
 			if err != nil {
 				runErrorCh <- fmt.Errorf("stopping previous service: %w", err)
@@ -131,6 +137,10 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 				err = fmt.Errorf("starting port forwarding service: %w", err)
 			}
 			updateResult <- err
+		} else if err != nil {
+			// Log the error and schedule a retry
+			l.logger.Errorf("starting port forwarding service: %s - retrying in %s", err, retryDelay)
+			retryAfter = time.After(retryDelay)
 		}
 	}
 }
@@ -167,11 +177,9 @@ func (l *Loop) GetPortsForwarded() (ports []uint16) {
 	return l.service.GetPortsForwarded()
 }
 
-var ErrServiceNotStarted = errors.New("port forwarding service not started")
-
 func (l *Loop) SetPortsForwarded(ports []uint16) (err error) {
 	if l.service == nil {
-		return fmt.Errorf("%w", ErrServiceNotStarted)
+		return errors.New("port forwarding service not started")
 	}
 
 	return l.service.SetPortsForwarded(l.runCtx, ports)

@@ -20,12 +20,14 @@ type Settings struct {
 	HTTPProxy     HTTPProxy
 	Log           Log
 	PublicIP      PublicIP
+	Socks5        Socks5
 	Shadowsocks   Shadowsocks
 	Storage       Storage
 	System        System
 	Updater       Updater
 	Version       Version
 	VPN           VPN
+	IPv6          IPv6
 	Pprof         pprof.Settings
 	BoringPoll    BoringPoll
 }
@@ -48,11 +50,13 @@ func (s *Settings) Validate(filterChoicesGetter FilterChoicesGetter, ipv6Support
 		"http proxy":      s.HTTPProxy.validate,
 		"log":             s.Log.validate,
 		"public ip check": s.PublicIP.validate,
+		"socks5":          s.Socks5.validate,
 		"shadowsocks":     s.Shadowsocks.validate,
 		"storage":         s.Storage.validate,
 		"system":          s.System.validate,
 		"updater":         s.Updater.Validate,
 		"version":         s.Version.validate,
+		"ipv6":            s.IPv6.validate,
 		// Pprof validation done in pprof constructor
 		"VPN": func() error {
 			return s.VPN.Validate(filterChoicesGetter, ipv6Supported, warner)
@@ -79,6 +83,7 @@ func (s *Settings) copy() (copied Settings) {
 		HTTPProxy:     s.HTTPProxy.copy(),
 		Log:           s.Log.copy(),
 		PublicIP:      s.PublicIP.copy(),
+		Socks5:        s.Socks5.copy(),
 		Shadowsocks:   s.Shadowsocks.copy(),
 		Storage:       s.Storage.copy(),
 		System:        s.System.copy(),
@@ -87,6 +92,7 @@ func (s *Settings) copy() (copied Settings) {
 		VPN:           s.VPN.Copy(),
 		Pprof:         s.Pprof.Copy(),
 		BoringPoll:    s.BoringPoll.Copy(),
+		IPv6:          s.IPv6.copy(),
 	}
 }
 
@@ -101,6 +107,7 @@ func (s *Settings) OverrideWith(other Settings,
 	patchedSettings.HTTPProxy.overrideWith(other.HTTPProxy)
 	patchedSettings.Log.overrideWith(other.Log)
 	patchedSettings.PublicIP.overrideWith(other.PublicIP)
+	patchedSettings.Socks5.overrideWith(other.Socks5)
 	patchedSettings.Shadowsocks.overrideWith(other.Shadowsocks)
 	patchedSettings.Storage.overrideWith(other.Storage)
 	patchedSettings.System.overrideWith(other.System)
@@ -109,6 +116,7 @@ func (s *Settings) OverrideWith(other Settings,
 	patchedSettings.VPN.OverrideWith(other.VPN)
 	patchedSettings.Pprof.OverrideWith(other.Pprof)
 	patchedSettings.BoringPoll.overrideWith(other.BoringPoll)
+	patchedSettings.IPv6.overrideWith(other.IPv6)
 	err = patchedSettings.Validate(filterChoicesGetter, ipv6Supported, warner)
 	if err != nil {
 		return err
@@ -124,9 +132,12 @@ func (s *Settings) SetDefaults() {
 	s.Firewall.setDefaults(s.Log.Level)
 	s.Health.SetDefaults()
 	s.HTTPProxy.setDefaults()
+	s.Log.setDefaults()
+	s.IPv6.setDefaults()
 	s.PublicIP.setDefaults()
+	s.Socks5.setDefaults()
 	s.Shadowsocks.setDefaults()
-	s.Storage.setDefaults()
+	s.Storage.SetDefaults()
 	s.System.setDefaults()
 	s.Version.setDefaults()
 	s.VPN.setDefaults()
@@ -146,7 +157,9 @@ func (s Settings) toLinesNode() (node *gotree.Node) {
 	node.AppendNode(s.DNS.toLinesNode())
 	node.AppendNode(s.Firewall.toLinesNode())
 	node.AppendNode(s.Log.toLinesNode())
+	node.AppendNode(s.IPv6.toLinesNode())
 	node.AppendNode(s.Health.toLinesNode())
+	node.AppendNode(s.Socks5.toLinesNode())
 	node.AppendNode(s.Shadowsocks.toLinesNode())
 	node.AppendNode(s.HTTPProxy.toLinesNode())
 	node.AppendNode(s.ControlServer.toLinesNode())
@@ -205,12 +218,14 @@ func (s *Settings) Read(r *reader.Reader, warner Warner) (err error) {
 		"public ip": func(r *reader.Reader) error {
 			return s.PublicIP.read(r, warner)
 		},
+		"socks5":      s.Socks5.read,
 		"shadowsocks": s.Shadowsocks.read,
-		"storage":     s.Storage.read,
+		"storage":     s.Storage.Read,
 		"system":      s.System.read,
 		"updater":     s.Updater.read,
 		"version":     s.Version.read,
 		"VPN":         s.VPN.read,
+		"IPv6":        s.IPv6.read,
 		"profiling":   s.Pprof.Read,
 		"boring poll": s.BoringPoll.read,
 	}

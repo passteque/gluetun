@@ -3,12 +3,9 @@ package updater
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/http"
 )
-
-var errHTTPStatusCodeNotOK = errors.New("HTTP status code not OK")
 
 type apiData struct {
 	Servers []apiServer `json:"servers"`
@@ -42,8 +39,8 @@ func fetchAPI(ctx context.Context, client *http.Client) (
 
 	if response.StatusCode != http.StatusOK {
 		_ = response.Body.Close()
-		return data, fmt.Errorf("%w: %d %s",
-			errHTTPStatusCodeNotOK, response.StatusCode, response.Status)
+		return data, fmt.Errorf("HTTP status code not OK: %d %s",
+			response.StatusCode, response.Status)
 	}
 
 	decoder := json.NewDecoder(response.Body)

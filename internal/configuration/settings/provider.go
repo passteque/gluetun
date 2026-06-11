@@ -55,7 +55,7 @@ func (p *Provider) validate(vpnType string, filterChoicesGetter FilterChoicesGet
 		}
 	}
 	if err = validate.IsOneOf(p.Name, validNames...); err != nil {
-		return fmt.Errorf("%w for %s: %w", ErrVPNProviderNameNotValid, vpnType, err)
+		return fmt.Errorf("VPN provider name is not valid for %s: %w", vpnType, err)
 	}
 
 	err = p.ServerSelection.validate(p.Name, filterChoicesGetter, warner)

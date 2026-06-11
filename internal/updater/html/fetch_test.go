@@ -37,21 +37,18 @@ func Test_Fetch(t *testing.T) {
 		responseStatus int
 		responseBody   io.ReadCloser
 		rootNode       *html.Node
-		errWrapped     error
 		errMessage     string
 	}{
 		"context canceled": {
 			ctx:        canceledCtx,
 			url:        "https://example.com/path",
-			errWrapped: context.Canceled,
 			errMessage: `Get "https://example.com/path": context canceled`,
 		},
 		"response status not ok": {
 			ctx:            context.Background(),
 			url:            "https://example.com/path",
 			responseStatus: http.StatusNotFound,
-			errWrapped:     ErrHTTPStatusCodeNotOK,
-			errMessage:     `HTTP status code is not OK: 404 Not Found`,
+			errMessage:     `HTTP status code not OK: 404 Not Found`,
 		},
 		"success": {
 			ctx:            context.Background(),
@@ -86,9 +83,10 @@ func Test_Fetch(t *testing.T) {
 
 			rootNode, err := Fetch(testCase.ctx, client, testCase.url)
 
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if testCase.errWrapped != nil {
+			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 			assert.Equal(t, testCase.rootNode, rootNode)
 		})

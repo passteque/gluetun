@@ -1,15 +1,12 @@
 package updater
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/qdm12/gluetun/internal/constants"
 	"golang.org/x/text/cases"
 )
-
-var errCountryCodeUnknown = errors.New("country code is unknown")
 
 func parseFilename(fileName, hostname string, titleCaser cases.Caser) (
 	country, city string, err error,
@@ -28,7 +25,7 @@ func parseFilename(fileName, hostname string, titleCaser cases.Caser) (
 	countryCode := strings.ToLower(parts[0])
 	country, ok := countryCodes[countryCode]
 	if !ok {
-		return "", "", fmt.Errorf("%w: %s", errCountryCodeUnknown, countryCode)
+		return "", "", fmt.Errorf("country code is unknown: %s", countryCode)
 	}
 	country = titleCaser.String(country)
 

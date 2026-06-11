@@ -8,13 +8,6 @@ import (
 	"unicode/utf8"
 )
 
-var (
-	errCommandEmpty            = errors.New("command is empty")
-	errSingleQuoteUnterminated = errors.New("unterminated single-quoted string")
-	errDoubleQuoteUnterminated = errors.New("unterminated double-quoted string")
-	errEscapeUnterminated      = errors.New("unterminated backslash-escape")
-)
-
 // split splits a command string into a slice of arguments.
 // This is especially important for commands such as:
 // /bin/sh -c "echo hello"
@@ -25,7 +18,7 @@ var (
 // - expansion (brace, shell or pathname).
 func split(command string) (words []string, err error) {
 	if command == "" {
-		return nil, fmt.Errorf("%w", errCommandEmpty)
+		return nil, errors.New("command is empty")
 	}
 
 	const bufferSize = 1024
@@ -42,7 +35,7 @@ func split(command string) (words []string, err error) {
 		case character == '\\':
 			// Look ahead to eventually skip an escaped newline
 			if command[startIndex+runeSize:] == "" {
-				return nil, fmt.Errorf("%w: %q", errEscapeUnterminated, command)
+				return nil, fmt.Errorf("unterminated backslash-escape: %q", command)
 			}
 			character, runeSize := utf8.DecodeRuneInString(command[startIndex+runeSize:])
 			if character == '\n' {
@@ -119,7 +112,7 @@ func handleDoubleQuoted(input string, startIndex int, buffer *bytes.Buffer) (
 			startIndex = cursor
 		}
 	}
-	return "", 0, fmt.Errorf("%w", errDoubleQuoteUnterminated)
+	return "", 0, errors.New("unterminated double-quoted string")
 }
 
 func handleSingleQuoted(input string, startIndex int, buffer *bytes.Buffer) (
@@ -127,7 +120,7 @@ func handleSingleQuoted(input string, startIndex int, buffer *bytes.Buffer) (
 ) {
 	closingQuoteIndex := strings.IndexRune(input[startIndex:], '\'')
 	if closingQuoteIndex == -1 {
-		return "", 0, fmt.Errorf("%w", errSingleQuoteUnterminated)
+		return "", 0, errors.New("unterminated single-quoted string")
 	}
 	buffer.WriteString(input[startIndex : startIndex+closingQuoteIndex])
 	const singleQuoteRuneLength = 1
@@ -139,7 +132,7 @@ func handleEscaped(input string, startIndex int, buffer *bytes.Buffer) (
 	word string, newStartIndex int, err error,
 ) {
 	if input[startIndex:] == "" {
-		return "", 0, fmt.Errorf("%w", errEscapeUnterminated)
+		return "", 0, errors.New("unterminated backslash-escape")
 	}
 	character, runeLength := utf8.DecodeRuneInString(input[startIndex:])
 	if character != '\n' { // backslash-escaped newline is ignored

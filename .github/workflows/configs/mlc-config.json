@@ -2,6 +2,9 @@
   "ignorePatterns": [
     {
       "pattern": "^https://console.substack.com/p/console-72$"
+    },
+    {
+      "pattern": "^https://github.com/passteque/gluetun$"
     }
   ],
   "timeout": "20s",

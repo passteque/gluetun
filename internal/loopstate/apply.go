@@ -2,14 +2,11 @@ package loopstate
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/qdm12/gluetun/internal/constants"
 	"github.com/qdm12/gluetun/internal/models"
 )
-
-var ErrInvalidStatus = errors.New("invalid status")
 
 // ApplyStatus sends signals to the running loop depending on the
 // current status and status requested, such that its next status
@@ -73,7 +70,7 @@ func (s *State) ApplyStatus(ctx context.Context, status models.LoopStatus) (
 		return newStatus.String(), nil
 	default:
 		s.statusMu.Unlock()
-		return "", fmt.Errorf("%w: %s: it can only be one of: %s, %s",
-			ErrInvalidStatus, status, constants.Running, constants.Stopped)
+		return "", fmt.Errorf("invalid status: %s: it can only be one of: %s, %s",
+			status, constants.Running, constants.Stopped)
 	}
 }

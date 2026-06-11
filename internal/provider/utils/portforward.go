@@ -25,6 +25,8 @@ type PortForwardObjects struct {
 	Username string
 	// Password is used by Private Internet Access for port forwarding.
 	Password string
+	// PortsCount is used by ProtonVPN for port forwarding.
+	PortsCount uint16
 }
 
 type Routing interface {

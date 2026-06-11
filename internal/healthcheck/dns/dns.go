@@ -2,7 +2,6 @@ package dns
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -41,8 +40,6 @@ func concatAddrPorts(addrs [][]netip.AddrPort) []netip.AddrPort {
 	return result
 }
 
-var ErrLookupNoIPs = errors.New("no IPs found from DNS lookup")
-
 func (c *Client) Check(ctx context.Context) error {
 	dnsAddr := c.serverAddrs[c.dnsIPIndex].String()
 	resolver := &net.Resolver{
@@ -59,7 +56,7 @@ func (c *Client) Check(ctx context.Context) error {
 		return fmt.Errorf("with DNS server %s: %w", dnsAddr, err)
 	case len(ips) == 0:
 		c.dnsIPIndex = (c.dnsIPIndex + 1) % len(c.serverAddrs)
-		return fmt.Errorf("with DNS server %s: %w", dnsAddr, ErrLookupNoIPs)
+		return fmt.Errorf("with DNS server %s: no IPs found from DNS lookup", dnsAddr)
 	default:
 		return nil
 	}

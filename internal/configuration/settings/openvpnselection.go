@@ -62,8 +62,7 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 		providers.Perfectprivacy,
 		providers.Vyprvpn,
 	) {
-		return fmt.Errorf("%w: for VPN service provider %s",
-			ErrOpenVPNTCPNotSupported, vpnProvider)
+		return fmt.Errorf("TCP protocol is not supported: for VPN service provider %s", vpnProvider)
 	}
 
 	// Validate CustomPort
@@ -78,8 +77,7 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 			providers.Nordvpn, providers.Purevpn,
 			providers.Surfshark, providers.VPNSecure,
 			providers.VPNUnlimited, providers.Vyprvpn:
-			return fmt.Errorf("%w: for VPN service provider %s",
-				ErrOpenVPNCustomPortNotAllowed, vpnProvider)
+			return fmt.Errorf("custom endpoint port is not allowed: for VPN service provider %s", vpnProvider)
 		default:
 			var allowedTCP, allowedUDP []uint16
 			switch vpnProvider {
@@ -102,7 +100,7 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 				allowedTCP = []uint16{443, 1194, 8080, 8443}
 				allowedUDP = []uint16{443, 1194, 8080, 8443}
 			case providers.PrivateInternetAccess:
-				allowedTCP = []uint16{80, 110, 443}
+				allowedTCP = []uint16{80, 110, 443, 501, 502, 8443}
 				allowedUDP = []uint16{53, 1194, 1197, 1198, 8080, 9201}
 			case providers.Protonvpn:
 				allowedTCP = []uint16{443, 5995, 8443}
@@ -123,8 +121,7 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 			}
 			err = validate.IsOneOf(*o.CustomPort, allowedPorts...)
 			if err != nil {
-				return fmt.Errorf("%w: for VPN service provider %s: %w",
-					ErrOpenVPNCustomPortNotAllowed, vpnProvider, err)
+				return fmt.Errorf("custom endpoint port is not allowed: for VPN service provider %s: %w", vpnProvider, err)
 			}
 		}
 	}
@@ -132,12 +129,11 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 	// Validate EncPreset
 	if vpnProvider == providers.PrivateInternetAccess {
 		validEncryptionPresets := []string{
-			presets.None,
 			presets.Normal,
 			presets.Strong,
 		}
 		if err = validate.IsOneOf(*o.PIAEncPreset, validEncryptionPresets...); err != nil {
-			return fmt.Errorf("%w: %w", ErrOpenVPNEncryptionPresetNotValid, err)
+			return fmt.Errorf("PIA encryption preset is not valid: %w", err)
 		}
 	}
 

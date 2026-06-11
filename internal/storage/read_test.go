@@ -30,25 +30,30 @@ func Test_extractServersFromBytes(t *testing.T) {
 	testCases := map[string]struct {
 		b                 []byte
 		hardcodedVersions map[string]uint16
-		logged            []string
+		makeLogger        func(ctrl *gomock.Controller) *MockLogger
 		persisted         models.AllServers
 		errMessage        string
 	}{
 		"bad JSON": {
 			b:          []byte("garbage"),
+			makeLogger: func(_ *gomock.Controller) *MockLogger { return nil },
 			errMessage: "decoding servers: invalid character 'g' looking for beginning of value",
 		},
 		"bad provider JSON": {
 			b:                 []byte(`{"cyberghost": "garbage"}`),
 			hardcodedVersions: populateProviderToVersion(map[string]uint16{}),
+			makeLogger:        func(_ *gomock.Controller) *MockLogger { return nil },
 			errMessage: "decoding servers version for provider Cyberghost: " +
-				"json: cannot unmarshal string into Go value of type struct { Version uint16 \"json:\\\"version\\\"\" }",
+				"json: cannot unmarshal string into Go value of type struct { Version uint16 \"json:\\\"version\\\"\"; " +
+				"Timestamp uint64 \"json:\\\"timestamp\\\"\"; " +
+				"Filepath string \"json:\\\"filepath\\\"\" }",
 		},
 		"bad servers array JSON": {
 			b: []byte(`{"cyberghost": {"version": 1, "servers": "garbage"}}`),
 			hardcodedVersions: populateProviderToVersion(map[string]uint16{
 				providers.Cyberghost: 1,
 			}),
+			makeLogger: func(_ *gomock.Controller) *MockLogger { return nil },
 			errMessage: "decoding servers for provider Cyberghost: " +
 				"json: cannot unmarshal string into Go struct field Servers.servers of type []models.Server",
 		},
@@ -57,6 +62,7 @@ func Test_extractServersFromBytes(t *testing.T) {
 			hardcodedVersions: populateProviderToVersion(map[string]uint16{
 				providers.Cyberghost: 1,
 			}),
+			makeLogger: func(_ *gomock.Controller) *MockLogger { return nil },
 			persisted: models.AllServers{
 				ProviderToServers: map[string]models.Servers{},
 			},
@@ -68,6 +74,7 @@ func Test_extractServersFromBytes(t *testing.T) {
 			hardcodedVersions: populateProviderToVersion(map[string]uint16{
 				providers.Cyberghost: 1,
 			}),
+			makeLogger: func(_ *gomock.Controller) *MockLogger { return nil },
 			persisted: models.AllServers{
 				ProviderToServers: map[string]models.Servers{
 					providers.Cyberghost: {Version: 1},
@@ -81,8 +88,28 @@ func Test_extractServersFromBytes(t *testing.T) {
 			hardcodedVersions: populateProviderToVersion(map[string]uint16{
 				providers.Cyberghost: 2,
 			}),
-			logged: []string{
-				"Cyberghost servers from file discarded because they have version 1 and hardcoded servers have version 2",
+			makeLogger: func(ctrl *gomock.Controller) *MockLogger {
+				logger := NewMockLogger(ctrl)
+				logger.EXPECT().Info("Cyberghost servers discarded because " +
+					"they have version 1 and hardcoded servers have version 2")
+				return logger
+			},
+			persisted: models.AllServers{
+				ProviderToServers: map[string]models.Servers{},
+			},
+		},
+		"preferred_different_versions": {
+			b: []byte(`{
+				"cyberghost": {"version": 1, "timestamp": 1, "preferred": true}
+			}`),
+			hardcodedVersions: populateProviderToVersion(map[string]uint16{
+				providers.Cyberghost: 2,
+			}),
+			makeLogger: func(ctrl *gomock.Controller) *MockLogger {
+				logger := NewMockLogger(ctrl)
+				logger.EXPECT().Warn("Cyberghost preferred servers discarded because " +
+					"they have version 1 and hardcoded servers have version 2")
+				return logger
 			},
 			persisted: models.AllServers{
 				ProviderToServers: map[string]models.Servers{},
@@ -95,16 +122,7 @@ func Test_extractServersFromBytes(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 
-			logger := NewMockLogger(ctrl)
-			var previousLogCall *gomock.Call
-			for _, logged := range testCase.logged {
-				call := logger.EXPECT().Info(logged)
-				if previousLogCall != nil {
-					call.After(previousLogCall)
-				}
-				previousLogCall = call
-			}
-
+			logger := testCase.makeLogger(ctrl)
 			s := &Storage{
 				logger: logger,
 			}
@@ -134,8 +152,7 @@ func Test_extractServersFromBytes(t *testing.T) {
 			allProviders[0]: 1,
 			// Missing provider allProviders[1]
 		}
-		expectedPanicValue := fmt.Sprintf("provider %s not found in hardcoded servers map; "+
-			"did you add the provider key in the embedded servers.json?", allProviders[1])
+		expectedPanicValue := fmt.Sprintf("provider %s not found in hardcoded servers map", allProviders[1])
 		assert.PanicsWithValue(t, expectedPanicValue, func() {
 			_, _ = s.extractServersFromBytes(b, hardcodedVersions)
 		})

@@ -22,7 +22,7 @@ type BoringPoll struct {
 
 	// Internal signals and channels
 	cancel context.CancelFunc
-	done   <-chan struct{}
+	done   *sync.WaitGroup
 	mutex  sync.Mutex
 }
 
@@ -31,7 +31,7 @@ type urlData struct{}
 func New(client *http.Client, logger Logger, settings settings.BoringPoll) *BoringPoll {
 	urlToData := make(map[string]*urlData)
 	if *settings.GluetunCom {
-		urlToData["https://gluetun.com/wp-json"] = &urlData{}
+		logger.Infof("gluetun.com is DOWN most likely thanks to you! so not doing anything anymore")
 	}
 	return &BoringPoll{
 		client:    client,
@@ -53,6 +53,7 @@ func (b *BoringPoll) Start() (runError <-chan error, err error) {
 	const logEveryBytes = 100 * 1000 * 1000 // 100 IEC MB
 
 	var ready, done sync.WaitGroup
+	b.done = &done
 	ready.Add(len(b.urlToData))
 	done.Add(len(b.urlToData))
 	ctx, cancel := context.WithCancel(context.Background())
@@ -166,7 +167,7 @@ func (b *BoringPoll) Stop() error {
 		return nil
 	}
 	b.cancel()
-	<-b.done
+	b.done.Wait()
 	b.cancel = nil
 	b.done = nil
 	return nil

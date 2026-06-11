@@ -5,6 +5,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"net"
 	"net/http"
 	"slices"
 	"strings"
@@ -13,38 +14,30 @@ import (
 	"github.com/qdm12/dns/v2/pkg/doh"
 	dnsprovider "github.com/qdm12/dns/v2/pkg/provider"
 	"github.com/qdm12/gluetun/internal/configuration/settings"
-	"github.com/qdm12/gluetun/internal/constants"
 	"github.com/qdm12/gluetun/internal/constants/providers"
 	"github.com/qdm12/gluetun/internal/openvpn/extract"
 	"github.com/qdm12/gluetun/internal/provider"
 	"github.com/qdm12/gluetun/internal/publicip/api"
-	"github.com/qdm12/gluetun/internal/storage"
 	"github.com/qdm12/gluetun/internal/updater"
 	"github.com/qdm12/gluetun/internal/updater/resolver"
 	"github.com/qdm12/gluetun/internal/updater/unzip"
 )
 
-var (
-	ErrModeUnspecified     = errors.New("at least one of -enduser or -maintainer must be specified")
-	ErrNoProviderSpecified = errors.New("no provider was specified")
-	ErrUsernameMissing     = errors.New("username is required for this provider")
-	ErrPasswordMissing     = errors.New("password is required for this provider")
-)
-
 type UpdaterLogger interface {
 	Info(s string)
+	Infof(format string, args ...any)
 	Warn(s string)
+	Warnf(format string, args ...any)
 	Error(s string)
 }
 
 func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) error {
 	options := settings.Updater{}
-	var endUserMode, maintainerMode, updateAll bool
+	// TODO v4: remove flags below already present in standard settings
+	var endUserMode, maintainerMode bool
+	var updateAll bool
 	var dnsServer, csvProviders, ipToken, protonUsername, protonEmail, protonPassword string
 	flagSet := flag.NewFlagSet("update", flag.ExitOnError)
-	flagSet.BoolVar(&endUserMode, "enduser", false, "Write results to /gluetun/servers.json (for end users)")
-	flagSet.BoolVar(&maintainerMode, "maintainer", false,
-		"Write results to ./internal/storage/servers.json to modify the program (for maintainers)")
 	flagSet.StringVar(&dnsServer, "dns", "", "no longer used, your DNS will use DoH with Cloudflare and Google")
 	const defaultMinRatio = 0.8
 	flagSet.Float64Var(&options.MinRatio, "minratio", defaultMinRatio,
@@ -56,23 +49,26 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 		"(Retro-compatibility) Username to use to authenticate with Proton. Use -proton-email instead.") // v4 remove this
 	flagSet.StringVar(&protonEmail, "proton-email", "", "Email to use to authenticate with Proton")
 	flagSet.StringVar(&protonPassword, "proton-password", "", "Password to use to authenticate with Proton")
+	flagSet.BoolVar(&endUserMode, "enduser", false, "deprecated")
+	flagSet.BoolVar(&maintainerMode, "maintainer", false, "deprecated")
 	if err := flagSet.Parse(args); err != nil {
 		return err
 	}
 
-	if dnsServer != "" {
+	switch {
+	case dnsServer != "":
 		logger.Warn("The -dns flag is no longer used, your DNS will use DoH with Cloudflare and Google")
-	}
-
-	if !endUserMode && !maintainerMode {
-		return fmt.Errorf("%w", ErrModeUnspecified)
+	case endUserMode:
+		logger.Warn("The -enduser flag is now unused")
+	case maintainerMode:
+		logger.Warn("The -maintainer flag is now unused")
 	}
 
 	if updateAll {
 		options.Providers = providers.All()
 	} else {
 		if csvProviders == "" {
-			return fmt.Errorf("%w", ErrNoProviderSpecified)
+			return errors.New("no provider was specified")
 		}
 		options.Providers = strings.Split(csvProviders, ",")
 	}
@@ -94,11 +90,7 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 		return fmt.Errorf("options validation failed: %w", err)
 	}
 
-	serversDataPath := constants.ServersData
-	if maintainerMode {
-		serversDataPath = ""
-	}
-	storage, err := storage.New(logger, serversDataPath)
+	storage, err := setupStorage(logger)
 	if err != nil {
 		return fmt.Errorf("creating servers storage: %w", err)
 	}
@@ -112,6 +104,10 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 	dnsDialer, err := doh.New(dohSettings)
 	if err != nil {
 		return fmt.Errorf("creating DoH dialer: %w", err)
+	}
+	net.DefaultResolver = &net.Resolver{
+		PreferGo: true,
+		Dial:     dnsDialer.Dial,
 	}
 
 	const clientTimeout = 10 * time.Second
@@ -134,17 +130,10 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 	providers := provider.NewProviders(storage, time.Now, logger, httpClient,
 		unzipper, parallelResolver, ipFetcher, openvpnFileExtractor, options)
 
-	updater := updater.New(httpClient, storage, providers, logger)
+	updater := updater.New(httpClient, storage, providers, logger, *options.PreferDirectDownload)
 	err = updater.UpdateServers(ctx, options.Providers, options.MinRatio)
 	if err != nil {
 		return fmt.Errorf("updating server information: %w", err)
-	}
-
-	if maintainerMode {
-		err := storage.FlushToFile(c.repoServersPath)
-		if err != nil {
-			return fmt.Errorf("writing servers data to embedded JSON file: %w", err)
-		}
 	}
 
 	return nil

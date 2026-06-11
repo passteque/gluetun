@@ -1,7 +1,6 @@
 package settings
 
 import (
-	"errors"
 	"fmt"
 	"net/netip"
 	"time"
@@ -21,6 +20,9 @@ const (
 
 // DNS contains settings to configure DNS.
 type DNS struct {
+	// ServerEnabled indicates if the DNS server should be enabled.
+	// It defaults to true and cannot be nil in the internal state.
+	ServerEnabled *bool `json:"enabled"`
 	// UpstreamType can be [DNSUpstreamTypeDot], [DNSUpstreamTypeDoh]
 	// or [DNSUpstreamTypePlain]. It defaults to [DNSUpstreamTypeDot].
 	UpstreamType string `json:"upstream_type"`
@@ -48,22 +50,22 @@ type DNS struct {
 	UpstreamPlainAddresses []netip.AddrPort
 }
 
-var (
-	ErrDNSUpstreamTypeNotValid = errors.New("DNS upstream type is not valid")
-	ErrDNSUpdatePeriodTooShort = errors.New("update period is too short")
-	ErrDNSUpstreamPlainNoIPv6  = errors.New("upstream plain addresses do not contain any IPv6 address")
-	ErrDNSUpstreamPlainNoIPv4  = errors.New("upstream plain addresses do not contain any IPv4 address")
-)
-
 func (d DNS) validate() (err error) {
 	if !helpers.IsOneOf(d.UpstreamType, DNSUpstreamTypeDot, DNSUpstreamTypeDoh, DNSUpstreamTypePlain) {
-		return fmt.Errorf("%w: %s", ErrDNSUpstreamTypeNotValid, d.UpstreamType)
+		return fmt.Errorf("DNS upstream type is not valid: %s", d.UpstreamType)
+	}
+
+	if !*d.ServerEnabled {
+		err = d.validateForServerOff()
+		if err != nil {
+			return err
+		}
 	}
 
 	const minUpdatePeriod = 30 * time.Second
 	if *d.UpdatePeriod != 0 && *d.UpdatePeriod < minUpdatePeriod {
-		return fmt.Errorf("%w: %s must be bigger than %s",
-			ErrDNSUpdatePeriodTooShort, *d.UpdatePeriod, minUpdatePeriod)
+		return fmt.Errorf("update period is too short: %s must be bigger than %s",
+			*d.UpdatePeriod, minUpdatePeriod)
 	}
 
 	if d.UpstreamType == DNSUpstreamTypePlain {
@@ -81,9 +83,11 @@ func (d DNS) validate() (err error) {
 		}
 		switch {
 		case *d.IPv6 && !selectedHasPlainIPv6:
-			return fmt.Errorf("%w: in %d addresses", ErrDNSUpstreamPlainNoIPv6, len(d.UpstreamPlainAddresses))
+			return fmt.Errorf("upstream plain addresses do not contain any IPv6 address: "+
+				"in %d addresses", len(d.UpstreamPlainAddresses))
 		case !*d.IPv6 && !selectedHasPlainIPv4:
-			return fmt.Errorf("%w: in %d addresses", ErrDNSUpstreamPlainNoIPv4, len(d.UpstreamPlainAddresses))
+			return fmt.Errorf("upstream plain addresses do not contain any IPv4 address: "+
+				"in %d addresses", len(d.UpstreamPlainAddresses))
 		}
 	}
 	// Note: all DNS built in providers have both IPv4 and IPv6 addresses for all modes
@@ -96,8 +100,26 @@ func (d DNS) validate() (err error) {
 	return nil
 }
 
+func (d DNS) validateForServerOff() (err error) {
+	switch {
+	case d.UpstreamType != DNSUpstreamTypePlain:
+		return fmt.Errorf("upstream type %s must be %s if the built-in DNS server is disabled",
+			d.UpstreamType, DNSUpstreamTypePlain)
+	case len(d.UpstreamPlainAddresses) == 0:
+		return fmt.Errorf("if DNS is disabled, at least one upstream plain address must be set")
+	}
+	for _, addrPort := range d.UpstreamPlainAddresses {
+		const defaultDNSPort = 53
+		if addrPort.Port() != defaultDNSPort {
+			return fmt.Errorf("invalid DNS port in %s: must be %d", addrPort, defaultDNSPort)
+		}
+	}
+	return nil
+}
+
 func (d *DNS) Copy() (copied DNS) {
 	return DNS{
+		ServerEnabled:          gosettings.CopyPointer(d.ServerEnabled),
 		UpstreamType:           d.UpstreamType,
 		UpdatePeriod:           gosettings.CopyPointer(d.UpdatePeriod),
 		Providers:              gosettings.CopySlice(d.Providers),
@@ -112,6 +134,7 @@ func (d *DNS) Copy() (copied DNS) {
 // settings object with any field set in the other
 // settings.
 func (d *DNS) overrideWith(other DNS) {
+	d.ServerEnabled = gosettings.OverrideWithPointer(d.ServerEnabled, other.ServerEnabled)
 	d.UpstreamType = gosettings.OverrideWithComparable(d.UpstreamType, other.UpstreamType)
 	d.UpdatePeriod = gosettings.OverrideWithPointer(d.UpdatePeriod, other.UpdatePeriod)
 	d.Providers = gosettings.OverrideWithSlice(d.Providers, other.Providers)
@@ -122,7 +145,12 @@ func (d *DNS) overrideWith(other DNS) {
 }
 
 func (d *DNS) setDefaults() {
-	d.UpstreamType = gosettings.DefaultComparable(d.UpstreamType, DNSUpstreamTypeDot)
+	d.ServerEnabled = gosettings.DefaultPointer(d.ServerEnabled, true)
+	defaultUpstreamType := DNSUpstreamTypeDot
+	if !*d.ServerEnabled {
+		defaultUpstreamType = DNSUpstreamTypePlain
+	}
+	d.UpstreamType = gosettings.DefaultComparable(d.UpstreamType, defaultUpstreamType)
 	const defaultUpdatePeriod = 24 * time.Hour
 	d.UpdatePeriod = gosettings.DefaultPointer(d.UpdatePeriod, defaultUpdatePeriod)
 	d.UpstreamPlainAddresses = gosettings.DefaultSlice(d.UpstreamPlainAddresses, []netip.AddrPort{})
@@ -138,52 +166,20 @@ func defaultDNSProviders() []string {
 	}
 }
 
-func (d DNS) GetFirstPlaintextIPv4() (ipv4 netip.Addr) {
-	if d.UpstreamType == DNSUpstreamTypePlain {
-		for _, addrPort := range d.UpstreamPlainAddresses {
-			if addrPort.Addr().Is4() {
-				return addrPort.Addr()
-			}
-		}
-	}
-
-	ipv4 = findPlainIPv4InProviders(d.Providers)
-	if ipv4.IsValid() {
-		return ipv4
-	}
-
-	// Either:
-	// - all upstream plain addresses are IPv6 and no provider is set
-	// - all providers set do not have a plaintext IPv4 address
-	ipv4 = findPlainIPv4InProviders(defaultDNSProviders())
-	if !ipv4.IsValid() {
-		panic("no plaintext IPv4 address found in default DNS providers")
-	}
-	return ipv4
-}
-
-func findPlainIPv4InProviders(providerNames []string) netip.Addr {
-	providers := provider.NewProviders()
-	for _, name := range providerNames {
-		provider, err := providers.Get(name)
-		if err != nil {
-			// Settings should be validated before calling this function,
-			// so an error happening here is a programming error.
-			panic(err)
-		}
-		if len(provider.Plain.IPv4) > 0 {
-			return provider.Plain.IPv4[0].Addr()
-		}
-	}
-	return netip.Addr{}
-}
-
 func (d DNS) String() string {
 	return d.toLinesNode().String()
 }
 
 func (d DNS) toLinesNode() (node *gotree.Node) {
 	node = gotree.New("DNS settings:")
+
+	if !*d.ServerEnabled {
+		plainServers := node.Append("Plain DNS servers to use directly:")
+		for _, addr := range d.UpstreamPlainAddresses {
+			plainServers.Append(addr.String())
+		}
+		return node
+	}
 
 	node.Appendf("Upstream resolver type: %s", d.UpstreamType)
 
@@ -220,6 +216,11 @@ func (d DNS) toLinesNode() (node *gotree.Node) {
 }
 
 func (d *DNS) read(r *reader.Reader) (err error) {
+	d.ServerEnabled, err = r.BoolPtr("DNS_SERVER", reader.RetroKeys("DOT"))
+	if err != nil {
+		return err
+	}
+
 	d.UpstreamType = r.String("DNS_UPSTREAM_RESOLVER_TYPE")
 
 	d.UpdatePeriod, err = r.DurationPtr("DNS_UPDATE_PERIOD")
@@ -253,7 +254,7 @@ func (d *DNS) read(r *reader.Reader) (err error) {
 }
 
 func (d *DNS) readUpstreamPlainAddresses(r *reader.Reader) (err error) {
-	// If DNS_UPSTREAM_PLAIN_ADDRESSES is set, the user must also set DNS_UPSTREAM_TYPE=plain
+	// If DNS_UPSTREAM_PLAIN_ADDRESSES is set, the user must also set DNS_UPSTREAM_RESOLVER_TYPE=plain
 	// for these to be used. This is an added safety measure to reduce misunderstandings, and
 	// reduce odd settings overrides.
 	d.UpstreamPlainAddresses, err = r.CSVNetipAddrPorts("DNS_UPSTREAM_PLAIN_ADDRESSES")

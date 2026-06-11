@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -42,8 +41,8 @@ import (
 	"github.com/qdm12/gluetun/internal/routing"
 	"github.com/qdm12/gluetun/internal/server"
 	"github.com/qdm12/gluetun/internal/shadowsocks"
+	"github.com/qdm12/gluetun/internal/socks5"
 	"github.com/qdm12/gluetun/internal/storage"
-	"github.com/qdm12/gluetun/internal/tun"
 	updater "github.com/qdm12/gluetun/internal/updater/loop"
 	"github.com/qdm12/gluetun/internal/updater/resolver"
 	"github.com/qdm12/gluetun/internal/updater/unzip"
@@ -80,7 +79,6 @@ func main() {
 	logger := log.New(log.SetLevel(log.LevelInfo))
 
 	args := os.Args
-	tun := tun.New()
 	netLinkDebugLogger := logger.New(log.SetComponent("netlink"))
 	netLinker := netlink.New(netLinkDebugLogger)
 	cli := cli.New()
@@ -100,7 +98,7 @@ func main() {
 
 	errorCh := make(chan error)
 	go func() {
-		errorCh <- _main(ctx, buildInfo, args, logger, reader, tun, netLinker, cmder, cli)
+		errorCh <- _main(ctx, buildInfo, args, logger, reader, netLinker, cmder, cli)
 	}()
 
 	// Wait for OS signal or run error
@@ -142,12 +140,10 @@ func main() {
 	}
 }
 
-var errCommandUnknown = errors.New("command is unknown")
-
 //nolint:gocognit,gocyclo,maintidx
 func _main(ctx context.Context, buildInfo models.BuildInformation,
 	args []string, logger log.LoggerInterface, reader *reader.Reader,
-	tun Tun, netLinker netLinker, cmder RunStarter,
+	netLinker netLinker, cmder RunStarter,
 	cli clier,
 ) error {
 	if len(args) > 1 { // cli operation
@@ -165,13 +161,13 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		case "genkey":
 			return cli.GenKey(args[2:])
 		default:
-			return fmt.Errorf("%w: %s", errCommandUnknown, args[1])
+			return fmt.Errorf("command is unknown: %s", args[1])
 		}
 	}
 
 	defer fmt.Println(gluetunLogo)
 
-	announcementExp, err := time.Parse(time.RFC3339, "2026-04-30T00:00:00Z")
+	announcementExp, err := time.Parse(time.RFC3339, "2026-06-30T00:00:00Z")
 	if err != nil {
 		return err
 	}
@@ -182,7 +178,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		Version:      buildInfo.Version,
 		Commit:       buildInfo.Commit,
 		Created:      buildInfo.Created,
-		Announcement: "Set BORINGPOLL_GLUETUNCOM=on to help combat AI slop and shutdown that scam website",
+		Announcement: "Your servers data files are now migrated to /gluetun/servers/",
 		AnnounceExp:  announcementExp,
 		// Sponsor information
 		PaypalUser:    "qmcgaw",
@@ -245,15 +241,19 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 
 	// TODO run this in a loop or in openvpn to reload from file without restarting
 	storageLogger := logger.New(log.SetComponent("storage"))
-	storage, err := storage.New(storageLogger, *allSettings.Storage.Filepath)
+	storage, err := storage.New(storageLogger, *allSettings.Storage.ServersEnabled,
+		allSettings.Storage.ServersPath, allSettings.Storage.LegacyServersFilepath)
 	if err != nil {
 		return err
 	}
 
-	ipv6Supported, err := netLinker.IsIPv6Supported()
+	ipv6SupportLevel, err := netLinker.FindIPv6SupportLevel(ctx,
+		allSettings.IPv6.CheckAddresses, firewallConf)
 	if err != nil {
 		return fmt.Errorf("checking for IPv6 support: %w", err)
 	}
+	ipv6Supported := ipv6SupportLevel == netlink.IPv6Supported ||
+		ipv6SupportLevel == netlink.IPv6Internet
 
 	err = allSettings.Validate(storage, ipv6Supported, logger)
 	if err != nil {
@@ -340,19 +340,6 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		return fmt.Errorf("adding local rules: %w", err)
 	}
 
-	const tunDevice = "/dev/net/tun"
-	err = tun.Check(tunDevice)
-	if err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("checking TUN device: %w (see the Wiki errors/tun page)", err)
-		}
-		logger.Info(err.Error() + "; creating it...")
-		err = tun.Create(tunDevice)
-		if err != nil {
-			return fmt.Errorf("creating tun device: %w", err)
-		}
-	}
-
 	for _, port := range allSettings.Firewall.InputPorts {
 		for _, defaultRoute := range defaultRoutes {
 			err = firewallConf.SetAllowedPort(ctx, port, defaultRoute.NetInterface)
@@ -425,6 +412,18 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		return fmt.Errorf("starting public ip loop: %w", err)
 	}
 
+	socks5Loop := socks5.NewLoop(socks5.Settings{
+		Enabled:  *allSettings.Socks5.Enabled,
+		Username: *allSettings.Socks5.Username,
+		Password: *allSettings.Socks5.Password,
+		Address:  allSettings.Socks5.ListeningAddress,
+		Logger:   logger.New(log.SetComponent("socks5")),
+	})
+	socks5RunError, err := socks5Loop.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("starting SOCKS5 server loop: %w", err)
+	}
+
 	healthLogger := logger.New(log.SetComponent("healthcheck"))
 	healthcheckServer := healthcheck.NewServer(allSettings.Health, healthLogger)
 	healthServerHandler, healthServerCtx, healthServerDone := goshutdown.NewGoRoutineHandler(
@@ -453,7 +452,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	boringPoll := boringpoll.New(httpClient, boringPollLogger, allSettings.BoringPoll)
 
 	vpnLogger := logger.New(log.SetComponent("vpn"))
-	vpnLooper := vpn.NewLoop(allSettings.VPN, ipv6Supported, allSettings.Firewall.VPNInputPorts,
+	vpnLooper := vpn.NewLoop(allSettings.VPN, ipv6SupportLevel, allSettings.Firewall.VPNInputPorts,
 		providers, storage, boringPoll, allSettings.Health, healthChecker, healthcheckServer,
 		ovpnConf, netLinker, firewallConf, routingConf, portForwardLooper, cmder, publicIPLooper,
 		dnsLooper, vpnLogger, httpClient, buildInfo, *allSettings.Version.Enabled)
@@ -494,7 +493,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	httpServer, err := server.New(httpServerCtx, allSettings.ControlServer,
 		logger.New(log.SetComponent("http server")),
 		buildInfo, vpnLooper, portForwardLooper, dnsLooper, updaterLooper, publicIPLooper,
-		storage, ipv6Supported)
+		storage, ipv6SupportLevel.IsSupported())
 	if err != nil {
 		return fmt.Errorf("setting up control server: %w", err)
 	}
@@ -520,7 +519,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 			String() string
 			Stop() error
 		}{
-			portForwardLooper, publicIPLooper,
+			portForwardLooper, publicIPLooper, socks5Loop,
 		}
 		for _, stopper := range stoppers {
 			err := stopper.Stop()
@@ -532,6 +531,8 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		logger.Errorf("port forwarding loop crashed: %s", err)
 	case err := <-publicIPRunError:
 		logger.Errorf("public IP loop crashed: %s", err)
+	case err := <-socks5RunError:
+		logger.Errorf("SOCKS5 server loop crashed: %s", err)
 	}
 
 	return orderHandler.Shutdown(context.Background())
@@ -578,7 +579,9 @@ type netLinker interface {
 	Ruler
 	Linker
 	IsWireguardSupported() (ok bool, err error)
-	IsIPv6Supported() (ok bool, err error)
+	FindIPv6SupportLevel(ctx context.Context,
+		checkAddresses []netip.AddrPort, firewall netlink.Firewall,
+	) (level netlink.IPv6SupportLevel, err error)
 	FlushConntrack() error
 	PatchLoggerLevel(level log.Level)
 }
@@ -620,11 +623,6 @@ type clier interface {
 	HealthCheck(ctx context.Context, reader *reader.Reader, warner cli.Warner) error
 	Update(ctx context.Context, args []string, logger cli.UpdaterLogger) error
 	GenKey(args []string) error
-}
-
-type Tun interface {
-	Check(tunDevice string) error
-	Create(tunDevice string) error
 }
 
 type RunStarter interface {

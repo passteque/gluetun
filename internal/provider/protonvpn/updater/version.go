@@ -45,7 +45,7 @@ func getMostRecentStableTag(ctx context.Context, client *http.Client) (version s
 		}
 
 		if response.StatusCode != http.StatusOK {
-			return "", fmt.Errorf("%w: %s: %s", ErrHTTPStatusCodeNotOK, response.Status, data)
+			return "", fmt.Errorf("HTTP status code not OK: %s: %s", response.Status, data)
 		}
 
 		var tags []struct {

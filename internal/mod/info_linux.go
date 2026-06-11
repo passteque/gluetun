@@ -181,8 +181,6 @@ func getLoadedModules(modulesInfo map[string]moduleInfo) (err error) {
 	return nil
 }
 
-var ErrModulePathNotFound = errors.New("module path not found")
-
 func findModulePath(moduleName string, modulesInfo map[string]moduleInfo) (modulePath string, err error) {
 	// Kernel module names can have underscores or hyphens in their names,
 	// but only one or the other in one particular name.
@@ -205,5 +203,5 @@ func findModulePath(moduleName string, modulesInfo map[string]moduleInfo) (modul
 		}
 	}
 
-	return "", fmt.Errorf("%w: for %q", ErrModulePathNotFound, moduleName)
+	return "", fmt.Errorf("module path not found: for %q", moduleName)
 }

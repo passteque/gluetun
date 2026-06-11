@@ -10,5 +10,5 @@ func (p *Provider) GetConnection(selection settings.ServerSelection, ipv6Support
 	connection models.Connection, err error,
 ) {
 	defaults := utils.NewConnectionDefaults(443, 443, 0) //nolint:mnd
-	return utils.GetConnection(p.Name(), p.storage, selection, defaults, ipv6Supported, p.randSource)
+	return utils.GetConnection(p.Name(), p.storage, selection, defaults, ipv6Supported, p.connPicker)
 }

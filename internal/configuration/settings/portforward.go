@@ -1,8 +1,10 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
+	"slices"
 
 	"github.com/qdm12/gluetun/internal/constants/providers"
 	"github.com/qdm12/gosettings"
@@ -37,10 +39,16 @@ type PortForwarding struct {
 	// It can be the empty string to indicate to NOT run a command.
 	// It cannot be nil in the internal state.
 	DownCommand *string `json:"down_command"`
-	// ListeningPort is the port traffic would be redirected to from the
-	// forwarded port. The redirection is disabled if it is set to 0, which
-	// is its default as well.
-	ListeningPort *uint16 `json:"listening_port"`
+	// ListeningPorts are the ports traffic would be redirected to from the
+	// forwarded ports. The redirection is disabled if it is the slice [0],
+	// which is its default as well. If set and not [0], its length must match
+	// the PortsCount value, such that each forwarded port is redirected to
+	// the corresponding listening port.
+	ListeningPorts []uint16 `json:"listening_port"`
+	// PortsCount is the number of ports to forward. It is optional for ProtonVPN
+	// and be between 1 and 5. For other providers, it must be set to 1 if port
+	// forwarding is enabled.
+	PortsCount uint16 `json:"ports_count"`
 	// Username is only used for Private Internet Access port forwarding.
 	Username string `json:"username"`
 	// Password is only used for Private Internet Access port forwarding.
@@ -64,7 +72,7 @@ func (p PortForwarding) Validate(vpnProvider string) (err error) {
 		providers.Protonvpn,
 	}
 	if err = validate.IsOneOf(providerSelected, validProviders...); err != nil {
-		return fmt.Errorf("%w: %w", ErrPortForwardingEnabled, err)
+		return fmt.Errorf("port forwarding cannot be enabled: %w", err)
 	}
 
 	// Validate Filepath
@@ -75,12 +83,36 @@ func (p PortForwarding) Validate(vpnProvider string) (err error) {
 		}
 	}
 
-	if providerSelected == providers.PrivateInternetAccess {
+	switch providerSelected {
+	case providers.PrivateInternetAccess:
+		const maxPortsCount = 1
 		switch {
+		case p.PortsCount > maxPortsCount:
+			return fmt.Errorf("ports count too high: %d > %d", p.PortsCount, maxPortsCount)
 		case p.Username == "":
-			return fmt.Errorf("%w", ErrPortForwardingUserEmpty)
+			return errors.New("port forwarding username is empty")
 		case p.Password == "":
-			return fmt.Errorf("%w", ErrPortForwardingPasswordEmpty)
+			return errors.New("port forwarding password is empty")
+		}
+	case providers.Protonvpn:
+		const maxPortsCount = 5
+		if p.PortsCount > maxPortsCount {
+			return fmt.Errorf("ports count too high: %d > %d", p.PortsCount, maxPortsCount)
+		}
+	default:
+		const maxPortsCount = 1
+		if p.PortsCount > maxPortsCount {
+			return fmt.Errorf("ports count too high: %d > %d", p.PortsCount, maxPortsCount)
+		}
+	}
+
+	if !slices.Equal(p.ListeningPorts, []uint16{0}) {
+		switch {
+		case len(p.ListeningPorts) != int(p.PortsCount):
+			return fmt.Errorf("listening ports length must be equal to ports count: "+
+				"%d != %d", len(p.ListeningPorts), p.PortsCount)
+		case slices.Contains(p.ListeningPorts, 0):
+			return fmt.Errorf("listening port cannot be 0: in %v", p.ListeningPorts)
 		}
 	}
 
@@ -89,14 +121,14 @@ func (p PortForwarding) Validate(vpnProvider string) (err error) {
 
 func (p *PortForwarding) Copy() (copied PortForwarding) {
 	return PortForwarding{
-		Enabled:       gosettings.CopyPointer(p.Enabled),
-		Provider:      gosettings.CopyPointer(p.Provider),
-		Filepath:      gosettings.CopyPointer(p.Filepath),
-		UpCommand:     gosettings.CopyPointer(p.UpCommand),
-		DownCommand:   gosettings.CopyPointer(p.DownCommand),
-		ListeningPort: gosettings.CopyPointer(p.ListeningPort),
-		Username:      p.Username,
-		Password:      p.Password,
+		Enabled:        gosettings.CopyPointer(p.Enabled),
+		Provider:       gosettings.CopyPointer(p.Provider),
+		Filepath:       gosettings.CopyPointer(p.Filepath),
+		UpCommand:      gosettings.CopyPointer(p.UpCommand),
+		DownCommand:    gosettings.CopyPointer(p.DownCommand),
+		ListeningPorts: gosettings.CopySlice(p.ListeningPorts),
+		Username:       p.Username,
+		Password:       p.Password,
 	}
 }
 
@@ -106,7 +138,7 @@ func (p *PortForwarding) OverrideWith(other PortForwarding) {
 	p.Filepath = gosettings.OverrideWithPointer(p.Filepath, other.Filepath)
 	p.UpCommand = gosettings.OverrideWithPointer(p.UpCommand, other.UpCommand)
 	p.DownCommand = gosettings.OverrideWithPointer(p.DownCommand, other.DownCommand)
-	p.ListeningPort = gosettings.OverrideWithPointer(p.ListeningPort, other.ListeningPort)
+	p.ListeningPorts = gosettings.OverrideWithSlice(p.ListeningPorts, other.ListeningPorts)
 	p.Username = gosettings.OverrideWithComparable(p.Username, other.Username)
 	p.Password = gosettings.OverrideWithComparable(p.Password, other.Password)
 }
@@ -117,7 +149,8 @@ func (p *PortForwarding) setDefaults() {
 	p.Filepath = gosettings.DefaultPointer(p.Filepath, "/tmp/gluetun/forwarded_port")
 	p.UpCommand = gosettings.DefaultPointer(p.UpCommand, "")
 	p.DownCommand = gosettings.DefaultPointer(p.DownCommand, "")
-	p.ListeningPort = gosettings.DefaultPointer(p.ListeningPort, 0)
+	p.ListeningPorts = gosettings.DefaultSlice(p.ListeningPorts, []uint16{0}) // disabled
+	p.PortsCount = gosettings.DefaultComparable(p.PortsCount, 1)
 }
 
 func (p PortForwarding) String() string {
@@ -131,11 +164,14 @@ func (p PortForwarding) toLinesNode() (node *gotree.Node) {
 
 	node = gotree.New("Automatic port forwarding settings:")
 
-	listeningPort := "disabled"
-	if *p.ListeningPort != 0 {
-		listeningPort = fmt.Sprintf("%d", *p.ListeningPort)
+	node.Appendf("Number of ports to be forwarded: %d", p.PortsCount)
+
+	if !slices.Equal(p.ListeningPorts, []uint16{0}) {
+		redirNode := node.Appendf("Redirection for listening ports:")
+		for i, port := range p.ListeningPorts {
+			redirNode.Appendf("Port #%d -> %d", i+1, port)
+		}
 	}
-	node.Appendf("Redirection listening port: %s", listeningPort)
 
 	if *p.Provider == "" {
 		node.Appendf("Use port forwarding code for current provider")
@@ -190,7 +226,13 @@ func (p *PortForwarding) read(r *reader.Reader) (err error) {
 	p.DownCommand = r.Get("VPN_PORT_FORWARDING_DOWN_COMMAND",
 		reader.ForceLowercase(false))
 
-	p.ListeningPort, err = r.Uint16Ptr("VPN_PORT_FORWARDING_LISTENING_PORT")
+	p.ListeningPorts, err = r.CSVUint16("VPN_PORT_FORWARDING_LISTENING_PORTS",
+		reader.RetroKeys("VPN_PORT_FORWARDING_LISTENING_PORT"))
+	if err != nil {
+		return err
+	}
+
+	p.PortsCount, err = r.Uint16("VPN_PORT_FORWARDING_PORTS_COUNT")
 	if err != nil {
 		return err
 	}

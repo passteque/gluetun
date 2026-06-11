@@ -16,8 +16,14 @@ import (
 
 func ptrTo[T any](v T) *T { return &v }
 
-func simpleTest(ctx context.Context, env []string, logger Logger) error {
-	const timeout = 60 * time.Second
+var (
+	successRegexp        = regexp.MustCompile(`^.+Public IP address is .+$`)
+	portForwardingRegexp = regexp.MustCompile(`port forwarded is \d`)
+)
+
+func runContainerTest(ctx context.Context, env []string,
+	regexps []*regexp.Regexp, timeout time.Duration, logger Logger,
+) error {
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
@@ -57,7 +63,7 @@ func simpleTest(ctx context.Context, env []string, logger Logger) error {
 		return fmt.Errorf("starting container: %w", err)
 	}
 
-	return waitForLogLine(ctx, client, containerID, beforeStartTime, logger)
+	return waitForLogLines(ctx, client, containerID, beforeStartTime, regexps, logger)
 }
 
 func stopContainer(client *client.Client, containerID string) {
@@ -71,10 +77,8 @@ func stopContainer(client *client.Client, containerID string) {
 	}
 }
 
-var successRegexp = regexp.MustCompile(`^.+Public IP address is .+$`)
-
-func waitForLogLine(ctx context.Context, client *client.Client, containerID string,
-	beforeStartTime time.Time, logger Logger,
+func waitForLogLines(ctx context.Context, client *client.Client, containerID string,
+	beforeStartTime time.Time, regexps []*regexp.Regexp, logger Logger,
 ) error {
 	logOptions := container.LogsOptions{
 		ShowStdout: true,
@@ -88,6 +92,8 @@ func waitForLogLine(ctx context.Context, client *client.Client, containerID stri
 	}
 	defer reader.Close()
 
+	regexpMatched := 0
+
 	var linesSeen []string
 	scanner := bufio.NewScanner(reader)
 	for ctx.Err() == nil {
@@ -97,21 +103,25 @@ func waitForLogLine(ctx context.Context, client *client.Client, containerID stri
 				line = line[8:]
 			}
 			linesSeen = append(linesSeen, line)
-			if successRegexp.MatchString(line) {
-				fmt.Println("✅ Success line logged")
-				return nil
+			regex := regexps[regexpMatched]
+			if regex.MatchString(line) {
+				fmt.Println("✅ Expected line logged:", line)
+				if regexpMatched == len(regexps)-1 {
+					return nil
+				}
+				regexpMatched++
 			}
 			continue
 		}
 		err := scanner.Err()
 		if err != nil && err != io.EOF {
-			logSeenLines(logger, linesSeen)
+			logSeenLines(linesSeen)
 			return fmt.Errorf("reading log stream: %w", err)
 		}
 
 		// The scanner is either done or cannot read because of EOF
 		logger.Info("the log scanner stopped")
-		logSeenLines(logger, linesSeen)
+		logSeenLines(linesSeen)
 
 		// Check if the container is still running
 		inspect, err := client.ContainerInspect(ctx, containerID)
@@ -126,7 +136,7 @@ func waitForLogLine(ctx context.Context, client *client.Client, containerID stri
 	return ctx.Err()
 }
 
-func logSeenLines(logger Logger, lines []string) {
+func logSeenLines(lines []string) {
 	fmt.Println("Logs seen so far:")
 	for _, line := range lines {
 		fmt.Println("  " + line)

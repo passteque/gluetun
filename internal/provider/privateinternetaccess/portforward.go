@@ -13,6 +13,7 @@ import (
 	"net/netip"
 	"net/url"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -21,12 +22,10 @@ import (
 	"github.com/qdm12/gluetun/internal/provider/utils"
 )
 
-var ErrServerNameNotFound = errors.New("server name not found in servers")
-
 // PortForward obtains a VPN server side port forwarded from PIA.
 func (p *Provider) PortForward(ctx context.Context,
 	objects utils.PortForwardObjects,
-) (ports []uint16, err error) {
+) (internalToExternalPorts map[uint16]uint16, err error) {
 	switch {
 	case objects.ServerName == "":
 		panic("server name cannot be empty")
@@ -39,11 +38,10 @@ func (p *Provider) PortForward(ctx context.Context,
 	}
 
 	serverName := objects.ServerName
-	apiIP := buildAPIIPAddress(objects.Gateway)
 	logger := objects.Logger
 
 	if !objects.CanPortForward {
-		return nil, fmt.Errorf("%w: for server %s", ErrServerNameNotFound, serverName)
+		return nil, fmt.Errorf("server name %s not found in servers", serverName)
 	}
 
 	privateIPClient, err := newHTTPClient(serverName)
@@ -68,26 +66,43 @@ func (p *Provider) PortForward(ctx context.Context,
 		}
 	}
 
+	p.apiIP, err = findAPIIP(ctx, privateIPClient, objects.Gateway)
+	if err != nil {
+		return nil, fmt.Errorf("finding API IP address: %w", err)
+	}
+
 	if !dataFound || expired {
 		client := objects.Client
-		data, err = refreshPIAPortForwardData(ctx, client, privateIPClient, apiIP,
+		data, err = refreshPIAPortForwardData(ctx, client, privateIPClient, p.apiIP,
 			p.portForwardPath, objects.Username, objects.Password)
 		if err != nil {
 			return nil, fmt.Errorf("refreshing port forward data: %w", err)
 		}
 		durationToExpiration = data.Expiration.Sub(p.timeNow())
 	}
-	logger.Info("Port forwarded data expires in " + format.FriendlyDuration(durationToExpiration))
 
 	// First time binding
-	if err := bindPort(ctx, privateIPClient, apiIP, data); err != nil {
-		return nil, fmt.Errorf("binding port: %w", err)
+	for ctx.Err() == nil {
+		err = bindPort(ctx, privateIPClient, p.apiIP, data)
+		if err == nil {
+			break
+		} else if !errors.Is(err, errPortBusy) {
+			return nil, fmt.Errorf("binding port: %w", err)
+		}
+		logger.Warn("refreshing port forward data and trying again because " + err.Error())
+		client := objects.Client
+		data, err = refreshPIAPortForwardData(ctx, client, privateIPClient, p.apiIP,
+			p.portForwardPath, objects.Username, objects.Password)
+		if err != nil {
+			return nil, fmt.Errorf("refreshing port forward data: %w", err)
+		}
+		durationToExpiration = data.Expiration.Sub(p.timeNow())
 	}
 
-	return []uint16{data.Port}, nil
-}
+	logger.Info("Port forwarded data expires in " + format.FriendlyDuration(durationToExpiration))
 
-var ErrPortForwardedExpired = errors.New("port forwarded data expired")
+	return map[uint16]uint16{data.Port: data.Port}, nil
+}
 
 func (p *Provider) KeepPortForward(ctx context.Context,
 	objects utils.PortForwardObjects,
@@ -98,8 +113,6 @@ func (p *Provider) KeepPortForward(ctx context.Context,
 	case !objects.Gateway.IsValid():
 		panic("gateway is not set")
 	}
-
-	apiIP := buildAPIIPAddress(objects.Gateway)
 
 	privateIPClient, err := newHTTPClient(objects.ServerName)
 	if err != nil {
@@ -128,27 +141,63 @@ func (p *Provider) KeepPortForward(ctx context.Context,
 			}
 			return ctx.Err()
 		case <-keepAliveTimer.C:
-			err = bindPort(ctx, privateIPClient, apiIP, data)
+			err = bindPort(ctx, privateIPClient, p.apiIP, data)
 			if err != nil {
 				return fmt.Errorf("binding port: %w", err)
 			}
 			keepAliveTimer.Reset(keepAlivePeriod)
 		case <-expiryTimer.C:
-			return fmt.Errorf("%w: on %s", ErrPortForwardedExpired,
+			return fmt.Errorf("port forwarded data expired on %s",
 				data.Expiration.Format(time.RFC1123))
 		}
 	}
 }
 
-func buildAPIIPAddress(gateway netip.Addr) (api netip.Addr) {
+func findAPIIP(ctx context.Context, client *http.Client, gateway netip.Addr) (
+	apiIP netip.Addr, err error,
+) {
 	if gateway.Is6() {
 		panic("IPv6 gateway not supported")
 	}
 
 	gatewayBytes := gateway.As4()
-	gatewayBytes[2] = 128
-	gatewayBytes[3] = 1
-	return netip.AddrFrom4(gatewayBytes)
+	gatewayBytes[3] = 1 // x.y.z.1
+
+	gatewayBytes[2] = 128 // x.y.128.1
+	oldAPIIP := netip.AddrFrom4(gatewayBytes)
+	gatewayBytes[2] = 0 // x.y.0.1 - new API IP reported by some users
+	newAPIIP := netip.AddrFrom4(gatewayBytes)
+	possibleIPs := []netip.Addr{oldAPIIP, newAPIIP}
+
+	errs := make([]error, 0, len(possibleIPs))
+	for _, ip := range possibleIPs {
+		const timeout = 5 * time.Second
+		ctx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+
+		url := url.URL{
+			Scheme: "https",
+			Host:   net.JoinHostPort(ip.String(), "19999"),
+			Path:   "/ping",
+		}
+
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, url.String(), nil)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("trying IP %s: %w", ip, err))
+			continue
+		}
+
+		response, err := client.Do(request)
+		if err != nil {
+			errs = append(errs, fmt.Errorf("trying IP %s: %w", ip, err))
+			continue
+		}
+
+		_ = response.Body.Close()
+		return ip, nil
+	}
+
+	return netip.Addr{}, fmt.Errorf("API IP address not found: %w", errors.Join(errs...))
 }
 
 func refreshPIAPortForwardData(ctx context.Context, client, privateIPClient *http.Client,
@@ -250,8 +299,6 @@ func packPayload(port uint16, token string, expiration time.Time) (payload strin
 	return payload, nil
 }
 
-var errEmptyToken = errors.New("token received is empty")
-
 func fetchToken(ctx context.Context, client *http.Client,
 	username, password string,
 ) (token string, err error) {
@@ -300,7 +347,7 @@ func fetchToken(ctx context.Context, client *http.Client,
 	}
 
 	if result.Token == "" {
-		return "", errEmptyToken
+		return "", errors.New("token received is empty")
 	}
 	return result.Token, nil
 }
@@ -351,7 +398,7 @@ func fetchPortForwardData(ctx context.Context, client *http.Client, apiIP netip.
 	}
 
 	if data.Status != "OK" {
-		return 0, "", expiration, fmt.Errorf("%w: status is: %s", ErrBadResponse, data.Status)
+		return 0, "", expiration, fmt.Errorf("bad response received with status %s", data.Status)
 	}
 
 	port, _, expiration, err = unpackPayload(data.Payload)
@@ -361,7 +408,12 @@ func fetchPortForwardData(ctx context.Context, client *http.Client, apiIP netip.
 	return port, data.Signature, expiration, err
 }
 
-var ErrBadResponse = errors.New("bad response received")
+var errPortBusy = errors.New("port is busy")
+
+var (
+	regexPortBusy = regexp.MustCompile(`^port \d+ is busy\. `)
+	regexNumber   = regexp.MustCompile(`\d+`)
+)
 
 func bindPort(ctx context.Context, client *http.Client, apiIPAddress netip.Addr, data piaPortForwardData) (err error) {
 	// Define a timeout since the default client has a large timeout and we don't
@@ -401,7 +453,9 @@ func bindPort(ctx context.Context, client *http.Client, apiIPAddress netip.Addr,
 	}
 	defer response.Body.Close()
 
-	if response.StatusCode != http.StatusOK {
+	switch response.StatusCode {
+	case http.StatusOK, http.StatusConflict:
+	default:
 		return makeNOKStatusError(response, errSubstitutions)
 	}
 
@@ -414,17 +468,30 @@ func bindPort(ctx context.Context, client *http.Client, apiIPAddress netip.Addr,
 		return fmt.Errorf("decoding response: from %s: %w", bindPortURL.String(), err)
 	}
 
-	if responseData.Status != "OK" {
-		return fmt.Errorf("%w: %s: %s", ErrBadResponse, responseData.Status, responseData.Message)
+	switch response.StatusCode {
+	case http.StatusOK:
+		if responseData.Status != "OK" {
+			return fmt.Errorf("bad response received with status %q and message %q", responseData.Status, responseData.Message)
+		}
+		return nil
+	case http.StatusConflict:
+		portIsBusy := regexPortBusy.FindString(responseData.Message)
+		if portIsBusy == "" {
+			return fmt.Errorf("port busy response received with unexpected message %q not matching regex %q",
+				responseData.Message, regexPortBusy.String())
+		}
+		portStr := regexNumber.FindString(portIsBusy)
+		rest := strings.TrimPrefix(responseData.Message, portIsBusy)
+		return fmt.Errorf("%w: %s - %s", errPortBusy, portStr, rest)
+	default:
+		panic("unreachable code")
 	}
-
-	return nil
 }
 
 // replaceInErr is used to remove sensitive information from errors.
 func replaceInErr(err error, substitutions map[string]string) error {
 	s := replaceInString(err.Error(), substitutions)
-	return errors.New(s) //nolint:err113
+	return errors.New(s)
 }
 
 // replaceInString is used to remove sensitive information.
@@ -435,19 +502,28 @@ func replaceInString(s string, substitutions map[string]string) string {
 	return s
 }
 
-var ErrHTTPStatusCodeNotOK = errors.New("HTTP status code is not OK")
-
 func makeNOKStatusError(response *http.Response, substitutions map[string]string) (err error) {
 	url := response.Request.URL.String()
 	url = replaceInString(url, substitutions)
 
 	b, _ := io.ReadAll(response.Body)
+
+	var responseData struct {
+		Status  string `json:"status"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal(b, &responseData); err == nil {
+		responseData.Message = replaceInString(responseData.Message, substitutions)
+		return fmt.Errorf("HTTP status code not OK: %s: %d %s: response received: status %q and message %q",
+			url, response.StatusCode, response.Status, responseData.Status, responseData.Message)
+	}
+
+	// Fallback on non JSON response body
 	shortenMessage := string(b)
 	shortenMessage = strings.ReplaceAll(shortenMessage, "\n", "")
 	shortenMessage = strings.ReplaceAll(shortenMessage, "  ", " ")
 	shortenMessage = replaceInString(shortenMessage, substitutions)
 
-	return fmt.Errorf("%w: %s: %d %s: response received: %s",
-		ErrHTTPStatusCodeNotOK, url, response.StatusCode,
-		response.Status, shortenMessage)
+	return fmt.Errorf("HTTP status code not OK: %s: %d %s: response received: %s",
+		url, response.StatusCode, response.Status, shortenMessage)
 }

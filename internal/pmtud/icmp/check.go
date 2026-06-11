@@ -2,24 +2,17 @@ package icmp
 
 import (
 	"bytes"
-	"errors"
 	"fmt"
 
 	"golang.org/x/net/icmp"
 )
 
-var (
-	ErrNextHopMTUTooLow  = errors.New("ICMP Next Hop MTU is too low")
-	ErrNextHopMTUTooHigh = errors.New("ICMP Next Hop MTU is too high")
-)
-
 func checkMTU(mtu, minMTU, physicalLinkMTU uint32) (err error) {
 	switch {
 	case mtu < minMTU:
-		return fmt.Errorf("%w: %d", ErrNextHopMTUTooLow, mtu)
+		return fmt.Errorf("ICMP Next Hop MTU is too low: %d", mtu)
 	case mtu > physicalLinkMTU:
-		return fmt.Errorf("%w: %d is larger than physical link MTU %d",
-			ErrNextHopMTUTooHigh, mtu, physicalLinkMTU)
+		return fmt.Errorf("ICMP Next Hop MTU is too high: %d is larger than physical link MTU %d", mtu, physicalLinkMTU)
 	default:
 		return nil
 	}
@@ -34,13 +27,11 @@ func checkInvokingReplyIDMatch(icmpProtocol int, received []byte,
 	}
 	inboundBody, ok := inboundMessage.Body.(*icmp.Echo)
 	if !ok {
-		return false, fmt.Errorf("%w: %T", ErrBodyUnsupported, inboundMessage.Body)
+		return false, fmt.Errorf("ICMP body type is not supported: %T", inboundMessage.Body)
 	}
 	outboundBody := outboundMessage.Body.(*icmp.Echo) //nolint:forcetypeassert
 	return inboundBody.ID == outboundBody.ID, nil
 }
-
-var ErrIDMismatch = errors.New("ICMP id mismatch")
 
 func checkEchoReply(icmpProtocol int, received []byte,
 	outboundMessage *icmp.Message, truncatedBody bool,
@@ -51,12 +42,12 @@ func checkEchoReply(icmpProtocol int, received []byte,
 	}
 	inboundBody, ok := inboundMessage.Body.(*icmp.Echo)
 	if !ok {
-		return fmt.Errorf("%w: %T", ErrBodyUnsupported, inboundMessage.Body)
+		return fmt.Errorf("ICMP body type is not supported: %T", inboundMessage.Body)
 	}
 	outboundBody := outboundMessage.Body.(*icmp.Echo) //nolint:forcetypeassert
 	if inboundBody.ID != outboundBody.ID {
-		return fmt.Errorf("%w: sent id %d and received id %d",
-			ErrIDMismatch, outboundBody.ID, inboundBody.ID)
+		return fmt.Errorf("ICMP id mismatch: sent id %d and received id %d",
+			outboundBody.ID, inboundBody.ID)
 	}
 	err = checkEchoBodies(outboundBody.Data, inboundBody.Data, truncatedBody)
 	if err != nil {
@@ -65,19 +56,17 @@ func checkEchoReply(icmpProtocol int, received []byte,
 	return nil
 }
 
-var ErrEchoDataMismatch = errors.New("ICMP data mismatch")
-
 func checkEchoBodies(sent, received []byte, receivedTruncated bool) (err error) {
 	if len(received) > len(sent) {
-		return fmt.Errorf("%w: sent %d bytes and received %d bytes",
-			ErrEchoDataMismatch, len(sent), len(received))
+		return fmt.Errorf("ICMP data mismatch: sent %d bytes and received %d bytes",
+			len(sent), len(received))
 	}
 	if receivedTruncated {
 		sent = sent[:len(received)]
 	}
 	if !bytes.Equal(received, sent) {
-		return fmt.Errorf("%w: sent %x and received %x",
-			ErrEchoDataMismatch, sent, received)
+		return fmt.Errorf("ICMP data mismatch: sent %x and received %x",
+			sent, received)
 	}
 	return nil
 }

@@ -17,7 +17,7 @@ func Test_extractDataFromLines(t *testing.T) {
 	testCases := map[string]struct {
 		lines      []string
 		connection models.Connection
-		err        error
+		errMessage string
 	}{
 		"success": {
 			lines: []string{"bla", "proto tcp", "remote 1.2.3.4 1194 tcp", "dev tun6"},
@@ -28,8 +28,8 @@ func Test_extractDataFromLines(t *testing.T) {
 			},
 		},
 		"extraction error": {
-			lines: []string{"bla", "proto bad", "remote 1.2.3.4 1194 tcp"},
-			err:   errors.New("on line 2: extracting protocol from proto line: network protocol not supported: bad"),
+			lines:      []string{"bla", "proto bad", "remote 1.2.3.4 1194 tcp"},
+			errMessage: "on line 2: extracting protocol from proto line: network protocol not supported: bad",
 		},
 		"only use first values found": {
 			lines: []string{"proto udp", "proto tcp", "remote 1.2.3.4 443 tcp", "remote 5.2.3.4 1194 udp"},
@@ -44,7 +44,7 @@ func Test_extractDataFromLines(t *testing.T) {
 			connection: models.Connection{
 				Protocol: constants.TCP,
 			},
-			err: errRemoteLineNotFound,
+			errMessage: "remote line not found",
 		},
 		"default TCP port": {
 			lines: []string{"remote 1.2.3.4", "proto tcp"},
@@ -62,6 +62,14 @@ func Test_extractDataFromLines(t *testing.T) {
 				Protocol: constants.UDP,
 			},
 		},
+		"leading_whitespace": {
+			lines: []string{"  proto tcp", "\tremote 1.2.3.4 443 tcp"},
+			connection: models.Connection{
+				IP:       netip.AddrFrom4([4]byte{1, 2, 3, 4}),
+				Port:     443,
+				Protocol: constants.TCP,
+			},
+		},
 	}
 
 	for name, testCase := range testCases {
@@ -70,9 +78,8 @@ func Test_extractDataFromLines(t *testing.T) {
 
 			connection, err := extractDataFromLines(testCase.lines)
 
-			if testCase.err != nil {
-				require.Error(t, err)
-				assert.Equal(t, testCase.err.Error(), err.Error())
+			if testCase.errMessage != "" {
+				assert.EqualError(t, err, testCase.errMessage)
 			} else {
 				assert.NoError(t, err)
 			}
@@ -86,18 +93,18 @@ func Test_extractDataFromLine(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {
-		line     string
-		ip       netip.Addr
-		port     uint16
-		protocol string
-		isErr    error
+		line       string
+		ip         netip.Addr
+		port       uint16
+		protocol   string
+		errMessage string
 	}{
 		"irrelevant line": {
 			line: "bla",
 		},
 		"extract proto error": {
-			line:  "proto bad",
-			isErr: errProtocolNotSupported,
+			line:       "proto bad",
+			errMessage: "network protocol not supported",
 		},
 		"extract proto success": {
 			line:     "proto tcp",
@@ -108,8 +115,8 @@ func Test_extractDataFromLine(t *testing.T) {
 			protocol: constants.TCP,
 		},
 		"extract remote error": {
-			line:  "remote bad",
-			isErr: errHostNotIP,
+			line:       "remote bad",
+			errMessage: "host is not an IP address",
 		},
 		"extract remote success": {
 			line:     "remote 1.2.3.4 1194 udp",
@@ -118,8 +125,8 @@ func Test_extractDataFromLine(t *testing.T) {
 			protocol: constants.UDP,
 		},
 		"extract_port_fail": {
-			line:  "port a",
-			isErr: errPortNotValid,
+			line:       "port a",
+			errMessage: "port is not valid",
 		},
 		"extract_port_success": {
 			line: "port 1194",
@@ -133,8 +140,8 @@ func Test_extractDataFromLine(t *testing.T) {
 
 			ip, port, protocol, err := extractDataFromLine(testCase.line)
 
-			if testCase.isErr != nil {
-				assert.ErrorIs(t, err, testCase.isErr)
+			if testCase.errMessage != "" {
+				assert.ErrorContains(t, err, testCase.errMessage)
 			} else {
 				assert.NoError(t, err)
 			}

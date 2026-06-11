@@ -11,8 +11,6 @@ import (
 	"github.com/qdm12/gluetun/internal/models"
 )
 
-var errRemoteLineNotFound = errors.New("remote line not found")
-
 func extractDataFromLines(lines []string) (
 	connection models.Connection, err error,
 ) {
@@ -35,7 +33,7 @@ func extractDataFromLines(lines []string) (
 	}
 
 	if !connection.IP.IsValid() {
-		return connection, errRemoteLineNotFound
+		return connection, errors.New("remote line not found")
 	}
 
 	if connection.Protocol == "" {
@@ -55,6 +53,8 @@ func extractDataFromLines(lines []string) (
 func extractDataFromLine(line string) (
 	ip netip.Addr, port uint16, protocol string, err error,
 ) {
+	line = strings.TrimSpace(line)
+
 	switch {
 	case strings.HasPrefix(line, "proto "):
 		protocol, err = extractProto(line)
@@ -81,18 +81,14 @@ func extractDataFromLine(line string) (
 	return ip, 0, "", nil
 }
 
-var errProtoLineFieldsCount = errors.New("proto line has not 2 fields as expected")
-
 func extractProto(line string) (protocol string, err error) {
 	fields := strings.Fields(line)
 	if len(fields) != 2 { //nolint:mnd
-		return "", fmt.Errorf("%w: %s", errProtoLineFieldsCount, line)
+		return "", fmt.Errorf("proto line has not 2 fields as expected: %s", line)
 	}
 
 	return parseProto(fields[1])
 }
-
-var errProtocolNotSupported = errors.New("network protocol not supported")
 
 func parseProto(field string) (protocol string, err error) {
 	switch field {
@@ -106,15 +102,9 @@ func parseProto(field string) (protocol string, err error) {
 		// determined by the remote IP address version.
 		return constants.UDP, nil
 	default:
-		return "", fmt.Errorf("%w: %s", errProtocolNotSupported, field)
+		return "", fmt.Errorf("network protocol not supported: %s", field)
 	}
 }
-
-var (
-	errRemoteLineFieldsCount = errors.New("remote line has not 2 fields as expected")
-	errHostNotIP             = errors.New("host is not an IP address")
-	errPortNotValid          = errors.New("port is not valid")
-)
 
 func extractRemote(line string) (ip netip.Addr, port uint16,
 	protocol string, err error,
@@ -123,13 +113,13 @@ func extractRemote(line string) (ip netip.Addr, port uint16,
 	n := len(fields)
 
 	if n < 2 || n > 4 {
-		return netip.Addr{}, 0, "", fmt.Errorf("%w: %s", errRemoteLineFieldsCount, line)
+		return netip.Addr{}, 0, "", fmt.Errorf("remote line has not 2 fields as expected: %s", line)
 	}
 
 	host := fields[1]
 	ip, err = netip.ParseAddr(host)
 	if err != nil {
-		return netip.Addr{}, 0, "", fmt.Errorf("%w: %s", errHostNotIP, host)
+		return netip.Addr{}, 0, "", fmt.Errorf("host is not an IP address: %s", host)
 		// TODO resolve hostname once there is an option to allow it through
 		// the firewall before the VPN is up.
 	}
@@ -137,9 +127,9 @@ func extractRemote(line string) (ip netip.Addr, port uint16,
 	if n > 2 { //nolint:mnd
 		portInt, err := strconv.Atoi(fields[2])
 		if err != nil {
-			return netip.Addr{}, 0, "", fmt.Errorf("%w: %s", errPortNotValid, line)
+			return netip.Addr{}, 0, "", fmt.Errorf("port is not valid: %s", line)
 		} else if portInt < 1 || portInt > 65535 {
-			return netip.Addr{}, 0, "", fmt.Errorf("%w: %d must be between 1 and 65535", errPortNotValid, portInt)
+			return netip.Addr{}, 0, "", fmt.Errorf("port is not valid: %d must be between 1 and 65535", portInt)
 		}
 		port = uint16(portInt)
 	}
@@ -154,20 +144,18 @@ func extractRemote(line string) (ip netip.Addr, port uint16,
 	return ip, port, protocol, nil
 }
 
-var errPostLineFieldsCount = errors.New("post line has not 2 fields as expected")
-
 func extractPort(line string) (port uint16, err error) {
 	fields := strings.Fields(line)
 	const expectedFieldsCount = 2
 	if len(fields) != expectedFieldsCount {
-		return 0, fmt.Errorf("%w: %s", errPostLineFieldsCount, line)
+		return 0, fmt.Errorf("post line has not 2 fields as expected: %s", line)
 	}
 
 	portInt, err := strconv.Atoi(fields[1])
 	if err != nil {
-		return 0, fmt.Errorf("%w: %s", errPortNotValid, line)
+		return 0, fmt.Errorf("port is not valid: %s", line)
 	} else if portInt < 1 || portInt > 65535 {
-		return 0, fmt.Errorf("%w: %d must be between 1 and 65535", errPortNotValid, portInt)
+		return 0, fmt.Errorf("port is not valid: %d must be between 1 and 65535", portInt)
 	}
 	port = uint16(portInt)
 

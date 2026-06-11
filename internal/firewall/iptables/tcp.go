@@ -45,11 +45,9 @@ func (f tcpFlag) String() string {
 	case tcpFlagCWR:
 		return "CWR"
 	default:
-		panic(fmt.Sprintf("%s: %d", errTCPFlagUnknown, f))
+		panic(fmt.Sprintf("unknown TCP flag: %d", f))
 	}
 }
-
-var errTCPFlagUnknown = errors.New("unknown TCP flag")
 
 func parseTCPFlag(s string) (tcpFlag, error) {
 	allFlags := []tcpFlag{
@@ -61,7 +59,7 @@ func parseTCPFlag(s string) (tcpFlag, error) {
 			return flag, nil
 		}
 	}
-	return 0, fmt.Errorf("%w: %s", errTCPFlagUnknown, s)
+	return 0, fmt.Errorf("unknown TCP flag: %s", s)
 }
 
 var ErrMarkMatchModuleMissing = errors.New("kernel is missing the mark module libxt_mark.so")

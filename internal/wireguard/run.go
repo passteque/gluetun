@@ -8,16 +8,11 @@ import (
 
 	"github.com/qdm12/gluetun/internal/cleanup"
 	"github.com/qdm12/gluetun/internal/netlink"
+	gtun "github.com/qdm12/gluetun/internal/tun"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
 	"golang.zx2c4.com/wireguard/tun"
 	"golang.zx2c4.com/wireguard/wgctrl"
-)
-
-var (
-	errKernelSupport   = errors.New("kernel does not support Wireguard")
-	errTunNameMismatch = errors.New("TUN device name is mismatching")
-	errDeviceWaited    = errors.New("device waited for")
 )
 
 // Run runs the wireguard interface and waits until the context is done, then it cleans up the
@@ -33,23 +28,34 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 	}
 
 	setupFunction := setupUserSpace
+	userspace := false
 	switch w.settings.Implementation {
 	case "auto": //nolint:goconst
 		if !kernelSupported {
 			w.logger.Info("Using userspace implementation since Kernel support does not exist")
+			userspace = true
 			break
 		}
 		w.logger.Info("Using available kernelspace implementation")
 		setupFunction = setupKernelSpace
 	case "userspace":
+		userspace = true
 	case "kernelspace":
 		if !kernelSupported {
-			waitError <- fmt.Errorf("%w", errKernelSupport)
+			waitError <- errors.New("kernel does not support Wireguard")
 			return
 		}
 		setupFunction = setupKernelSpace
 	default:
 		panic(fmt.Sprintf("unknown implementation %q", w.settings.Implementation))
+	}
+
+	if userspace {
+		err = gtun.Setup()
+		if err != nil {
+			waitError <- fmt.Errorf("setting up userspace tun device: %w", err)
+			return
+		}
 	}
 
 	setup := func(ctx context.Context, cleanups *cleanup.Cleanups) (
@@ -199,8 +205,7 @@ func setupUserSpace(ctx context.Context,
 	if err != nil {
 		return 0, nil, fmt.Errorf("getting created TUN device name: %w", err)
 	} else if tunName != interfaceName {
-		return 0, nil, fmt.Errorf("%w: expected %q and got %q",
-			errTunNameMismatch, interfaceName, tunName)
+		return 0, nil, fmt.Errorf("TUN device name is mismatching: expected %q and got %q", interfaceName, tunName)
 	}
 
 	link, err := netLinker.LinkByName(interfaceName)
@@ -247,7 +252,7 @@ func setupUserSpace(ctx context.Context,
 		case err = <-uapiAcceptErrorCh:
 			close(uapiAcceptErrorCh)
 		case <-device.Wait():
-			err = errDeviceWaited
+			err = errors.New("device waited for")
 		}
 
 		cleanups.Cleanup(logger)

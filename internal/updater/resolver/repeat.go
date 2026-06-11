@@ -2,7 +2,6 @@ package resolver
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net"
 	"net/netip"
@@ -62,11 +61,6 @@ func (r *Repeat) Resolve(ctx context.Context, host string, settings RepeatSettin
 	return ips, nil
 }
 
-var (
-	ErrMaxNoNew = errors.New("reached the maximum number of no new update")
-	ErrMaxFails = errors.New("reached the maximum number of consecutive failures")
-)
-
 func (r *Repeat) resolveOnce(ctx, timedCtx context.Context, host string,
 	settings RepeatSettings, uniqueIPs map[string]struct{}, noNewCounter, failCounter int) (
 	newNoNewCounter, newFailCounter int, err error,
@@ -75,8 +69,8 @@ func (r *Repeat) resolveOnce(ctx, timedCtx context.Context, host string,
 	if err != nil {
 		failCounter++
 		if settings.MaxFails > 0 && failCounter == settings.MaxFails {
-			return noNewCounter, failCounter, fmt.Errorf("%w: %d failed attempts resolving %s: %s",
-				ErrMaxFails, settings.MaxFails, host, err)
+			return noNewCounter, failCounter, fmt.Errorf("reached the maximum number of consecutive failures: "+
+				"%d failed attempts resolving %s: %s", settings.MaxFails, host, err)
 		}
 		// it's fine to fail some of the resolutions
 		return noNewCounter, failCounter, nil
@@ -100,8 +94,9 @@ func (r *Repeat) resolveOnce(ctx, timedCtx context.Context, host string,
 		// we reached the maximum number of resolutions without
 		// finding any new IP address to our unique IP addresses set.
 		return noNewCounter, failCounter,
-			fmt.Errorf("%w: %d times no updated for %d IP addresses found",
-				ErrMaxNoNew, noNewCounter, len(uniqueIPs))
+			fmt.Errorf("reached the maximum number of no new update: "+
+				"%d times no updated for %d IP addresses found",
+				noNewCounter, len(uniqueIPs))
 	}
 
 	timer := time.NewTimer(settings.BetweenDuration)

@@ -12,8 +12,6 @@ import (
 	"github.com/qdm12/gluetun/internal/pmtud/ip"
 )
 
-var errTCPServersUnreachable = errors.New("all TCP servers are unreachable")
-
 // findHighestMSSDestination finds the destination with the highest
 // MSS amongst the provided destinations.
 func findHighestMSSDestination(ctx context.Context, familyToFD map[int]fileDescriptor,
@@ -45,9 +43,6 @@ func findHighestMSSDestination(ctx context.Context, familyToFD map[int]fileDescr
 			case err != nil: // error already occurred for another findMSS goroutine
 			case errors.Is(result.err, iptables.ErrMarkMatchModuleMissing):
 				err = fmt.Errorf("finding MSS for %s: %w", result.dst, result.err)
-			case dst.Addr().Is6() && errors.Is(result.err, ip.ErrNetworkUnreachable):
-				// silently discard IPv6 network unreachable errors since they are common
-				// and expected when the host doesn't have IPv6 connectivity
 			default: // another error not due to the match module missing
 				logger.Debugf("finding MSS for %s failed: %s", result.dst, result.err)
 			}
@@ -68,7 +63,7 @@ func findHighestMSSDestination(ctx context.Context, familyToFD map[int]fileDescr
 	}
 
 	if mss == 0 { // no MSS found for any destination
-		return netip.AddrPort{}, 0, fmt.Errorf("%w (%d servers)", errTCPServersUnreachable, len(dsts))
+		return netip.AddrPort{}, 0, fmt.Errorf("all %d TCP servers are unreachable", len(dsts))
 	}
 
 	maxPossibleMTU = ip.HeaderLength(dst.Addr().Is4()) + constants.BaseTCPHeaderLength + mss
@@ -76,8 +71,6 @@ func findHighestMSSDestination(ctx context.Context, familyToFD map[int]fileDescr
 		dst, mss, maxPossibleMTU)
 	return dst, mss, nil
 }
-
-var errMSSNotFound = errors.New("MSS option not found in reply")
 
 func findMSS(ctx context.Context, fd fileDescriptor, dst netip.AddrPort,
 	excludeMark int, tracker *tracker, firewall Firewall, logger Logger) (
@@ -132,11 +125,12 @@ func findMSS(ctx context.Context, fd fileDescriptor, dst netip.AddrPort,
 	case err != nil:
 		return 0, fmt.Errorf("parsing reply TCP header: %w", err)
 	case replyHeader.typ != packetTypeSYNACK:
-		return 0, fmt.Errorf("%w: unexpected packet type %s", errTCPPacketNotSynAck, replyHeader.typ)
+		return 0, fmt.Errorf("TCP packet is not a SYN-ACK: unexpected packet type %s", replyHeader.typ)
 	case replyHeader.ack != synSeq+1:
-		return 0, fmt.Errorf("%w: expected %d, got %d", errTCPSynAckAckMismatch, synSeq+1, replyHeader.ack)
+		return 0, fmt.Errorf("TCP SYN-ACK ACK number %d does not match expected value %d",
+			replyHeader.ack, synSeq+1)
 	case replyHeader.options.mss == 0:
-		return 0, fmt.Errorf("%w: MSS option not found in reply", errMSSNotFound)
+		return 0, errors.New("MSS option not found in reply")
 	}
 
 	err = sendRST(fd, src, dst, replyHeader.ack)

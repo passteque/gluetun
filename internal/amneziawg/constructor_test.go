@@ -1,6 +1,7 @@
 package amneziawg
 
 import (
+	"errors"
 	"net/netip"
 	"testing"
 
@@ -28,7 +29,7 @@ func Test_New(t *testing.T) {
 					PrivateKey: "",
 				},
 			},
-			err: wireguard.ErrPrivateKeyMissing,
+			err: errors.New("private key is missing"),
 		},
 		"minimal valid settings": {
 			settings: Settings{

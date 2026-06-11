@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 //go:generate mockgen -destination=logger_mock_test.go -package $GOPACKAGE . Logger
@@ -20,11 +19,9 @@ func Test_New(t *testing.T) {
 	testCases := map[string]struct {
 		settings   Settings
 		expected   *Server
-		errWrapped error
 		errMessage string
 	}{
 		"empty settings": {
-			errWrapped: ErrHandlerIsNotSet,
 			errMessage: "http server settings validation failed: HTTP handler cannot be left unset",
 		},
 		"filled settings": {
@@ -52,9 +49,10 @@ func Test_New(t *testing.T) {
 			t.Parallel()
 
 			server, err := New(testCase.settings)
-			assert.ErrorIs(t, err, testCase.errWrapped)
-			if testCase.errWrapped != nil {
-				require.EqualError(t, err, testCase.errMessage)
+			if testCase.errMessage != "" {
+				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 
 			if server != nil {

@@ -2,7 +2,6 @@ package utils
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/qdm12/gluetun/internal/models"
@@ -18,10 +17,8 @@ func NewNoFetcher(providerName string) *NoFetcher {
 	}
 }
 
-var ErrFetcherNotSupported = errors.New("fetching of servers is not supported")
-
 func (n *NoFetcher) FetchServers(context.Context, int) (
 	servers []models.Server, err error,
 ) {
-	return nil, fmt.Errorf("%w: for %s", ErrFetcherNotSupported, n.providerName)
+	return nil, fmt.Errorf("fetching of servers is not supported for %s", n.providerName)
 }

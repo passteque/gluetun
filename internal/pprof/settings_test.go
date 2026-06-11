@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/qdm12/gluetun/internal/httpserver"
-	"github.com/qdm12/gosettings/validate"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -195,7 +194,6 @@ func Test_Settings_Validate(t *testing.T) {
 
 	testCases := map[string]struct {
 		settings   Settings
-		errWrapped error
 		errMessage string
 	}{
 		"negative block profile rate": {
@@ -203,16 +201,14 @@ func Test_Settings_Validate(t *testing.T) {
 				BlockProfileRate: intPtr(-1),
 				MutexProfileRate: intPtr(0),
 			},
-			errWrapped: ErrBlockProfileRateNegative,
-			errMessage: ErrBlockProfileRateNegative.Error(),
+			errMessage: "block profile rate cannot be negative",
 		},
 		"negative mutex profile rate": {
 			settings: Settings{
 				BlockProfileRate: intPtr(0),
 				MutexProfileRate: intPtr(-1),
 			},
-			errWrapped: ErrMutexProfileRateNegative,
-			errMessage: ErrMutexProfileRateNegative.Error(),
+			errMessage: "mutex profile rate cannot be negative",
 		},
 		"http server validation error": {
 			settings: Settings{
@@ -222,7 +218,6 @@ func Test_Settings_Validate(t *testing.T) {
 					Address: ":x",
 				},
 			},
-			errWrapped: validate.ErrPortNotAnInteger,
 			errMessage: "port value is not an integer: x",
 		},
 		"valid settings": {
@@ -247,9 +242,10 @@ func Test_Settings_Validate(t *testing.T) {
 
 			err := testCase.settings.Validate()
 
-			assert.ErrorIs(t, err, testCase.errWrapped)
 			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
 		})
 	}

@@ -57,8 +57,6 @@ func (l *noopLogger) Warn(_ string)             {}
 func (l *noopLogger) Warnf(_ string, _ ...any)  {}
 func (l *noopLogger) Error(_ string)            {}
 
-var errRouteNotFound = errors.New("route not found")
-
 func findLoopbackMTU(netlinker *netlink.NetLink) (mtu uint32, err error) {
 	routes, err := netlinker.RouteList(netlink.FamilyV4)
 	if err != nil {
@@ -76,7 +74,7 @@ func findLoopbackMTU(netlinker *netlink.NetLink) (mtu uint32, err error) {
 			return min(link.MTU, maxMTU), nil
 		}
 	}
-	return 0, fmt.Errorf("%w: no loopback route found", errRouteNotFound)
+	return 0, errors.New("route not found: no loopback route found")
 }
 
 func findDefaultRouteMTU(netlinker *netlink.NetLink) (mtu uint32, err error) {
@@ -100,7 +98,7 @@ func findDefaultRouteMTU(netlinker *netlink.NetLink) (mtu uint32, err error) {
 		}
 	}
 	if mtu == 0 {
-		return 0, fmt.Errorf("%w: no default route found", errRouteNotFound)
+		return 0, errors.New("route not found: no default route found")
 	}
 	return mtu, nil
 }

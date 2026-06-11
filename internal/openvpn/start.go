@@ -2,14 +2,11 @@ package openvpn
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os/exec"
 
 	"github.com/qdm12/gluetun/internal/constants/openvpn"
 )
-
-var ErrVersionUnknown = errors.New("OpenVPN version is unknown")
 
 const (
 	binOpenvpn25 = "openvpn2.5"
@@ -26,7 +23,7 @@ func start(ctx context.Context, starter CmdStarter, version string, flags []stri
 	case openvpn.Openvpn26:
 		bin = binOpenvpn26
 	default:
-		return nil, nil, nil, fmt.Errorf("%w: %s", ErrVersionUnknown, version)
+		return nil, nil, nil, fmt.Errorf("OpenVPN version is unknown: %s", version)
 	}
 
 	args := []string{"--config", configPath}

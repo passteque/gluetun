@@ -88,99 +88,77 @@ func (s *Settings) SetDefaults() {
 	}
 }
 
-var (
-	ErrInterfaceNameInvalid    = errors.New("invalid interface name")
-	ErrPrivateKeyMissing       = errors.New("private key is missing")
-	ErrPrivateKeyInvalid       = errors.New("cannot parse private key")
-	ErrPublicKeyMissing        = errors.New("public key is missing")
-	ErrPublicKeyInvalid        = errors.New("cannot parse public key")
-	ErrPreSharedKeyInvalid     = errors.New("cannot parse pre-shared key")
-	ErrEndpointAddrMissing     = errors.New("endpoint address is missing")
-	ErrEndpointPortMissing     = errors.New("endpoint port is missing")
-	ErrAddressMissing          = errors.New("interface address is missing")
-	ErrAddressNotValid         = errors.New("interface address is not valid")
-	ErrAllowedIPsMissing       = errors.New("allowed IPs are missing")
-	ErrAllowedIPNotValid       = errors.New("allowed IP is not valid")
-	ErrAllowedIPv6NotSupported = errors.New("allowed IPv6 address not supported")
-	ErrKeepaliveIsNegative     = errors.New("keep alive interval is negative")
-	ErrFirewallMarkMissing     = errors.New("firewall mark is missing")
-	ErrMTUMissing              = errors.New("MTU is missing")
-	ErrImplementationInvalid   = errors.New("invalid implementation")
-)
-
 var interfaceNameRegexp = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 
 func (s *Settings) Check() (err error) {
 	if !interfaceNameRegexp.MatchString(s.InterfaceName) {
-		return fmt.Errorf("%w: %s", ErrInterfaceNameInvalid, s.InterfaceName)
+		return fmt.Errorf("invalid interface name: %s", s.InterfaceName)
 	}
 
 	if s.PrivateKey == "" {
-		return fmt.Errorf("%w", ErrPrivateKeyMissing)
+		return errors.New("private key is missing")
 	} else if _, err := wgtypes.ParseKey(s.PrivateKey); err != nil {
-		return fmt.Errorf("%w", ErrPrivateKeyInvalid)
+		return errors.New("cannot parse private key")
 	}
 
 	if s.PublicKey == "" {
-		return fmt.Errorf("%w", ErrPublicKeyMissing)
+		return errors.New("public key is missing")
 	} else if _, err := wgtypes.ParseKey(s.PublicKey); err != nil {
-		return fmt.Errorf("%w: %s", ErrPublicKeyInvalid, s.PublicKey)
+		return fmt.Errorf("cannot parse public key: %s", s.PublicKey)
 	}
 
 	if s.PreSharedKey != "" {
 		if _, err := wgtypes.ParseKey(s.PreSharedKey); err != nil {
-			return fmt.Errorf("%w", ErrPreSharedKeyInvalid)
+			return errors.New("cannot parse pre-shared key")
 		}
 	}
 
 	switch {
 	case !s.Endpoint.Addr().IsValid():
-		return fmt.Errorf("%w", ErrEndpointAddrMissing)
+		return errors.New("endpoint address is missing")
 	case s.Endpoint.Port() == 0:
-		return fmt.Errorf("%w", ErrEndpointPortMissing)
+		return errors.New("endpoint port is missing")
 	}
 
 	if len(s.Addresses) == 0 {
-		return fmt.Errorf("%w", ErrAddressMissing)
+		return errors.New("interface address is missing")
 	}
 	for i, addr := range s.Addresses {
 		if !addr.IsValid() {
-			return fmt.Errorf("%w: for address %d of %d",
-				ErrAddressNotValid, i+1, len(s.Addresses))
+			return fmt.Errorf("interface address is not valid: for address %d of %d",
+				i+1, len(s.Addresses))
 		}
 	}
 
 	if len(s.AllowedIPs) == 0 {
-		return fmt.Errorf("%w", ErrAllowedIPsMissing)
+		return errors.New("allowed IPs are missing")
 	}
 	for i, allowedIP := range s.AllowedIPs {
 		switch {
 		case !allowedIP.IsValid():
-			return fmt.Errorf("%w: for allowed IP %d of %d",
-				ErrAllowedIPNotValid, i+1, len(s.AllowedIPs))
+			return fmt.Errorf("allowed IP is not valid: for allowed IP %d of %d",
+				i+1, len(s.AllowedIPs))
 		case allowedIP.Addr().Is6() && !*s.IPv6:
-			return fmt.Errorf("%w: for allowed IP %s",
-				ErrAllowedIPv6NotSupported, allowedIP)
+			return fmt.Errorf("allowed IPv6 address not supported: for allowed IP %s", allowedIP)
 		}
 	}
 
 	if s.PersistentKeepaliveInterval < 0 {
-		return fmt.Errorf("%w: %s", ErrKeepaliveIsNegative,
-			s.PersistentKeepaliveInterval)
+		return fmt.Errorf("keep alive interval is negative: %s", s.PersistentKeepaliveInterval)
 	}
 
 	if s.FirewallMark == 0 {
-		return fmt.Errorf("%w", ErrFirewallMarkMissing)
+		return errors.New("firewall mark is missing")
 	}
 
 	if s.MTU == 0 {
-		return fmt.Errorf("%w", ErrMTUMissing)
+		return errors.New("MTU is missing")
 	}
 
 	switch s.Implementation {
 	case "auto", "kernelspace", "userspace":
 	default:
-		return fmt.Errorf("%w: %s", ErrImplementationInvalid, s.Implementation)
+		return fmt.Errorf("invalid implementation: %s", s.Implementation)
 	}
 
 	return nil

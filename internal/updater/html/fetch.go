@@ -2,14 +2,11 @@ package html
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/http"
 
 	"golang.org/x/net/html"
 )
-
-var ErrHTTPStatusCodeNotOK = errors.New("HTTP status code is not OK")
 
 func Fetch(ctx context.Context, client *http.Client, url string) (
 	rootNode *html.Node, err error,
@@ -25,7 +22,7 @@ func Fetch(ctx context.Context, client *http.Client, url string) (
 	}
 
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: %d %s", ErrHTTPStatusCodeNotOK,
+		return nil, fmt.Errorf("HTTP status code not OK: %d %s",
 			response.StatusCode, response.Status)
 	}
 

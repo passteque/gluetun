@@ -46,7 +46,7 @@ Your credentials might be wrong 🤨
 
 `
 		level = levelError
-	case strings.Contains(s, "TLS Error: TLS key negotiation failed to occur within 60 seconds (check your network connectivity)"): //nolint:lll
+	case strings.Contains(s, "TLS Error: TLS key negotiation failed to occur within 20 seconds (check your network connectivity)"): //nolint:lll
 		filtered = s + `
 🚒🚒🚒🚒🚒🚨🚨🚨🚨🚨🚨🚒🚒🚒🚒🚒
 That error usually happens because either:

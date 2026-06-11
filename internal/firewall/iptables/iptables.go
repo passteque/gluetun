@@ -2,7 +2,6 @@ package iptables
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"net/netip"
@@ -13,10 +12,8 @@ import (
 	"github.com/qdm12/gluetun/internal/models"
 )
 
-var (
-	ErrIPTablesVersionTooShort = errors.New("iptables version string is too short")
-	ErrPolicyUnknown           = errors.New("unknown policy")
-	ErrNeedIP6Tables           = errors.New("ip6tables is required, please upgrade your kernel to support it")
+const (
+	needIP6Tables = "ip6tables is required, please upgrade your kernel"
 )
 
 func appendOrDelete(remove bool) string {
@@ -36,7 +33,7 @@ func (c *Config) Version(ctx context.Context) (string, error) {
 	words := strings.Fields(output)
 	const minWords = 2
 	if len(words) < minWords {
-		return "", fmt.Errorf("%w: %s", ErrIPTablesVersionTooShort, output)
+		return "", fmt.Errorf("iptables version string is too short: %s", output)
 	}
 	return "iptables " + words[1], nil
 }
@@ -102,7 +99,7 @@ func (c *Config) SetIPv4AllPolicies(ctx context.Context, policy string) error {
 	switch policy {
 	case "ACCEPT", "DROP":
 	default:
-		return fmt.Errorf("%w: %s", ErrPolicyUnknown, policy)
+		return fmt.Errorf("unknown policy: %s", policy)
 	}
 	return c.runIptablesInstructions(ctx, []string{
 		"--policy INPUT " + policy,
@@ -129,7 +126,7 @@ func (c *Config) AcceptInputToSubnet(ctx context.Context, intf string, destinati
 		return c.runIptablesInstruction(ctx, instruction)
 	}
 	if c.ip6Tables == "" {
-		return fmt.Errorf("accept input to subnet %s: %w", destination, ErrNeedIP6Tables)
+		return fmt.Errorf("accept input to subnet %s: %s", destination, needIP6Tables)
 	}
 	return c.runIP6tablesInstruction(ctx, instruction)
 }
@@ -157,7 +154,25 @@ func (c *Config) AcceptOutputTrafficToVPN(ctx context.Context,
 	if connection.IP.Is4() {
 		return c.runIptablesInstruction(ctx, instruction)
 	} else if c.ip6Tables == "" {
-		return fmt.Errorf("accept output to VPN server: %w", ErrNeedIP6Tables)
+		return fmt.Errorf("accept output to VPN server %s: %s", connection.IP, needIP6Tables)
+	}
+	return c.runIP6tablesInstruction(ctx, instruction)
+}
+
+func (c *Config) AcceptOutput(ctx context.Context,
+	protocol, intf string, ip netip.Addr, port uint16, remove bool,
+) error {
+	interfaceFlag := "-o " + intf
+	if intf == "*" { // all interfaces
+		interfaceFlag = ""
+	}
+
+	instruction := fmt.Sprintf("%s OUTPUT -d %s %s -p %s -m %s --dport %d -j ACCEPT",
+		appendOrDelete(remove), ip, interfaceFlag, protocol, protocol, port)
+	if ip.Is4() {
+		return c.runIptablesInstruction(ctx, instruction)
+	} else if c.ip6Tables == "" {
+		return fmt.Errorf("accept output to VPN server %s: %s", ip, needIP6Tables)
 	}
 	return c.runIP6tablesInstruction(ctx, instruction)
 }
@@ -182,7 +197,7 @@ func (c *Config) AcceptOutputFromIPToSubnet(ctx context.Context,
 	if doIPv4 {
 		return c.runIptablesInstruction(ctx, instruction)
 	} else if c.ip6Tables == "" {
-		return fmt.Errorf("accept output from %s to %s: %w", sourceIP, destinationSubnet, ErrNeedIP6Tables)
+		return fmt.Errorf("accept output from %s to %s: %s", sourceIP, destinationSubnet, needIP6Tables)
 	}
 	return c.runIP6tablesInstruction(ctx, instruction)
 }
@@ -263,7 +278,6 @@ func (c *Config) RedirectPort(ctx context.Context, intf string,
 			appendOrDelete(remove), interfaceFlag, destinationPort),
 	})
 	if err != nil {
-		restore(ctx) // just in case
 		errMessage := err.Error()
 		if strings.Contains(errMessage, "can't initialize ip6tables table `nat': Table does not exist") {
 			if !remove {
@@ -271,6 +285,7 @@ func (c *Config) RedirectPort(ctx context.Context, intf string,
 			}
 			return nil
 		}
+		restore(ctx)
 		return fmt.Errorf("redirecting IPv6 source port %d to destination port %d on interface %s: %w",
 			sourcePort, destinationPort, intf, err)
 	}
@@ -332,7 +347,7 @@ func (c *Config) RunUserPostRules(ctx context.Context, filepath string) error {
 		case ipv4:
 			err = c.runIptablesInstructionNoSave(ctx, rule)
 		case c.ip6Tables == "":
-			err = fmt.Errorf("running user ip6tables rule: %w", ErrNeedIP6Tables)
+			err = fmt.Errorf("running user ip6tables rule: %s", needIP6Tables)
 		default: // ipv6
 			err = c.runIP6tablesInstructionNoSave(ctx, rule)
 		}

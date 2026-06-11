@@ -71,25 +71,13 @@ type ServerSelection struct {
 	Wireguard WireguardSelection `json:"wireguard"`
 }
 
-var (
-	ErrOwnedOnlyNotSupported       = errors.New("owned only filter is not supported")
-	ErrFreeOnlyNotSupported        = errors.New("free only filter is not supported")
-	ErrPremiumOnlyNotSupported     = errors.New("premium only filter is not supported")
-	ErrStreamOnlyNotSupported      = errors.New("stream only filter is not supported")
-	ErrMultiHopOnlyNotSupported    = errors.New("multi hop only filter is not supported")
-	ErrPortForwardOnlyNotSupported = errors.New("port forwarding only filter is not supported")
-	ErrFreePremiumBothSet          = errors.New("free only and premium only filters are both set")
-	ErrSecureCoreOnlyNotSupported  = errors.New("secure core only filter is not supported")
-	ErrTorOnlyNotSupported         = errors.New("tor only filter is not supported")
-)
-
 func (ss *ServerSelection) validate(vpnServiceProvider string,
 	filterChoicesGetter FilterChoicesGetter, warner Warner,
 ) (err error) {
 	switch ss.VPN {
 	case vpn.AmneziaWg, vpn.OpenVPN, vpn.Wireguard:
 	default:
-		return fmt.Errorf("%w: %s", ErrVPNTypeNotValid, ss.VPN)
+		return fmt.Errorf("VPN type is not valid: %s", ss.VPN)
 	}
 
 	filterChoices, err := getLocationFilterChoices(vpnServiceProvider, ss, filterChoicesGetter, warner)
@@ -154,7 +142,7 @@ func getLocationFilterChoices(vpnServiceProvider string,
 			// Only return error comparing with newer regions, we don't want to confuse the user
 			// with the retro regions in the error message.
 			err = atLeastOneIsOneOfCaseInsensitive(ss.Regions, filterChoices.Regions, warner)
-			return models.FilterChoices{}, fmt.Errorf("%w: %w", ErrRegionNotValid, err)
+			return models.FilterChoices{}, fmt.Errorf("the region specified is not valid: %w", err)
 		}
 	}
 
@@ -168,27 +156,27 @@ func validateServerFilters(settings ServerSelection, filterChoices models.Filter
 ) (err error) {
 	err = atLeastOneIsOneOfCaseInsensitive(settings.Countries, filterChoices.Countries, warner)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrCountryNotValid, err)
+		return fmt.Errorf("the country specified is not valid: %w", err)
 	}
 
 	err = atLeastOneIsOneOfCaseInsensitive(settings.Regions, filterChoices.Regions, warner)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrRegionNotValid, err)
+		return fmt.Errorf("the region specified is not valid: %w", err)
 	}
 
 	err = atLeastOneIsOneOfCaseInsensitive(settings.Cities, filterChoices.Cities, warner)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrCityNotValid, err)
+		return fmt.Errorf("the city specified is not valid: %w", err)
 	}
 
 	err = atLeastOneIsOneOfCaseInsensitive(settings.ISPs, filterChoices.ISPs, warner)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrISPNotValid, err)
+		return fmt.Errorf("the ISP specified is not valid: %w", err)
 	}
 
 	err = atLeastOneIsOneOfCaseInsensitive(settings.Hostnames, filterChoices.Hostnames, warner)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrHostnameNotValid, err)
+		return fmt.Errorf("the hostname specified is not valid: %w", err)
 	}
 
 	if vpnServiceProvider == providers.Custom {
@@ -200,19 +188,19 @@ func validateServerFilters(settings ServerSelection, filterChoices models.Filter
 			// which requires a server name for TLS verification.
 			filterChoices.Names = settings.Names
 		default:
-			return fmt.Errorf("%w: %d names specified instead of "+
-				"0 or 1 for the custom provider",
-				ErrNameNotValid, len(settings.Names))
+			return fmt.Errorf("name is not valid: "+
+				"%d names specified instead of 0 or 1 for the custom provider",
+				len(settings.Names))
 		}
 	}
 	err = atLeastOneIsOneOfCaseInsensitive(settings.Names, filterChoices.Names, warner)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrNameNotValid, err)
+		return fmt.Errorf("the server name specified is not valid: %w", err)
 	}
 
 	err = atLeastOneIsOneOfCaseInsensitive(settings.Categories, filterChoices.Categories, warner)
 	if err != nil {
-		return fmt.Errorf("%w: %w", ErrCategoryNotValid, err)
+		return fmt.Errorf("the category specified is not valid: %w", err)
 	}
 
 	return nil
@@ -259,12 +247,12 @@ func validateSubscriptionTierFilters(settings ServerSelection, vpnServiceProvide
 	switch {
 	case *settings.FreeOnly &&
 		!helpers.IsOneOf(vpnServiceProvider, providers.Protonvpn, providers.VPNUnlimited):
-		return fmt.Errorf("%w", ErrFreeOnlyNotSupported)
+		return errors.New("free only filter is not supported")
 	case *settings.PremiumOnly &&
 		!helpers.IsOneOf(vpnServiceProvider, providers.VPNSecure):
-		return fmt.Errorf("%w", ErrPremiumOnlyNotSupported)
+		return errors.New("premium only filter is not supported")
 	case *settings.FreeOnly && *settings.PremiumOnly:
-		return fmt.Errorf("%w", ErrFreePremiumBothSet)
+		return errors.New("free only and premium only filters are both set")
 	default:
 		return nil
 	}
@@ -273,21 +261,21 @@ func validateSubscriptionTierFilters(settings ServerSelection, vpnServiceProvide
 func validateFeatureFilters(settings ServerSelection, vpnServiceProvider string) error {
 	switch {
 	case *settings.OwnedOnly && vpnServiceProvider != providers.Mullvad:
-		return fmt.Errorf("%w", ErrOwnedOnlyNotSupported)
+		return errors.New("owned only filter is not supported")
 	case vpnServiceProvider == providers.Protonvpn && *settings.FreeOnly && *settings.PortForwardOnly:
-		return fmt.Errorf("%w: together with free only filter", ErrPortForwardOnlyNotSupported)
+		return errors.New("port forwarding only filter is not supported: together with free only filter")
 	case *settings.StreamOnly &&
 		!helpers.IsOneOf(vpnServiceProvider, providers.Protonvpn, providers.VPNUnlimited):
-		return fmt.Errorf("%w", ErrStreamOnlyNotSupported)
+		return errors.New("stream only filter is not supported")
 	case *settings.MultiHopOnly && vpnServiceProvider != providers.Surfshark:
-		return fmt.Errorf("%w", ErrMultiHopOnlyNotSupported)
+		return errors.New("multi hop only filter is not supported")
 	case *settings.PortForwardOnly &&
 		!helpers.IsOneOf(vpnServiceProvider, providers.PrivateInternetAccess, providers.Protonvpn):
-		return fmt.Errorf("%w", ErrPortForwardOnlyNotSupported)
+		return errors.New("port forwarding only filter is not supported")
 	case *settings.SecureCoreOnly && vpnServiceProvider != providers.Protonvpn:
-		return fmt.Errorf("%w", ErrSecureCoreOnlyNotSupported)
+		return errors.New("secure core only filter is not supported")
 	case *settings.TorOnly && vpnServiceProvider != providers.Protonvpn:
-		return fmt.Errorf("%w", ErrTorOnlyNotSupported)
+		return errors.New("tor only filter is not supported")
 	default:
 		return nil
 	}

@@ -3,6 +3,7 @@ package dns
 import (
 	"context"
 	"fmt"
+	"net/netip"
 
 	"github.com/qdm12/dns/v2/pkg/middlewares/filter/update"
 	"github.com/qdm12/dns/v2/pkg/nameserver"
@@ -44,4 +45,26 @@ func (l *Loop) setupServer(ctx context.Context, settings settings.DNS) (runError
 	}
 
 	return runError, nil
+}
+
+func (l *Loop) usePlainServers(addrPorts []netip.AddrPort) (err error) {
+	nameserver.UseDNSInternally(nameserver.SettingsInternalDNS{
+		AddrPort: addrPorts[0],
+	})
+	addresses := make([]netip.Addr, len(addrPorts))
+	for i, addrPort := range addrPorts {
+		const defaultDNSPort = 53
+		if addrPort.Port() != defaultDNSPort {
+			return fmt.Errorf("invalid DNS port: %d, must be %d", addrPort.Port(), defaultDNSPort)
+		}
+		addresses[i] = addrPort.Addr()
+	}
+	err = nameserver.UseDNSSystemWide(nameserver.SettingsSystemDNS{
+		IPs:        addresses,
+		ResolvPath: l.resolvConf,
+	})
+	if err != nil {
+		return fmt.Errorf("using DNS system wide: %w", err)
+	}
+	return nil
 }

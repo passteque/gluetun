@@ -3,10 +3,10 @@ package files
 import (
 	"errors"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 
 	"gopkg.in/ini.v1"
 )
@@ -73,8 +73,6 @@ func parseWireguardInterfaceSection(interfaceSection *ini.Section) (
 	return privateKey, addresses
 }
 
-var ErrEndpointHostNotIP = errors.New("endpoint host is not an IP")
-
 func parseWireguardPeerSection(peerSection *ini.Section) (
 	preSharedKey, publicKey, endpointIP, endpointPort *string,
 ) {
@@ -82,12 +80,12 @@ func parseWireguardPeerSection(peerSection *ini.Section) (
 	publicKey = getINIKeyFromSection(peerSection, "PublicKey")
 	endpoint := getINIKeyFromSection(peerSection, "Endpoint")
 	if endpoint != nil {
-		parts := strings.Split(*endpoint, ":")
-		endpointIP = &parts[0]
-		const partsWithPort = 2
-		if len(parts) >= partsWithPort {
-			endpointPort = new(string)
-			*endpointPort = strings.Join(parts[1:], ":")
+		host, port, err := net.SplitHostPort(*endpoint)
+		if err == nil {
+			endpointIP = &host
+			endpointPort = &port
+		} else {
+			endpointIP = endpoint
 		}
 	}
 

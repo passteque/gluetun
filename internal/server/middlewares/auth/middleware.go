@@ -3,6 +3,7 @@ package auth
 import (
 	"fmt"
 	"net/http"
+	"slices"
 )
 
 func New(settings Settings, debugLogger DebugLogger) (
@@ -30,6 +31,17 @@ type authHandler struct {
 }
 
 func (h *authHandler) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+	methods, ok := validRoutes[request.URL.Path]
+	if !ok {
+		h.logger.Debugf("url path %s is not a valid route", request.URL.Path)
+		http.Error(writer, http.StatusText(http.StatusNotFound), http.StatusNotFound)
+		return
+	} else if !slices.Contains(methods, request.Method) {
+		h.logger.Debugf("method %s is not valid for url path %s", request.Method, request.URL.Path)
+		http.Error(writer, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+		return
+	}
+
 	route := request.Method + " " + request.URL.Path
 	roles := h.routeToRoles[route]
 	if len(roles) == 0 {

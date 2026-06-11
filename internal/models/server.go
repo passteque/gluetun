@@ -42,27 +42,18 @@ type Server struct {
 	IPs              []netip.Addr `json:"ips,omitempty"`
 }
 
-var (
-	ErrVPNFieldEmpty           = errors.New("vpn field is empty")
-	ErrHostnameFieldEmpty      = errors.New("hostname field is empty")
-	ErrIPsFieldEmpty           = errors.New("ips field is empty")
-	ErrNoNetworkProtocol       = errors.New("both TCP and UDP fields are false for OpenVPN")
-	ErrNetworkProtocolSet      = errors.New("no network protocol should be set")
-	ErrWireguardPublicKeyEmpty = errors.New("wireguard public key field is empty")
-)
-
 func (s *Server) HasMinimumInformation() (err error) {
 	switch {
 	case s.VPN == "":
-		return fmt.Errorf("%w", ErrVPNFieldEmpty)
+		return errors.New("vpn field is empty")
 	case len(s.IPs) == 0:
-		return fmt.Errorf("%w", ErrIPsFieldEmpty)
+		return errors.New("ips field is empty")
 	case s.VPN == vpn.Wireguard && (s.TCP || s.UDP):
-		return fmt.Errorf("%w", ErrNetworkProtocolSet)
+		return errors.New("no network protocol should be set")
 	case s.VPN == vpn.OpenVPN && !s.TCP && !s.UDP:
-		return fmt.Errorf("%w", ErrNoNetworkProtocol)
+		return errors.New("both TCP and UDP fields are false for OpenVPN")
 	case s.VPN == vpn.Wireguard && s.WgPubKey == "":
-		return fmt.Errorf("%w", ErrWireguardPublicKeyEmpty)
+		return errors.New("wireguard public key field is empty")
 	default:
 		return nil
 	}

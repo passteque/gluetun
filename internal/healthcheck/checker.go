@@ -266,8 +266,6 @@ func makeAddressToDial(address string) (addressToDial string, err error) {
 	return address, nil
 }
 
-var ErrAllCheckTriesFailed = errors.New("all check tries failed")
-
 func withRetries(ctx context.Context, tryTimeouts []time.Duration,
 	logger Logger, checkName string, check func(ctx context.Context, try int) error,
 ) error {
@@ -297,7 +295,7 @@ func withRetries(ctx context.Context, tryTimeouts []time.Duration,
 	for i, err := range errs {
 		errStrings[i] = fmt.Sprintf("attempt %d (%dms): %s", i+1, err.durationMS, err.err)
 	}
-	return fmt.Errorf("%w:\n\t%s", ErrAllCheckTriesFailed, strings.Join(errStrings, "\n\t"))
+	return fmt.Errorf("all check tries failed:\n\t%s", strings.Join(errStrings, "\n\t"))
 }
 
 func (c *Checker) startupCheck(ctx context.Context) error {
@@ -342,7 +340,7 @@ func (c *Checker) startupCheck(ctx context.Context) error {
 	for i, err := range errs {
 		errStrings[i] = fmt.Sprintf("parallel attempt %d/%d failed: %s", i+1, len(errs), err)
 	}
-	return fmt.Errorf("%w: %s", ErrAllCheckTriesFailed, strings.Join(errStrings, ", "))
+	return fmt.Errorf("all check tries failed: %s", strings.Join(errStrings, ", "))
 }
 
 const (

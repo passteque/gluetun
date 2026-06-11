@@ -9,16 +9,9 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/qdm12/gluetun/internal/constants"
 	"github.com/qdm12/gluetun/internal/constants/providers"
-	"github.com/qdm12/gluetun/internal/storage"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
-)
-
-var (
-	ErrProviderUnspecified       = errors.New("VPN provider to format was not specified")
-	ErrMultipleProvidersToFormat = errors.New("more than one VPN provider to format were specified")
 )
 
 func addProviderFlag(flagSet *flag.FlagSet, providerToFormat map[string]*bool,
@@ -65,11 +58,10 @@ func (c *CLI) FormatServers(args []string) error {
 	}
 	switch len(providers) {
 	case 0:
-		return fmt.Errorf("%w", ErrProviderUnspecified)
+		return errors.New("VPN provider to format was not specified")
 	case 1:
 	default:
-		return fmt.Errorf("%w: %d specified: %s",
-			ErrMultipleProvidersToFormat, len(providers),
+		return fmt.Errorf("more than one VPN provider to format were specified: %d specified: %s", len(providers),
 			strings.Join(providers, ", "))
 	}
 
@@ -80,10 +72,9 @@ func (c *CLI) FormatServers(args []string) error {
 		}
 	}
 
-	logger := newNoopLogger()
-	storage, err := storage.New(logger, constants.ServersData)
+	storage, err := setupStorage(newNoopLogger())
 	if err != nil {
-		return fmt.Errorf("creating servers storage: %w", err)
+		return fmt.Errorf("setting up storage: %w", err)
 	}
 
 	formatted, err := storage.Format(providerToFormat, format)

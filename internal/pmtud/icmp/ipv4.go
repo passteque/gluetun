@@ -117,13 +117,10 @@ func findIPv4NextHopMTU(ctx context.Context, ip netip.Addr,
 			case portUnreachable: // triggered by TCP or UDP from applications
 				continue // ignore and wait for the next message
 			case communicationAdministrativelyProhibitedCode:
-				return 0, fmt.Errorf("%w: %w (code %d)",
-					ErrDestinationUnreachable,
-					ErrCommunicationAdministrativelyProhibited,
+				return 0, fmt.Errorf("ICMP destination unreachable: %w (code %d)", errCommunicationAdministrativelyProhibited,
 					inboundMessage.Code)
 			default:
-				return 0, fmt.Errorf("%w: code %d",
-					ErrDestinationUnreachable, inboundMessage.Code)
+				return 0, fmt.Errorf("ICMP destination unreachable: code %d", inboundMessage.Code)
 			}
 
 			// See https://datatracker.ietf.org/doc/html/rfc1191#section-4
@@ -158,7 +155,7 @@ func findIPv4NextHopMTU(ctx context.Context, ip netip.Addr,
 				inboundID, outboundID)
 			continue
 		default:
-			return 0, fmt.Errorf("%w: %T", ErrBodyUnsupported, typedBody)
+			return 0, fmt.Errorf("ICMP body type is not supported: %T", typedBody)
 		}
 	}
 }
