@@ -65,7 +65,7 @@ jobs:
 
       - name: Run integration tests in test container
         run: |
-          docker run --rm --entrypoint "go test -tags=integration ./internal/restrictednet" test-container
+          docker run --rm --entrypoint go test-container test -tags=integration ./internal/restrictednet
 
       - name: Verify dev cross platform compatibility
         run: docker build --target xcompile .
