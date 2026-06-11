@@ -97,6 +97,7 @@ func (s *server) runServer(ready chan<- struct{},
 				return
 			}
 			wg.Go(func() {
+				connection := connection // capture loop variable
 				socksConn := &socksConn{
 					dialer:     dialer,
 					username:   s.username,
