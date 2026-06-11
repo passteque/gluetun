@@ -89,30 +89,48 @@ func Test_start(t *testing.T) {
 
 			require.NoError(t, err)
 
-			var stdoutIndex, stderrIndex int
-
-			done := false
-			for !done {
-				select {
-				case line := <-stdoutLines:
-					assert.Equal(t, testCase.stdout[stdoutIndex], line)
-					stdoutIndex++
-				case line := <-stderrLines:
-					assert.Equal(t, testCase.stderr[stderrIndex], line)
-					stderrIndex++
-				case err := <-waitError:
-					if testCase.waitErr != nil {
-						require.Error(t, err)
-						assert.Equal(t, testCase.waitErr.Error(), err.Error())
-					} else {
-						assert.NoError(t, err)
-					}
-					done = true
-				}
-			}
-
-			assert.Equal(t, len(testCase.stdout), stdoutIndex)
-			assert.Equal(t, len(testCase.stderr), stderrIndex)
+			collectAndCheckChannels(t, stdoutLines, stderrLines, waitError,
+				testCase.stdout, testCase.stderr, testCase.waitErr)
 		})
 	}
+}
+
+func collectAndCheckChannels(t *testing.T, stdoutLines, stderrLines <-chan string,
+	waitError <-chan error, expectedStdout, expectedStderr []string, expectedWaitErr error,
+) {
+	t.Helper()
+
+	stdoutIndex := 0
+	stderrIndex := 0
+
+	done := false
+	for !done {
+		select {
+		case line, ok := <-stdoutLines:
+			if !ok {
+				stdoutLines = nil
+				continue
+			}
+			assert.Equal(t, expectedStdout[stdoutIndex], line)
+			stdoutIndex++
+		case line, ok := <-stderrLines:
+			if !ok {
+				stderrLines = nil
+				continue
+			}
+			assert.Equal(t, expectedStderr[stderrIndex], line)
+			stderrIndex++
+		case err := <-waitError:
+			if expectedWaitErr != nil {
+				require.Error(t, err)
+				assert.Equal(t, expectedWaitErr.Error(), err.Error())
+			} else {
+				assert.NoError(t, err)
+			}
+			done = true
+		}
+	}
+
+	assert.Equal(t, len(expectedStdout), stdoutIndex)
+	assert.Equal(t, len(expectedStderr), stderrIndex)
 }
