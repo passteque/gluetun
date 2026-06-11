@@ -3,6 +3,7 @@
 package restrictednet
 
 import (
+	"context"
 	"net/netip"
 )
 
@@ -18,7 +19,7 @@ func bindFD(fd int, address netip.AddrPort) error {
 	panic("not implemented")
 }
 
-func connectFD(fd int, destination netip.AddrPort) error {
+func connectFD(ctx context.Context, fd int, destination netip.AddrPort) error {
 	panic("not implemented")
 }
 
