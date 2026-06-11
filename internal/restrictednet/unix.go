@@ -17,7 +17,16 @@ func closeFD(fd int) {
 }
 
 func newTCPSockStream(family int) (fd int, err error) {
-	return unix.Socket(family, unix.SOCK_STREAM, unix.IPPROTO_TCP)
+	fd, err = unix.Socket(family, unix.SOCK_STREAM, unix.IPPROTO_TCP)
+	if err != nil {
+		return 0, err
+	}
+	err = unix.SetNonblock(fd, true)
+	if err != nil {
+		_ = unix.Close(fd)
+		return 0, err
+	}
+	return fd, nil
 }
 
 func bindFD(fd int, address netip.AddrPort) error {
@@ -37,16 +46,16 @@ func connectFD(ctx context.Context, fd int, destination netip.AddrPort) error {
 	for {
 		select {
 		case <-ctx.Done():
-			err = unix.Close(fd)
-			if err != nil {
-				return fmt.Errorf("error closing fd: %w (%w)", err, ctx.Err())
-			}
 			return ctx.Err()
 		default:
+			bitsIndex := fd / 64 //nolint:mnd
+			if bitsIndex >= len(unix.FdSet{}.Bits) {
+				return fmt.Errorf("fd %d exceeds unix.Select FdSet capacity", fd)
+			}
 			wset := &unix.FdSet{}
-			wset.Bits[fd/64] |= 1 << (uint64(fd) % 64) //nolint:gosec,mnd
+			wset.Bits[bitsIndex] |= 1 << (uint64(fd) % 64) //nolint:gosec,mnd
 			eset := &unix.FdSet{}
-			eset.Bits[fd/64] |= 1 << (uint64(fd) % 64) //nolint:gosec,mnd
+			eset.Bits[bitsIndex] |= 1 << (uint64(fd) % 64) //nolint:gosec,mnd
 			const selectTimeout = 50 * time.Millisecond
 			timeval := unix.NsecToTimeval(int64(selectTimeout))
 
