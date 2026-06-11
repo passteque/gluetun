@@ -1,8 +1,11 @@
+//go:build integration
+
 package restrictednet
 
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/netip"
 	"testing"
@@ -94,16 +97,20 @@ func Test_Client_OpenHTTPS(t *testing.T) {
 	require.NotNil(t, httpClient)
 	require.NotNil(t, cleanup)
 
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+destinationTLSName, nil)
-	require.NoError(t, err)
+	const requests = 2
 
-	response, err := httpClient.Do(request)
-	require.NoError(t, err)
-	t.Cleanup(func() {
-		_ = response.Body.Close()
-	})
+	for range requests {
+		request, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://"+destinationTLSName, nil)
+		require.NoError(t, err)
 
-	assert.Equal(t, http.StatusOK, response.StatusCode)
+		response, err := httpClient.Do(request)
+		require.NoError(t, err)
+		_, err = io.Copy(io.Discard, response.Body)
+		require.NoError(t, err)
+		err = response.Body.Close()
+		require.NoError(t, err)
+		assert.Equal(t, http.StatusOK, response.StatusCode)
+	}
 
 	err = cleanup()
 	require.NoError(t, err)

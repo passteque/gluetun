@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/netip"
 	"net/url"
+	"strconv"
 
 	"github.com/miekg/dns"
 )
@@ -76,8 +77,16 @@ func (c *Client) resolveOneQuestionType(ctx context.Context,
 		dohServerIPs = append(dohServerIPs, dohServer.IPv4...)
 
 		for _, dohServerIP := range dohServerIPs {
-			const defaultDoHPort = 443
-			dohServerAddrPort := netip.AddrPortFrom(dohServerIP, defaultDoHPort)
+			const defaultDoHPort uint16 = 443
+			port := defaultDoHPort
+			if portStr := dohURL.Port(); portStr != "" {
+				port, err = parseDestinationPort(portStr)
+				if err != nil {
+					errs = append(errs, fmt.Errorf("parsing DoH server port: %w", err))
+					continue
+				}
+			}
+			dohServerAddrPort := netip.AddrPortFrom(dohServerIP, port)
 			responseMessage, err := c.doHQuery(ctx, queryWire, dohURL, dohServerAddrPort)
 			switch {
 			case err != nil:
@@ -177,4 +186,20 @@ func answersToNetipAddrs(message *dns.Msg) (addresses []netip.Addr) {
 		}
 	}
 	return addresses
+}
+
+func parseDestinationPort(portStr string) (port uint16, err error) {
+	portUint, err := strconv.ParseUint(portStr, 10, 16)
+	if err != nil {
+		return 0, err
+	}
+
+	const maxPortUint = 65535
+	switch {
+	case portUint == 0:
+		return 0, errors.New("port cannot be 0")
+	case portUint > maxPortUint:
+		return 0, fmt.Errorf("port cannot be greater than %d", maxPortUint)
+	}
+	return uint16(portUint), nil
 }

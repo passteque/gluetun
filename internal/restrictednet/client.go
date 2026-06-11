@@ -41,7 +41,8 @@ func New(settings Settings) *Client {
 }
 
 // OpenHTTPSByHostname opens an https connection through the firewall,
-// valid for up to one second, to the hostname which in the format `host:port`.
+// to the hostname which in the format `host:port`. The returned cleanup
+// function must be called to remove the temporary firewall rule and close connections.
 // It first resolves the domain in hostname using DNS over HTTPS and then opens
 // the restricted HTTPS connection to the resolved IP.
 func (c *Client) OpenHTTPSByHostname(ctx context.Context, hostname string) (
