@@ -144,24 +144,9 @@ func bindSourceConnection(destinationIP netip.Addr) (fd int, sourceAddr netip.Ad
 func connectSourceConnection(ctx context.Context, fd int, destinationAddrPort netip.AddrPort) (
 	connection net.Conn, err error,
 ) {
-	errCh := make(chan error)
-	go func() {
-		errCh <- connectFD(fd, destinationAddrPort)
-	}()
-
-	select {
-	case err = <-errCh:
-		if err != nil {
-			closeFD(fd)
-			return nil, fmt.Errorf("connecting socket: %w", err)
-		}
-	case <-ctx.Done():
-		err = ctx.Err()
+	err = connectFD(ctx, fd, destinationAddrPort)
+	if err != nil {
 		closeFD(fd)
-		connectErr := <-errCh
-		if connectErr != nil {
-			err = fmt.Errorf("%w (%w)", connectErr, err)
-		}
 		return nil, fmt.Errorf("connecting socket: %w", err)
 	}
 
