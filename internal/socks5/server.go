@@ -115,6 +115,7 @@ func (s *server) runServer(ready chan<- struct{},
 
 	select {
 	case <-stop:
+		s.listening.Store(false)
 		var errs []error
 		err := s.tcpListener.Close()
 		if err != nil {
