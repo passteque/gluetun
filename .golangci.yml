@@ -12,6 +12,10 @@ formatters:
       - builtin$
       - examples$
 
+run:
+  build-tags:
+    - integration
+
 linters:
   settings:
     misspell:

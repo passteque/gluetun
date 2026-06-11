@@ -9,8 +9,9 @@ import (
 )
 
 // Start launches a command and streams stdout and stderr to channels.
-// All the channels returned are ready only and won't be closed
-// if the command fails later.
+// stdoutLines and stderrLines channels will be closed when there is no more
+// output to read, in order for the caller to catch all lines even after the
+// command has finished. The waitError channel returned will never be closed.
 func (c *Cmder) Start(cmd *exec.Cmd) (
 	stdoutLines, stderrLines <-chan string,
 	waitError <-chan error, startErr error,
@@ -38,6 +39,7 @@ func start(cmd execCmd) (stdoutLines, stderrLines <-chan string,
 	if err != nil {
 		_ = stdout.Close()
 		<-stdoutDone
+		close(stdoutLinesCh)
 		return nil, nil, nil, err
 	}
 	go streamToChannel(stderrReady, stderrDone, stderr, stderrLinesCh)
@@ -45,9 +47,11 @@ func start(cmd execCmd) (stdoutLines, stderrLines <-chan string,
 	err = cmd.Start()
 	if err != nil {
 		_ = stdout.Close()
-		_ = stderr.Close()
 		<-stdoutDone
+		close(stdoutLinesCh)
+		_ = stderr.Close()
 		<-stderrDone
+		close(stderrLinesCh)
 		return nil, nil, nil, err
 	}
 
@@ -55,8 +59,10 @@ func start(cmd execCmd) (stdoutLines, stderrLines <-chan string,
 	go func() {
 		err := cmd.Wait()
 		<-stdoutDone
-		<-stderrDone
+		close(stdoutLinesCh)
 		_ = stdout.Close()
+		<-stderrDone
+		close(stderrLinesCh)
 		_ = stderr.Close()
 		waitErrorCh <- err
 	}()
