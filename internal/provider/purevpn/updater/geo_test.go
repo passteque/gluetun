@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_parseHostname_CanadaCityCodes(t *testing.T) {
+func Test_parseHostname(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {

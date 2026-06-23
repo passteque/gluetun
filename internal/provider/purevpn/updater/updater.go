@@ -8,24 +8,18 @@ import (
 
 type Updater struct {
 	client           *http.Client
-	ipFetcher        common.IPFetcher
 	unzipper         common.Unzipper
 	parallelResolver common.ParallelResolver
-	warner           common.Warner
+	logger           common.Warner
 }
 
-func New(client *http.Client, ipFetcher common.IPFetcher, unzipper common.Unzipper,
+func New(client *http.Client, unzipper common.Unzipper,
 	warner common.Warner, parallelResolver common.ParallelResolver,
 ) *Updater {
-	if client == nil {
-		client = http.DefaultClient
-	}
-
 	return &Updater{
 		client:           client,
-		ipFetcher:        ipFetcher,
 		unzipper:         unzipper,
 		parallelResolver: parallelResolver,
-		warner:           warner,
+		logger:           warner,
 	}
 }

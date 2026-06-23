@@ -1,9 +1,12 @@
 package updater
 
 import (
+	"bytes"
 	"net/netip"
 	"testing"
 
+	"github.com/qdm12/gluetun/internal/constants/vpn"
+	"github.com/qdm12/gluetun/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -13,7 +16,8 @@ func Test_parseInventoryURLTemplate(t *testing.T) {
 
 	content := []byte(`"use strict";
 (0,_defineProperty2["default"])(S3, "BASE_URL_BPC", "https://bpc-prod-a230.s3.serverwild.com/bpc");
-(0,_defineProperty2["default"])(S3, "INVENTORY_URL", "".concat(S3.BASE_URL_BPC, "/{resellerUid}/inventory/shared/linux/v3/app.json"));`)
+(0,_defineProperty2["default"])(S3, "INVENTORY_URL", ` +
+		`"".concat(S3.BASE_URL_BPC, "/{resellerUid}/inventory/shared/linux/v3/app.json"));`)
 
 	template, err := parseInventoryURLTemplate(content)
 	require.NoError(t, err)
@@ -36,7 +40,7 @@ func Test_buildInventoryURL(t *testing.T) {
 func Test_parseInventoryJSON(t *testing.T) {
 	t.Parallel()
 
-	content := []byte(`{
+	const content = `{
 		"body":{
 			"data_centers":[
 				{"id":10,"ip":"1.2.3.4"},
@@ -57,61 +61,76 @@ func Test_parseInventoryJSON(t *testing.T) {
 				}
 			]
 		}
-	}`)
+	}`
 
-	hts, hostToFallbackIPs, err := parseInventoryJSON(content)
+	hts, err := parseInventoryJSON(bytes.NewBufferString(content))
 	require.NoError(t, err)
 
 	serverTCP := hts["aa2-tcp.ptoserver.com"]
-	assert.True(t, serverTCP.TCP)
-	assert.False(t, serverTCP.UDP)
-	assert.Equal(t, []uint16{80}, serverTCP.OpenVPNTCPPorts)
-	assert.Nil(t, serverTCP.OpenVPNUDPPorts)
-	assert.Equal(t, []string{"p2p"}, serverTCP.Categories)
+	expectedServerTCP := models.Server{
+		Hostname:   "aa2-tcp.ptoserver.com",
+		VPN:        vpn.OpenVPN,
+		TCP:        true,
+		UDP:        false,
+		TCPPorts:   []uint16{80},
+		Categories: []string{"p2p"},
+		IPs:        []netip.Addr{netip.MustParseAddr("1.2.3.4"), netip.MustParseAddr("5.6.7.8")},
+	}
+	assert.Equal(t, expectedServerTCP, serverTCP)
 
 	serverUDP := hts["aa2-udp.ptoserver.com"]
-	assert.True(t, serverUDP.UDP)
-	assert.False(t, serverUDP.TCP)
-	assert.Equal(t, []uint16{15021}, serverUDP.OpenVPNUDPPorts)
-	assert.Nil(t, serverUDP.OpenVPNTCPPorts)
-	assert.Equal(t, []string{"p2p"}, serverUDP.Categories)
-
-	assert.Equal(t, []netip.Addr{
-		netip.MustParseAddr("1.2.3.4"),
-		netip.MustParseAddr("5.6.7.8"),
-	}, hostToFallbackIPs["aa2-tcp.ptoserver.com"])
-
-	assert.Equal(t, []netip.Addr{
-		netip.MustParseAddr("1.2.3.4"),
-		netip.MustParseAddr("5.6.7.8"),
-	}, hostToFallbackIPs["aa2-udp.ptoserver.com"])
-}
-
-func Test_parseInventoryConfigurationVersions(t *testing.T) {
-	t.Parallel()
-
-	content := []byte(`{
-		"body":{
-			"dns":[
-				{"id":101,"hostname":"aa2-tcp.ptoserver.com","configuration_version":"2.0"},
-				{"id":102,"hostname":"aa2-udp.ptoserver.com","configuration_version":"14.0"},
-				{"id":103,"hostname":"aa3-udp.ptoserver.com","configuration_version":"14.0"},
-				{"id":104,"hostname":"aa4-udp.ptoserver.com","configuration_version":""}
-			]
-		}
-	}`)
-
-	versions, err := parseInventoryConfigurationVersions(content)
-	assert.NoError(t, err)
-	assert.ElementsMatch(t, []string{"2.0", "14.0"}, versions)
+	expectedServerUDP := models.Server{
+		Hostname:   "aa2-udp.ptoserver.com",
+		VPN:        vpn.OpenVPN,
+		TCP:        false,
+		UDP:        true,
+		UDPPorts:   []uint16{15021},
+		Categories: []string{"p2p"},
+		IPs:        []netip.Addr{netip.MustParseAddr("1.2.3.4"), netip.MustParseAddr("5.6.7.8")},
+	}
+	assert.Equal(t, expectedServerUDP, serverUDP)
 }
 
 func Test_hasP2PTag(t *testing.T) {
 	t.Parallel()
 
-	assert.True(t, hasP2PTag([]string{"p2p"}))
-	assert.True(t, hasP2PTag([]string{"TAG_P2P"}))
-	assert.True(t, hasP2PTag([]string{"tag-p2p"}))
-	assert.True(t, hasP2PTag([]string{"tag p2p"}))
-	assert.False(t, hasP2PTag([]string{"TAG_QR", "TAG_OVPN_OBF"}))
+	testCases := map[string]struct {
+		tags     []string
+		expected bool
+	}{
+		"empty": {
+			tags:     nil,
+			expected: false,
+		},
+		"no_p2p_tag": {
+			tags:     []string{"TAG_QR", "TAG_OVPN_OBF"},
+			expected: false,
+		},
+		"p2p_tag": {
+			tags:     []string{"p2p"},
+			expected: true,
+		},
+		"p2p_tag_with_different_case": {
+			tags:     []string{"TAG_P2P"},
+			expected: true,
+		},
+		"p2p_tag_with_dash": {
+			tags:     []string{"tag-p2p"},
+			expected: true,
+		},
+		"p2p_tag_with_space": {
+			tags:     []string{"tag p2p"},
+			expected: true,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			result := hasP2PTag(testCase.tags)
+
+			assert.Equal(t, testCase.expected, result)
+		})
+	}
 }

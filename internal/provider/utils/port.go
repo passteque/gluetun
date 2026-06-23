@@ -26,15 +26,15 @@ func getPort(selection settings.ServerSelection, server models.Server,
 			return customPort
 		}
 		if selection.OpenVPN.Protocol == constants.TCP {
-			if len(server.OpenVPNTCPPorts) > 0 {
-				return server.OpenVPNTCPPorts[0]
+			if len(server.TCPPorts) > 0 {
+				return server.TCPPorts[0]
 			}
 			checkDefined("OpenVPN TCP", defaultOpenVPNTCP)
 			return defaultOpenVPNTCP
 		}
 
-		if len(server.OpenVPNUDPPorts) > 0 {
-			return server.OpenVPNUDPPorts[0]
+		if len(server.UDPPorts) > 0 {
+			return server.UDPPorts[0]
 		}
 		checkDefined("OpenVPN UDP", defaultOpenVPNUDP)
 		return defaultOpenVPNUDP

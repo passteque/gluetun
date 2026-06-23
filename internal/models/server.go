@@ -24,8 +24,8 @@ type Server struct {
 	Hostname         string       `json:"hostname,omitempty"`
 	TCP              bool         `json:"tcp,omitempty"`
 	UDP              bool         `json:"udp,omitempty"`
-	OpenVPNTCPPorts  []uint16     `json:"openvpn_tcp_ports,omitempty"`
-	OpenVPNUDPPorts  []uint16     `json:"openvpn_udp_ports,omitempty"`
+	TCPPorts         []uint16     `json:"tcp_ports,omitempty"`
+	UDPPorts         []uint16     `json:"udp_ports,omitempty"`
 	OvpnX509         string       `json:"x509,omitempty"`
 	RetroLoc         string       `json:"retroloc,omitempty"` // TODO remove in v4
 	MultiHop         bool         `json:"multihop,omitempty"`
@@ -61,18 +61,18 @@ func (s *Server) HasMinimumInformation() (err error) {
 
 func (s *Server) Equal(other Server) (equal bool) {
 	if !comparablesAreEqualNoOrder(s.IPs, other.IPs) ||
-		!comparablesAreEqualNoOrder(s.OpenVPNTCPPorts, other.OpenVPNTCPPorts) ||
-		!comparablesAreEqualNoOrder(s.OpenVPNUDPPorts, other.OpenVPNUDPPorts) {
+		!comparablesAreEqualNoOrder(s.TCPPorts, other.TCPPorts) ||
+		!comparablesAreEqualNoOrder(s.UDPPorts, other.UDPPorts) {
 		return false
 	}
 
 	serverCopy := *s
 	serverCopy.IPs = nil
-	serverCopy.OpenVPNTCPPorts = nil
-	serverCopy.OpenVPNUDPPorts = nil
+	serverCopy.TCPPorts = nil
+	serverCopy.UDPPorts = nil
 	other.IPs = nil
-	other.OpenVPNTCPPorts = nil
-	other.OpenVPNUDPPorts = nil
+	other.TCPPorts = nil
+	other.UDPPorts = nil
 	return reflect.DeepEqual(serverCopy, other)
 }
 

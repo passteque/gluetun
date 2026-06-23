@@ -12,24 +12,27 @@ import (
 
 const localDataAsarPath = "node_modules/atom-sdk/lib/offline-data/local-data.js"
 
-func parseLocalData(content []byte) (hostToServer, error) {
-	raw := string(content)
+func parseLocalData(data []byte) (hostToServer, error) {
+	content := string(data)
 	hts := make(hostToServer)
+
+	hostToIPs := parseLocalDataIPs(content)
+
 	const protocolNeedle = `protocol:"`
 	blocksFound := 0
-	for index := 0; index < len(raw); {
-		start := strings.Index(raw[index:], protocolNeedle)
+	for index := 0; index < len(content); {
+		start := strings.Index(content[index:], protocolNeedle)
 		if start == -1 {
 			break
 		}
 		start += index
 		protocolStart := start + len(protocolNeedle)
-		protocolEnd := strings.IndexByte(raw[protocolStart:], '"')
+		protocolEnd := strings.IndexByte(content[protocolStart:], '"')
 		if protocolEnd == -1 {
 			break
 		}
 		protocolEnd += protocolStart
-		protocol := raw[protocolStart:protocolEnd]
+		protocol := content[protocolStart:protocolEnd]
 		tcp := strings.EqualFold(protocol, constants.TCP)
 		udp := strings.EqualFold(protocol, constants.UDP)
 		index = protocolEnd + 1
@@ -38,13 +41,13 @@ func parseLocalData(content []byte) (hostToServer, error) {
 		}
 		blocksFound++
 
-		dnsMarker := strings.Index(raw[index:], `dns:[`)
+		dnsMarker := strings.Index(content[index:], `dns:[`)
 		if dnsMarker == -1 {
 			continue
 		}
 		dnsMarker += index
 		arrayStart := dnsMarker + len(`dns:`)
-		dnsArray, arrayEnd, err := extractBracketContent(raw, arrayStart, '[', ']')
+		dnsArray, arrayEnd, err := extractBracketContent(content, arrayStart)
 		if err != nil {
 			continue
 		}
@@ -56,13 +59,13 @@ func parseLocalData(content []byte) (hostToServer, error) {
 				continue
 			}
 			var tcpPorts, udpPorts []uint16
-			if tcp {
+			if tcp { // always 80
 				tcpPorts = []uint16{port}
 			}
 			if udp {
 				udpPorts = []uint16{port}
 			}
-			hts.add(host, []netip.Addr(nil), tcp, udp, tcpPorts, udpPorts, false)
+			hts.add(host, hostToIPs[host], tcp, udp, tcpPorts, udpPorts, false)
 		}
 	}
 
@@ -76,16 +79,53 @@ func parseLocalData(content []byte) (hostToServer, error) {
 	return hts, nil
 }
 
-func extractBracketContent(s string, openIndex int, open, close byte) (content string, closeIndex int, err error) {
-	if openIndex < 0 || openIndex >= len(s) || s[openIndex] != open {
+func parseLocalDataIPs(content string) (hostToIPs map[string][]netip.Addr) {
+	dataCenterIDToIP := parseDataCenterIDToPingIP(content)
+	if len(dataCenterIDToIP) == 0 {
+		return nil
+	}
+
+	countriesArray, _, err := extractArrayByKey(content, "countries:")
+	if err != nil {
+		return nil
+	}
+
+	hostToIPs = make(map[string][]netip.Addr)
+	for _, countryEntry := range splitObjectEntries(countriesArray) {
+		dataCenterIDs := parseCountryDataCenterIDs(countryEntry)
+		if len(dataCenterIDs) == 0 {
+			continue
+		}
+
+		hosts := parseTCPUDPHostsFromChunk(countryEntry)
+		if len(hosts) == 0 {
+			continue
+		}
+
+		for _, host := range hosts {
+			for _, dataCenterID := range dataCenterIDs {
+				ip, ok := dataCenterIDToIP[dataCenterID]
+				if !ok {
+					continue
+				}
+				hostToIPs[host] = appendIfMissing(hostToIPs[host], ip)
+			}
+		}
+	}
+
+	return hostToIPs
+}
+
+func extractBracketContent(s string, openIndex int) (content string, closeIndex int, err error) {
+	if openIndex < 0 || openIndex >= len(s) || s[openIndex] != '[' {
 		return "", -1, fmt.Errorf("opening bracket not found at index %d", openIndex)
 	}
 	depth := 0
 	for i := openIndex; i < len(s); i++ {
 		switch s[i] {
-		case open:
+		case '[':
 			depth++
-		case close:
+		case ']':
 			depth--
 			if depth == 0 {
 				return s[openIndex+1 : i], i, nil
@@ -98,7 +138,7 @@ func extractBracketContent(s string, openIndex int, open, close byte) (content s
 func splitObjectEntries(s string) (entries []string) {
 	entryStart := -1
 	depth := 0
-	for i := 0; i < len(s); i++ {
+	for i := range s {
 		switch s[i] {
 		case '{':
 			if depth == 0 {
@@ -141,13 +181,22 @@ func parseHostPortFromDNSEntry(entry string) (host string, port uint16, ok bool)
 	if portStart == -1 {
 		return "", 0, false
 	}
-	portStart += len(portNeedle)
-	portEnd := portStart
-	for ; portEnd < len(entry) && entry[portEnd] >= '0' && entry[portEnd] <= '9'; portEnd++ {
+
+	remaining := entry[portStart:]
+
+	// Find how many consecutive digits we have at the beginning of this slice
+	endOffset := 0
+	for endOffset < len(remaining) && remaining[endOffset] >= '0' && remaining[endOffset] <= '9' {
+		endOffset++
 	}
-	if portEnd == portStart {
+
+	// If no digits were found, it's an invalid port
+	if endOffset == 0 {
 		return "", 0, false
 	}
+
+	// Update your end position based on how many digits we found
+	portEnd := portStart + endOffset
 
 	const base, bitSize = 10, 16
 	port64, err := strconv.ParseUint(entry[portStart:portEnd], base, bitSize)
@@ -155,45 +204,6 @@ func parseHostPortFromDNSEntry(entry string) (host string, port uint16, ok bool)
 		return "", 0, false
 	}
 	return host, uint16(port64), true
-}
-
-func parseLocalDataFallbackIPs(content []byte) (hostToIPs map[string][]netip.Addr) {
-	raw := string(content)
-
-	dataCenterIDToIP := parseDataCenterIDToPingIP(raw)
-	if len(dataCenterIDToIP) == 0 {
-		return nil
-	}
-
-	countriesArray, _, err := extractArrayByKey(raw, "countries:")
-	if err != nil {
-		return nil
-	}
-
-	hostToIPs = make(map[string][]netip.Addr)
-	for _, countryEntry := range splitObjectEntries(countriesArray) {
-		dataCenterIDs := parseCountryDataCenterIDs(countryEntry)
-		if len(dataCenterIDs) == 0 {
-			continue
-		}
-
-		hosts := parseTCPUDPHostsFromChunk(countryEntry)
-		if len(hosts) == 0 {
-			continue
-		}
-
-		for _, host := range hosts {
-			for _, dataCenterID := range dataCenterIDs {
-				ip, ok := dataCenterIDToIP[dataCenterID]
-				if !ok {
-					continue
-				}
-				hostToIPs[host] = appendIfMissing(hostToIPs[host], ip)
-			}
-		}
-	}
-
-	return hostToIPs
 }
 
 func parseDataCenterIDToPingIP(raw string) map[int]netip.Addr {
@@ -283,7 +293,7 @@ func extractArrayByKey(s, key string) (content string, endIndex int, err error) 
 		return "", -1, fmt.Errorf("array opening bracket not found for key %q", key)
 	}
 	openIndex += keyIndex
-	content, closeIndex, err := extractBracketContent(s, openIndex, '[', ']')
+	content, closeIndex, err := extractBracketContent(s, openIndex)
 	if err != nil {
 		return "", -1, err
 	}
@@ -312,7 +322,7 @@ var idPattern = regexp.MustCompile(`id:\s*"?([0-9]+)"?`)
 
 func parseID(s string) (id int) {
 	match := idPattern.FindStringSubmatch(s)
-	if len(match) < 2 {
+	if len(match) < 2 { //nolint:mnd
 		return 0
 	}
 	id, _ = strconv.Atoi(match[1])

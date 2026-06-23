@@ -2,17 +2,15 @@ package updater
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"regexp"
+	"slices"
 	"strings"
 
 	"github.com/qdm12/gluetun/internal/constants"
-)
-
-const (
-	asarSrcInventoryDataPath = "node_modules/atom-sdk/node_modules/inventory/src/offline-data/inventory-data.js"
-	asarLibInventoryDataPath = "node_modules/atom-sdk/node_modules/inventory/lib/offline-data/inventory-data.js"
 )
 
 var (
@@ -26,7 +24,7 @@ func parseInventoryURLTemplate(endpointsJS []byte) (template string, err error) 
 	raw := string(endpointsJS)
 
 	baseMatch := baseURLBPCRegex.FindStringSubmatch(raw)
-	if len(baseMatch) != 2 {
+	if len(baseMatch) != 2 { //nolint:mnd
 		return "", fmt.Errorf("BASE_URL_BPC not found in endpoints file")
 	}
 	baseURL := strings.TrimSpace(baseMatch[1])
@@ -47,10 +45,10 @@ func parseResellerUIDFromInventoryOffline(offlineInventoryJS []byte) (resellerUI
 	raw := string(offlineInventoryJS)
 
 	match := resellerUIDRegexJSON.FindStringSubmatch(raw)
-	if len(match) != 2 {
+	if len(match) != 2 { //nolint:mnd
 		match = resellerUIDRegexJS.FindStringSubmatch(raw)
 	}
-	if len(match) != 2 {
+	if len(match) != 2 { //nolint:mnd
 		return "", fmt.Errorf("reseller Uid not found in inventory offline data")
 	}
 	resellerUID = strings.TrimSpace(match[1])
@@ -74,78 +72,52 @@ func buildInventoryURL(template, resellerUID string) (inventoryURL string, err e
 }
 
 type inventoryResponse struct {
-	Body inventoryBody `json:"body"`
+	Body struct {
+		Countries []struct {
+			DataCenters []struct {
+				ID uint `json:"id"`
+			} `json:"data_centers"`
+			Protocols []struct {
+				Protocol string `json:"protocol"`
+				DNS      []struct {
+					DNSID      uint   `json:"dns_id"`
+					PortNumber uint16 `json:"port_number"`
+				} `json:"dns"`
+			} `json:"protocols"`
+			Features []string `json:"features"`
+		} `json:"countries"`
+		DNS []struct {
+			ID                   uint     `json:"id"`
+			Hostname             string   `json:"hostname"`
+			ConfigurationVersion string   `json:"configuration_version"`
+			Tags                 []string `json:"tags"`
+		} `json:"dns"`
+		DataCenters []struct {
+			ID uint       `json:"id"`
+			IP netip.Addr `json:"ip"`
+		} `json:"data_centers"`
+	} `json:"body"`
 }
 
-type inventoryBody struct {
-	Countries   []inventoryCountry    `json:"countries"`
-	DNS         []inventoryDNS        `json:"dns"`
-	DataCenters []inventoryDataCenter `json:"data_centers"`
+type dnsData struct {
+	hostname string
+	p2p      bool
 }
 
-type inventoryCountry struct {
-	DataCenters []inventoryDataCenterRef `json:"data_centers"`
-	Protocols   []inventoryProtocol      `json:"protocols"`
-	Features    []string                 `json:"features"`
-}
-
-type inventoryDataCenterRef struct {
-	ID uint `json:"id"`
-}
-
-type inventoryProtocol struct {
-	Protocol string                 `json:"protocol"`
-	DNS      []inventoryProtocolDNS `json:"dns"`
-}
-
-type inventoryProtocolDNS struct {
-	DNSID      uint   `json:"dns_id"`
-	PortNumber uint16 `json:"port_number"`
-}
-
-type inventoryDNS struct {
-	ID                   uint     `json:"id"`
-	Hostname             string   `json:"hostname"`
-	ConfigurationVersion string   `json:"configuration_version"`
-	Tags                 []string `json:"tags"`
-}
-
-type inventoryDataCenter struct {
-	ID uint       `json:"id"`
-	IP netip.Addr `json:"ip"`
-}
-
-func parseInventoryJSON(content []byte) (hts hostToServer, err error) {
+func parseInventoryJSON(reader io.Reader) (hts hostToServer, err error) {
 	var response inventoryResponse
-	if err := json.Unmarshal(content, &response); err != nil {
-		return nil, fmt.Errorf("unmarshalling inventory JSON: %w", err)
+	decoder := json.NewDecoder(reader)
+	err = decoder.Decode(&response)
+	if err != nil {
+		return nil, fmt.Errorf("decoding inventory JSON: %w", err)
+	} else if len(response.Body.Countries) == 0 {
+		return nil, errors.New("no countries found in inventory JSON")
 	}
 
-	if len(response.Body.Countries) == 0 {
-		return nil, fmt.Errorf("no countries found in inventory JSON")
-	}
-
-	dnsIDToHostname := make(map[uint]string, len(response.Body.DNS))
-	dnsIDToP2PTagged := make(map[uint]bool, len(response.Body.DNS))
-	for _, dnsEntry := range response.Body.DNS {
-		if dnsEntry.ID == 0 || dnsEntry.Hostname == "" {
-			continue
-		}
-		dnsIDToHostname[dnsEntry.ID] = strings.TrimSpace(dnsEntry.Hostname)
-		dnsIDToP2PTagged[dnsEntry.ID] = hasP2PTag(dnsEntry.Tags)
-	}
-
-	dataCenterIDToIP := make(map[uint]netip.Addr, len(response.Body.DataCenters))
-	for _, dataCenter := range response.Body.DataCenters {
-		if dataCenter.ID == 0 || !dataCenter.IP.IsValid() {
-			continue
-		}
-		dataCenterIDToIP[dataCenter.ID] = dataCenter.IP
-	}
+	dnsIDToData := getDNSIDToData(response)
+	dataCenterIDToIP := getDataCenterIDToIP(response)
 
 	hts = make(hostToServer)
-	blocksFound := 0
-
 	for _, country := range response.Body.Countries {
 		countryP2PTagged := hasP2PTag(country.Features)
 		countryDataCenterIPs := make([]netip.Addr, 0, len(country.DataCenters))
@@ -158,87 +130,72 @@ func parseInventoryJSON(content []byte) (hts hostToServer, err error) {
 		}
 
 		for _, protocol := range country.Protocols {
-			protocolName := strings.ToUpper(protocol.Protocol)
-			tcp := strings.EqualFold(protocolName, constants.TCP)
-			udp := strings.EqualFold(protocolName, constants.UDP)
+			tcp := strings.EqualFold(protocol.Protocol, constants.TCP)
+			udp := strings.EqualFold(protocol.Protocol, constants.UDP)
 			if !tcp && !udp {
 				continue
 			}
-			blocksFound++
 
 			for _, dns := range protocol.DNS {
-				hostname := strings.TrimSpace(dnsIDToHostname[dns.DNSID])
-				if hostname == "" {
+				data, ok := dnsIDToData[dns.DNSID]
+				if !ok {
 					continue
 				}
 
 				var tcpPorts, udpPorts []uint16
 				if tcp {
-					tcpPorts = []uint16{dns.PortNumber}
+					tcpPorts = []uint16{dns.PortNumber} // always 80
 				}
 				if udp {
 					udpPorts = []uint16{dns.PortNumber}
 				}
-				p2pTagged := countryP2PTagged || dnsIDToP2PTagged[dns.DNSID]
-				hts.add(hostname, countryDataCenterIPs, tcp, udp, tcpPorts, udpPorts, p2pTagged)
+				p2pTagged := countryP2PTagged || data.p2p
+				hts.add(data.hostname, countryDataCenterIPs, tcp, udp, tcpPorts, udpPorts, p2pTagged)
 			}
 		}
-	}
-
-	if blocksFound == 0 {
-		return nil, fmt.Errorf("no TCP/UDP protocol blocks found in inventory JSON")
-	}
-	if len(hts) == 0 {
-		return nil, fmt.Errorf("no OpenVPN TCP/UDP DNS hosts found in inventory JSON")
 	}
 
 	return hts, nil
 }
 
-func parseInventoryConfigurationVersions(content []byte) (versions []string, err error) {
-	var response inventoryResponse
-	if err := json.Unmarshal(content, &response); err != nil {
-		return nil, fmt.Errorf("unmarshalling inventory JSON: %w", err)
-	}
-
-	set := make(map[string]struct{})
+func getDNSIDToData(response inventoryResponse) (dnsIDToData map[uint]dnsData) {
+	dnsIDToData = make(map[uint]dnsData, len(response.Body.DNS))
 	for _, dnsEntry := range response.Body.DNS {
-		version := strings.TrimSpace(dnsEntry.ConfigurationVersion)
-		if version == "" {
+		if dnsEntry.ID == 0 || dnsEntry.Hostname == "" {
 			continue
 		}
-		if _, exists := set[version]; exists {
-			continue
+		dnsIDToData[dnsEntry.ID] = dnsData{
+			hostname: strings.TrimSpace(dnsEntry.Hostname),
+			p2p:      hasP2PTag(dnsEntry.Tags),
 		}
-		set[version] = struct{}{}
-		versions = append(versions, version)
 	}
+	return dnsIDToData
+}
 
-	return versions, nil
+func getDataCenterIDToIP(response inventoryResponse) (dataCenterIDToIP map[uint]netip.Addr) {
+	dataCenterIDToIP = make(map[uint]netip.Addr, len(response.Body.DataCenters))
+	for _, dataCenter := range response.Body.DataCenters {
+		if dataCenter.ID == 0 || !dataCenter.IP.IsValid() {
+			continue
+		}
+		dataCenterIDToIP[dataCenter.ID] = dataCenter.IP
+	}
+	return dataCenterIDToIP
 }
 
 func hasP2PTag(tags []string) (p2p bool) {
 	separatorNormalizer := strings.NewReplacer("-", "_", " ", "_")
 	for _, tag := range tags {
 		normalized := strings.ToLower(strings.TrimSpace(tag))
-		if normalized == "" {
-			continue
-		}
 		normalized = separatorNormalizer.Replace(normalized)
-		for _, token := range strings.Split(normalized, "_") {
-			if token == "p2p" {
-				return true
-			}
+		if slices.Contains(strings.Split(normalized, "_"), "p2p") {
+			return true
 		}
 	}
 	return false
 }
 
 func extractFirstFileFromAsar(asarContent []byte, paths ...string) (content []byte, usedPath string, err error) {
-	if len(paths) == 0 {
-		return nil, "", fmt.Errorf("no asar paths provided")
-	}
-
 	var lastErr error
 	for _, path := range paths {
 		content, err = extractFileFromAsar(asarContent, path)

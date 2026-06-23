@@ -28,29 +28,30 @@ func Test_parseLocalData(t *testing.T) {
 	serverTCP := hts["us2-tcp.ptoserver.com"]
 	assert.True(t, serverTCP.TCP)
 	assert.False(t, serverTCP.UDP)
-	assert.Equal(t, []uint16{80}, serverTCP.OpenVPNTCPPorts)
-	assert.Nil(t, serverTCP.OpenVPNUDPPorts)
+	assert.Equal(t, []uint16{80}, serverTCP.TCPPorts)
+	assert.Nil(t, serverTCP.UDPPorts)
 
 	serverUDP := hts["us2-udp.ptoserver.com"]
 	assert.True(t, serverUDP.UDP)
 	assert.False(t, serverUDP.TCP)
-	assert.Equal(t, []uint16{15021}, serverUDP.OpenVPNUDPPorts)
-	assert.Nil(t, serverUDP.OpenVPNTCPPorts)
+	assert.Equal(t, []uint16{15021}, serverUDP.UDPPorts)
+	assert.Nil(t, serverUDP.TCPPorts)
 }
 
 func Test_parseLocalData_noHosts(t *testing.T) {
 	t.Parallel()
 
-	_, err := parseLocalData([]byte(`"use strict";module.exports={body:{countries:[{id:1,protocols:[{protocol:"IKEV",dns:[]}]}]}};`))
+	_, err := parseLocalData([]byte(`"use strict";` +
+		`module.exports={body:{countries:[{id:1,protocols:[{protocol:"IKEV",dns:[]}]}]}};`))
 
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no TCP/UDP protocol blocks")
 }
 
-func Test_parseLocalDataFallbackIPs(t *testing.T) {
+func Test_parseLocalDataIPs(t *testing.T) {
 	t.Parallel()
 
-	content := []byte(`"use strict";module.exports={body:{
+	const content = `"use strict";module.exports={body:{
 		data_centers:[
 			{id:10,ping_ip_address:"1.2.3.4"},
 			{id:11,ping_ip_address:"5.6.7.8"}
@@ -63,9 +64,9 @@ func Test_parseLocalDataFallbackIPs(t *testing.T) {
 				{protocol:"UDP",dns:[{name:"aa2-udp.ptoserver.com",port_number:15021}]}
 			]
 		}]
-	}};`)
+	}};`
 
-	hostToFallbackIPs := parseLocalDataFallbackIPs(content)
+	hostToFallbackIPs := parseLocalDataIPs(content)
 	require.NotEmpty(t, hostToFallbackIPs)
 
 	assert.Equal(t, []netip.Addr{

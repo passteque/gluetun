@@ -6,6 +6,7 @@ import (
 	"compress/gzip"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strconv"
@@ -15,15 +16,13 @@ import (
 	"github.com/ulikunitz/xz"
 )
 
-const pureVPNAsarPath = "opt/PureVPN/resources/app.asar"
-
 type debEntry struct {
 	name string
 	data []byte
 }
 
-func extractAsarFromDeb(debBytes []byte) (asarContent []byte, err error) {
-	entries, err := parseArArchive(debBytes)
+func extractAsarFromDeb(deb []byte) (asarContent []byte, err error) {
+	entries, err := parseArArchive(deb)
 	if err != nil {
 		return nil, fmt.Errorf("parsing .deb ar archive: %w", err)
 	}
@@ -31,14 +30,15 @@ func extractAsarFromDeb(debBytes []byte) (asarContent []byte, err error) {
 	var dataTarName string
 	var dataTarCompressed []byte
 	for _, entry := range entries {
-		if strings.HasPrefix(entry.name, "data.tar") {
+		if strings.HasPrefix(entry.name, "data.tar") && len(entry.data) > 0 {
 			dataTarName = entry.name
 			dataTarCompressed = entry.data
 			break
 		}
 	}
-	if len(dataTarCompressed) == 0 {
-		return nil, fmt.Errorf("data.tar archive not found in .deb")
+
+	if dataTarName == "" {
+		return nil, errors.New("data.tar archive not found in .deb")
 	}
 
 	dataTar, err := decompressDataTar(dataTarName, dataTarCompressed)
@@ -46,9 +46,10 @@ func extractAsarFromDeb(debBytes []byte) (asarContent []byte, err error) {
 		return nil, fmt.Errorf("decompressing %s: %w", dataTarName, err)
 	}
 
-	asarContent, err = extractFileFromTar(dataTar, pureVPNAsarPath)
+	const appAsarPath = "opt/PureVPN/resources/app.asar"
+	asarContent, err = extractFileFromTar(dataTar, appAsarPath)
 	if err != nil {
-		return nil, fmt.Errorf("extracting %s from tar: %w", pureVPNAsarPath, err)
+		return nil, fmt.Errorf("extracting %s from tar: %w", appAsarPath, err)
 	}
 
 	return asarContent, nil
@@ -160,7 +161,7 @@ func extractFileFromTar(tarContent []byte, expectedPath string) (fileContent []b
 type asarNode struct {
 	Files  map[string]*asarNode `json:"files,omitempty"`
 	Offset string               `json:"offset,omitempty"`
-	Size   int                  `json:"size,omitempty"`
+	Size   uint                 `json:"size,omitempty"`
 }
 
 type asarHeader struct {
@@ -168,7 +169,8 @@ type asarHeader struct {
 }
 
 func extractFileFromAsar(asarContent []byte, targetPath string) (fileContent []byte, err error) {
-	if len(asarContent) < 16 {
+	const minAsarLength = 16
+	if len(asarContent) < minAsarLength {
 		return nil, fmt.Errorf("asar content too short: %d", len(asarContent))
 	}
 
@@ -176,32 +178,28 @@ func extractFileFromAsar(asarContent []byte, targetPath string) (fileContent []b
 	if headerLength <= 0 {
 		return nil, fmt.Errorf("invalid asar header length: %d", headerLength)
 	}
-	if 16+headerLength > len(asarContent) {
+	if minAsarLength+headerLength > len(asarContent) {
 		return nil, fmt.Errorf("asar header length exceeds content length")
 	}
 
 	headerContent := asarContent[16 : 16+headerLength]
 	var header asarHeader
 	if err := json.Unmarshal(headerContent, &header); err != nil {
-		return nil, fmt.Errorf("unmarshalling asar header: %w", err)
+		return nil, fmt.Errorf("json decoding asar header: %w", err)
 	}
 
 	node, err := asarGetNode(header.Files, targetPath)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting asar node: %w", err)
 	}
 
 	offset, err := strconv.Atoi(node.Offset)
 	if err != nil {
-		return nil, fmt.Errorf("parsing asar file offset %q for %q: %w", node.Offset, targetPath, err)
+		return nil, fmt.Errorf("parsing asar node offset: %w", err)
 	}
-	if node.Size < 0 {
-		return nil, fmt.Errorf("negative asar file size %d for %q", node.Size, targetPath)
-	}
-
-	dataOffset := 16 + headerLength + offset
-	dataEnd := dataOffset + node.Size
-	if dataOffset < 0 || dataEnd > len(asarContent) {
+	dataOffset := minAsarLength + headerLength + offset
+	dataEnd := dataOffset + int(node.Size) //nolint:gosec
+	if dataEnd > len(asarContent) {
 		return nil, fmt.Errorf("asar file %q exceeds content boundaries", targetPath)
 	}
 
@@ -217,7 +215,7 @@ func asarGetNode(files map[string]*asarNode, targetPath string) (node *asarNode,
 	for i, segment := range segments {
 		node = currentFiles[segment]
 		if node == nil {
-			return nil, fmt.Errorf("path %q not found in asar", targetPath)
+			return nil, fmt.Errorf("segment %q from path %s not found in files map %v", segment, targetPath, currentFiles)
 		}
 		if i == len(segments)-1 {
 			return node, nil

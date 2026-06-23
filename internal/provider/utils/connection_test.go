@@ -96,11 +96,11 @@ func Test_GetConnection(t *testing.T) {
 		"OpenVPN server uses protocol-specific TCP port when no custom port set": {
 			filteredServers: []models.Server{
 				{
-					VPN:             vpn.OpenVPN,
-					TCP:             true,
-					OpenVPNTCPPorts: []uint16{4433},
-					IPs:             []netip.Addr{netip.AddrFrom4([4]byte{8, 8, 8, 8})},
-					Hostname:        "name",
+					VPN:      vpn.OpenVPN,
+					TCP:      true,
+					TCPPorts: []uint16{4433},
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{8, 8, 8, 8})},
+					Hostname: "name",
 				},
 			},
 			serverSelection: func() settings.ServerSelection {
@@ -121,11 +121,11 @@ func Test_GetConnection(t *testing.T) {
 		"OpenVPN server uses protocol-specific UDP port when no custom port set": {
 			filteredServers: []models.Server{
 				{
-					VPN:             vpn.OpenVPN,
-					UDP:             true,
-					OpenVPNUDPPorts: []uint16{15021},
-					IPs:             []netip.Addr{netip.AddrFrom4([4]byte{9, 9, 9, 9})},
-					Hostname:        "name",
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					UDPPorts: []uint16{15021},
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{9, 9, 9, 9})},
+					Hostname: "name",
 				},
 			},
 			serverSelection: settings.ServerSelection{}.
@@ -143,11 +143,11 @@ func Test_GetConnection(t *testing.T) {
 		"OpenVPN custom port overrides protocol-specific port": {
 			filteredServers: []models.Server{
 				{
-					VPN:             vpn.OpenVPN,
-					UDP:             true,
-					OpenVPNUDPPorts: []uint16{15021},
-					IPs:             []netip.Addr{netip.AddrFrom4([4]byte{10, 10, 10, 10})},
-					Hostname:        "name",
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					UDPPorts: []uint16{15021},
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{10, 10, 10, 10})},
+					Hostname: "name",
 				},
 			},
 			serverSelection: func() settings.ServerSelection {

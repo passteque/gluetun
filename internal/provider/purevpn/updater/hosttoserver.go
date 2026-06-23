@@ -29,27 +29,34 @@ func (hts hostToServer) add(host string, ips []netip.Addr, tcp, udp bool, tcpPor
 	if tcp {
 		server.TCP = true
 		for _, port := range tcpPorts {
-			server.OpenVPNTCPPorts = appendIfMissing(server.OpenVPNTCPPorts, port)
+			server.TCPPorts = appendIfMissing(server.TCPPorts, port)
 		}
 	}
 	if udp {
 		server.UDP = true
 		for _, port := range udpPorts {
-			server.OpenVPNUDPPorts = appendIfMissing(server.OpenVPNUDPPorts, port)
+			server.UDPPorts = appendIfMissing(server.UDPPorts, port)
 		}
 	}
 	hts[host] = server
 }
 
-func (hts hostToServer) mergeWith(other hostToServer) {
-	for host, server := range other {
-		_, ok := hts[host]
+func (hts hostToServer) mergeWithFallback(fallback hostToServer) {
+	for host, server := range fallback {
+		existing, ok := hts[host]
 		if !ok {
 			hts[host] = server
 			continue
 		}
+
+		// Do not add IP from fallback if existing server already has IPs
+		fallbackIPs := server.IPs
+		if len(existing.IPs) > 0 {
+			fallbackIPs = nil
+		}
+
 		p2pTagged := slices.Contains(server.Categories, "p2p")
-		hts.add(host, server.IPs, server.TCP, server.UDP, server.OpenVPNTCPPorts, server.OpenVPNUDPPorts, p2pTagged)
+		hts.add(host, fallbackIPs, server.TCP, server.UDP, server.TCPPorts, server.UDPPorts, p2pTagged)
 	}
 }
 
@@ -61,13 +68,16 @@ func (hts hostToServer) toHostsSlice() (hosts []string) {
 	return hosts
 }
 
-func (hts hostToServer) adaptWithIPs(hostToIPs map[string][]netip.Addr, override bool) {
+func (hts hostToServer) adaptWithIPs(hostToIPs map[string][]netip.Addr) {
 	for host, IPs := range hostToIPs {
 		server := hts[host]
-		if override || len(server.IPs) == 0 {
-			server.IPs = IPs
-		}
+		server.IPs = IPs
 		hts[host] = server
+	}
+	for host, server := range hts {
+		if len(server.IPs) == 0 {
+			delete(hts, host)
+		}
 	}
 }
 

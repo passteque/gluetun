@@ -16,13 +16,13 @@ type Provider struct {
 }
 
 func New(storage common.Storage, client *http.Client,
-	ipFetcher common.IPFetcher, unzipper common.Unzipper,
-	updaterWarner common.Warner, parallelResolver common.ParallelResolver,
+	unzipper common.Unzipper, updaterWarner common.Warner,
+	parallelResolver common.ParallelResolver,
 ) *Provider {
 	return &Provider{
 		storage:    storage,
 		connPicker: utils.NewConnectionPicker(),
-		Fetcher:    updater.New(client, ipFetcher, unzipper, updaterWarner, parallelResolver),
+		Fetcher:    updater.New(client, unzipper, updaterWarner, parallelResolver),
 	}
 }
 

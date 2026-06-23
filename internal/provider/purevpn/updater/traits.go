@@ -8,7 +8,7 @@ func inferPureVPNTraits(hostname string) (portForward, quantumResistant, obfusca
 		return false, false, false, false
 	}
 
-	for _, token := range strings.Split(labels[0], "-") {
+	for token := range strings.SplitSeq(labels[0], "-") {
 		switch token {
 		case "pf":
 			portForward = true

@@ -29,14 +29,13 @@ func Test_OpenVPNSelection_validate(t *testing.T) {
 			}(),
 			provider: providers.Purevpn,
 		},
-		"purevpn_custom_port_rejected": {
+		"purevpn_custom_port_accepted": {
 			selection: func() OpenVPNSelection {
 				s := openVPNSelectionForValidation(providers.Purevpn)
 				*s.CustomPort = 1194
 				return s
 			}(),
-			provider:   providers.Purevpn,
-			errMessage: "custom endpoint port is not allowed: for VPN service provider purevpn",
+			provider: providers.Purevpn,
 		},
 	}
 
