@@ -14,6 +14,11 @@ import (
 	"github.com/qdm12/gluetun/internal/updater/resolver"
 )
 
+const (
+	asarUtilsEndpointsPath     = "node_modules/atom-sdk/node_modules/utils/lib/constants/end-points.js"
+	asarInventoryEndpointsPath = "node_modules/atom-sdk/node_modules/inventory/lib/constants/end-points.js"
+)
+
 func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	servers []models.Server, err error,
 ) {
@@ -37,8 +42,7 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	}
 
 	endpointsContent, endpointsPath, err := extractFirstFileFromAsar(asarContent,
-		inventoryEndpointsAsarPath,
-		"node_modules/atom-sdk/node_modules/inventory/node_modules/utils/lib/constants/end-points.js")
+		asarUtilsEndpointsPath, asarInventoryEndpointsPath)
 	if err != nil {
 		return nil, fmt.Errorf("extracting inventory endpoints file from app.asar: %w", err)
 	}
@@ -49,8 +53,7 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	}
 
 	offlineInventoryContent, offlineInventoryPath, err := extractFirstFileFromAsar(asarContent,
-		inventoryOfflineAsarPath,
-		"node_modules/atom-sdk/node_modules/inventory/src/offline-data/inventory-data.js")
+		asarLibInventoryDataPath, asarSrcInventoryDataPath)
 	if err != nil {
 		return nil, fmt.Errorf("extracting inventory offline data from app.asar: %w", err)
 	}
@@ -70,7 +73,7 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 		return nil, fmt.Errorf("fetching inventory JSON %q: %w", inventoryURL, err)
 	}
 
-	hts, hostToFallbackIPs, err := parseInventoryJSON(inventoryContent)
+	hts, err := parseInventoryJSON(inventoryContent)
 	if err != nil {
 		return nil, fmt.Errorf("parsing inventory JSON from %q: %w", inventoryURL, err)
 	}
@@ -83,11 +86,12 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 		if parseErr != nil {
 			u.warner.Warn(fmt.Sprintf("parsing app-bundled local data: %v", parseErr))
 		} else {
-			mergeHostToServer(hts, localHTS)
+			hts.mergeWith(localHTS)
 		}
 
 		localFallbackIPs := parseLocalDataFallbackIPs(localDataContent)
-		hostToFallbackIPs = mergeHostToFallbackIPs(hostToFallbackIPs, localFallbackIPs)
+		const override = false // prefer IPs found in [parseInventoryJSON] over IPs found in [parseLocalDataFallbackIPs]
+		hts.adaptWithIPs(localFallbackIPs, override)
 	}
 
 	if len(hts) < minServers {
@@ -98,19 +102,28 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	hosts := hts.toHostsSlice()
 	resolveSettings := parallelResolverSettings(hosts)
 	hostToIPs, warnings, err := resolveWithMultipleResolvers(ctx, u.parallelResolver, resolveSettings)
-	warnAll(u.warner, warnings)
+	for _, warning := range warnings {
+		u.warner.Warn(warning)
+	}
 	if err != nil {
 		return nil, err
 	}
 
-	applyFallbackIPs(hostToIPs, hostToFallbackIPs, hosts)
+	// prefer IPs found in [resolveWithMultipleResolvers] over IPs found either in
+	// [parseInventoryJSON] or [parseLocalDataFallbackIPs]
+	const override = true
+	hts.adaptWithIPs(hostToIPs, override)
 
-	if len(hostToIPs) < minServers {
-		return nil, fmt.Errorf("%w: %d and expected at least %d",
-			common.ErrNotEnoughServers, len(hostToIPs), minServers)
+	for host, server := range hts {
+		if len(server.IPs) == 0 {
+			delete(hts, host)
+		}
 	}
 
-	hts.adaptWithIPs(hostToIPs)
+	if len(hts) < minServers {
+		return nil, fmt.Errorf("%w: %d and expected at least %d",
+			common.ErrNotEnoughServers, len(hts), minServers)
+	}
 
 	servers = hts.toServersSlice()
 
@@ -187,44 +200,6 @@ func canApplyGeolocationCountry(inventoryCountry, geolocationCountry string) boo
 	return strings.EqualFold(inventoryCountry, geolocationCountry)
 }
 
-func mergeHostToServer(base, overlay hostToServer) {
-	for host, server := range overlay {
-		if server.TCP {
-			if len(server.TCPPorts) == 0 {
-				base.add(host, true, false, 0, false)
-			} else {
-				for _, port := range server.TCPPorts {
-					base.add(host, true, false, port, false)
-				}
-			}
-		}
-		if server.UDP {
-			if len(server.UDPPorts) == 0 {
-				base.add(host, false, true, 0, false)
-			} else {
-				for _, port := range server.UDPPorts {
-					base.add(host, false, true, port, false)
-				}
-			}
-		}
-	}
-}
-
-func mergeHostToFallbackIPs(base, overlay map[string][]netip.Addr) map[string][]netip.Addr {
-	if len(overlay) == 0 {
-		return base
-	}
-	if base == nil {
-		base = make(map[string][]netip.Addr)
-	}
-	for host, ips := range overlay {
-		for _, ip := range ips {
-			base[host] = appendIPIfMissing(base[host], ip)
-		}
-	}
-	return base
-}
-
 func resolveWithMultipleResolvers(ctx context.Context, primary common.ParallelResolver,
 	settings resolver.ParallelSettings,
 ) (hostToIPs map[string][]netip.Addr, warnings []string, err error) {
@@ -234,7 +209,7 @@ func resolveWithMultipleResolvers(ctx context.Context, primary common.ParallelRe
 		for host, ips := range newHostToIPs {
 			existing := hostToIPs[host]
 			for _, ip := range ips {
-				existing = appendIPIfMissing(existing, ip)
+				existing = appendIfMissing(existing, ip)
 			}
 			hostToIPs[host] = existing
 		}
@@ -271,26 +246,4 @@ func resolveWithMultipleResolvers(ctx context.Context, primary common.ParallelRe
 	}
 
 	return hostToIPs, warnings, nil
-}
-
-func applyFallbackIPs(hostToIPs map[string][]netip.Addr, hostToFallbackIPs map[string][]netip.Addr, hosts []string) {
-	if len(hostToFallbackIPs) == 0 {
-		return
-	}
-	for _, host := range hosts {
-		if len(hostToIPs[host]) > 0 {
-			continue
-		}
-		fallbackIPs := hostToFallbackIPs[host]
-		if len(fallbackIPs) == 0 {
-			continue
-		}
-		hostToIPs[host] = append([]netip.Addr(nil), fallbackIPs...)
-	}
-}
-
-func warnAll(warner common.Warner, warnings []string) {
-	for _, warning := range warnings {
-		warner.Warn(warning)
-	}
 }

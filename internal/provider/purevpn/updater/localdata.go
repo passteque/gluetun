@@ -6,15 +6,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/qdm12/gluetun/internal/constants"
 )
 
 const localDataAsarPath = "node_modules/atom-sdk/lib/offline-data/local-data.js"
-
-var (
-	hostNeedle = `name:"`
-	portNeedle = `port_number:`
-	idPattern  = regexp.MustCompile(`id:\s*"?([0-9]+)"?`)
-)
 
 func parseLocalData(content []byte) (hostToServer, error) {
 	raw := string(content)
@@ -33,9 +29,9 @@ func parseLocalData(content []byte) (hostToServer, error) {
 			break
 		}
 		protocolEnd += protocolStart
-		protocol := strings.ToUpper(raw[protocolStart:protocolEnd])
-		tcp := protocol == "TCP"
-		udp := protocol == "UDP"
+		protocol := raw[protocolStart:protocolEnd]
+		tcp := strings.EqualFold(protocol, constants.TCP)
+		udp := strings.EqualFold(protocol, constants.UDP)
 		index = protocolEnd + 1
 		if !tcp && !udp {
 			continue
@@ -59,7 +55,14 @@ func parseLocalData(content []byte) (hostToServer, error) {
 			if !ok {
 				continue
 			}
-			hts.add(host, tcp, udp, port, false)
+			var tcpPorts, udpPorts []uint16
+			if tcp {
+				tcpPorts = []uint16{port}
+			}
+			if udp {
+				udpPorts = []uint16{port}
+			}
+			hts.add(host, []netip.Addr(nil), tcp, udp, tcpPorts, udpPorts, false)
 		}
 	}
 
@@ -117,6 +120,7 @@ func splitObjectEntries(s string) (entries []string) {
 }
 
 func parseHostPortFromDNSEntry(entry string) (host string, port uint16, ok bool) {
+	const hostNeedle = `name:"`
 	hostStart := strings.Index(entry, hostNeedle)
 	if hostStart == -1 {
 		return "", 0, false
@@ -132,6 +136,7 @@ func parseHostPortFromDNSEntry(entry string) (host string, port uint16, ok bool)
 		return "", 0, false
 	}
 
+	const portNeedle = `port_number:`
 	portStart := strings.Index(entry, portNeedle)
 	if portStart == -1 {
 		return "", 0, false
@@ -143,14 +148,16 @@ func parseHostPortFromDNSEntry(entry string) (host string, port uint16, ok bool)
 	if portEnd == portStart {
 		return "", 0, false
 	}
-	port64, err := strconv.ParseUint(entry[portStart:portEnd], 10, 16)
+
+	const base, bitSize = 10, 16
+	port64, err := strconv.ParseUint(entry[portStart:portEnd], base, bitSize)
 	if err != nil || port64 == 0 {
 		return "", 0, false
 	}
 	return host, uint16(port64), true
 }
 
-func parseLocalDataFallbackIPs(content []byte) (hostToFallbackIPs map[string][]netip.Addr) {
+func parseLocalDataFallbackIPs(content []byte) (hostToIPs map[string][]netip.Addr) {
 	raw := string(content)
 
 	dataCenterIDToIP := parseDataCenterIDToPingIP(raw)
@@ -163,7 +170,7 @@ func parseLocalDataFallbackIPs(content []byte) (hostToFallbackIPs map[string][]n
 		return nil
 	}
 
-	hostToFallbackIPs = make(map[string][]netip.Addr)
+	hostToIPs = make(map[string][]netip.Addr)
 	for _, countryEntry := range splitObjectEntries(countriesArray) {
 		dataCenterIDs := parseCountryDataCenterIDs(countryEntry)
 		if len(dataCenterIDs) == 0 {
@@ -181,12 +188,12 @@ func parseLocalDataFallbackIPs(content []byte) (hostToFallbackIPs map[string][]n
 				if !ok {
 					continue
 				}
-				hostToFallbackIPs[host] = appendIPIfMissing(hostToFallbackIPs[host], ip)
+				hostToIPs[host] = appendIfMissing(hostToIPs[host], ip)
 			}
 		}
 	}
 
-	return hostToFallbackIPs
+	return hostToIPs
 }
 
 func parseDataCenterIDToPingIP(raw string) map[int]netip.Addr {
@@ -224,7 +231,7 @@ func parseCountryDataCenterIDs(countryEntry string) (ids []int) {
 		if id == 0 {
 			continue
 		}
-		ids = appendIntIfMissing(ids, id)
+		ids = appendIfMissing(ids, id)
 	}
 	return ids
 }
@@ -260,7 +267,7 @@ func parseTCPUDPHostsFromChunk(chunk string) (hosts []string) {
 			if !ok {
 				continue
 			}
-			hosts = appendStringIfMissing(hosts, host)
+			hosts = appendIfMissing(hosts, host)
 		}
 	}
 	return hosts
@@ -301,6 +308,8 @@ func parseQuotedValue(s, key string) (value string, ok bool) {
 	return strings.TrimSpace(s[start:end]), true
 }
 
+var idPattern = regexp.MustCompile(`id:\s*"?([0-9]+)"?`)
+
 func parseID(s string) (id int) {
 	match := idPattern.FindStringSubmatch(s)
 	if len(match) < 2 {
@@ -310,27 +319,9 @@ func parseID(s string) (id int) {
 	return id
 }
 
-func appendStringIfMissing(values []string, value string) []string {
+func appendIfMissing[T comparable](values []T, value T) []T {
 	for _, existing := range values {
 		if existing == value {
-			return values
-		}
-	}
-	return append(values, value)
-}
-
-func appendIntIfMissing(values []int, value int) []int {
-	for _, existing := range values {
-		if existing == value {
-			return values
-		}
-	}
-	return append(values, value)
-}
-
-func appendIPIfMissing(values []netip.Addr, value netip.Addr) []netip.Addr {
-	for _, existing := range values {
-		if existing.Compare(value) == 0 {
 			return values
 		}
 	}

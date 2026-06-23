@@ -16,8 +16,8 @@ func Test_hostToServer_add_obfuscationRespectsProtocolAndPort(t *testing.T) {
 	assert.True(t, server.Obfuscated)
 	assert.True(t, server.UDP)
 	assert.False(t, server.TCP)
-	assert.Nil(t, server.TCPPorts)
-	assert.Equal(t, []uint16{1210}, server.UDPPorts)
+	assert.Nil(t, server.OpenVPNTCPPorts)
+	assert.Equal(t, []uint16{1210}, server.OpenVPNUDPPorts)
 }
 
 func Test_hostToServer_add_obfuscationTCPUsesInventoryPort(t *testing.T) {
@@ -28,7 +28,7 @@ func Test_hostToServer_add_obfuscationTCPUsesInventoryPort(t *testing.T) {
 
 	server := hts["us2-obf-udp.ptoserver.com"]
 	assert.True(t, server.TCP)
-	assert.Equal(t, []uint16{80}, server.TCPPorts)
+	assert.Equal(t, []uint16{80}, server.OpenVPNTCPPorts)
 }
 
 func Test_hostToServer_add_p2pTagSetsCategory(t *testing.T) {

@@ -31,7 +31,7 @@ func Test_extractDebURLs(t *testing.T) {
 		"https://www.purevpn.com/download/cross-platform/linux-gui/2.9.1/PureVPN_amd64.deb")
 }
 
-func Test_chooseDebURL(t *testing.T) {
+func Test_findBestDebURL(t *testing.T) {
 	t.Parallel()
 
 	debURLs := []string{
@@ -41,8 +41,7 @@ func Test_chooseDebURL(t *testing.T) {
 		"https://cdn.example.com/cross-platform/linux-gui/2.9.0/PureVPN_amd64.deb",
 	}
 
-	bestURL, err := chooseDebURL(debURLs)
-	require.NoError(t, err)
+	bestURL := findBestDebURL(debURLs)
 
 	assert.Equal(t,
 		"https://cdn.example.com/cross-platform/linux-gui/2.9.0/PureVPN_amd64.deb",

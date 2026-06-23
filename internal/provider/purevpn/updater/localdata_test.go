@@ -28,14 +28,14 @@ func Test_parseLocalData(t *testing.T) {
 	serverTCP := hts["us2-tcp.ptoserver.com"]
 	assert.True(t, serverTCP.TCP)
 	assert.False(t, serverTCP.UDP)
-	assert.Equal(t, []uint16{80}, serverTCP.TCPPorts)
-	assert.Nil(t, serverTCP.UDPPorts)
+	assert.Equal(t, []uint16{80}, serverTCP.OpenVPNTCPPorts)
+	assert.Nil(t, serverTCP.OpenVPNUDPPorts)
 
 	serverUDP := hts["us2-udp.ptoserver.com"]
 	assert.True(t, serverUDP.UDP)
 	assert.False(t, serverUDP.TCP)
-	assert.Equal(t, []uint16{15021}, serverUDP.UDPPorts)
-	assert.Nil(t, serverUDP.TCPPorts)
+	assert.Equal(t, []uint16{15021}, serverUDP.OpenVPNUDPPorts)
+	assert.Nil(t, serverUDP.OpenVPNTCPPorts)
 }
 
 func Test_parseLocalData_noHosts(t *testing.T) {

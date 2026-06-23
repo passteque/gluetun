@@ -22,12 +22,12 @@ const (
 )
 
 var (
-	atomAPIBaseURLRegex  = regexp.MustCompile(`AtomApi,\s*"BASE_URL",\s*"([^"]+)"`)
-	atomSecretRegex      = regexp.MustCompile(`ATOM_SECRET["']?\s*[:=]\s*["']([A-Za-z0-9_-]{12,})["']`)
-	cryptoKeyRegex       = regexp.MustCompile(`\bp\s*=\s*"([^"]+)"`)
-	controlCharRegex     = regexp.MustCompile(`[[:cntrl:]]`)
-	configFieldNeedle    = []byte(`"configuration":"`)
-	defaultAtomSecret    = "MkvGuMCi6nabLqnjATh3HxN1Hh3iZI"
+	atomAPIBaseURLRegex = regexp.MustCompile(`AtomApi,\s*"BASE_URL",\s*"([^"]+)"`)
+	atomSecretRegex     = regexp.MustCompile(`ATOM_SECRET["']?\s*[:=]\s*["']([A-Za-z0-9_-]{12,})["']`)
+	cryptoKeyRegex      = regexp.MustCompile(`\bp\s*=\s*"([^"]+)"`)
+	controlCharRegex    = regexp.MustCompile(`[[:cntrl:]]`)
+	configFieldNeedle   = []byte(`"configuration":"`)
+	defaultAtomSecret   = "MkvGuMCi6nabLqnjATh3HxN1Hh3iZI"
 )
 
 type openVPNTemplate struct {
@@ -41,7 +41,7 @@ func fetchOpenVPNTemplates(ctx context.Context, httpClient *http.Client,
 	atomSecret := resolveAtomSecret(asarContent)
 
 	endpointsContent, _, err := extractFirstFileFromAsar(asarContent,
-		inventoryEndpointsAsarPath,
+		asarUtilsEndpointsPath,
 		"node_modules/atom-sdk/node_modules/inventory/node_modules/utils/lib/constants/end-points.js")
 	if err != nil {
 		return nil, fmt.Errorf("extracting endpoints JS from app.asar: %w", err)
@@ -71,7 +71,7 @@ func fetchOpenVPNTemplates(ctx context.Context, httpClient *http.Client,
 		versionSet[version] = struct{}{}
 	}
 
-	hts, _, err := parseInventoryJSON(inventoryContent)
+	hts, err := parseInventoryJSON(inventoryContent)
 	if err != nil {
 		return nil, fmt.Errorf("parsing inventory hosts: %w", err)
 	}

@@ -17,11 +17,11 @@ func Test_OpenVPNSelection_validate(t *testing.T) {
 		provider   string
 		errMessage string
 	}{
-		"purevpn default selection is valid": {
+		"purevpn_default_selection_valid": {
 			selection: openVPNSelectionForValidation(providers.Purevpn),
 			provider:  providers.Purevpn,
 		},
-		"purevpn TCP without custom port is valid": {
+		"purevpn_TCP_without_custom_port_valid": {
 			selection: func() OpenVPNSelection {
 				s := openVPNSelectionForValidation(providers.Purevpn)
 				s.Protocol = constants.TCP
@@ -29,7 +29,7 @@ func Test_OpenVPNSelection_validate(t *testing.T) {
 			}(),
 			provider: providers.Purevpn,
 		},
-		"purevpn custom port is rejected": {
+		"purevpn_custom_port_rejected": {
 			selection: func() OpenVPNSelection {
 				s := openVPNSelectionForValidation(providers.Purevpn)
 				*s.CustomPort = 1194

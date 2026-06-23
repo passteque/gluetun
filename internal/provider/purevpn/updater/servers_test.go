@@ -133,8 +133,8 @@ func Test_mergeHostToServer(t *testing.T) {
 	mergeHostToServer(base, overlay)
 
 	assert.Contains(t, base, "usnj2-auto-tcp.ptoserver.com")
-	assert.Contains(t, base["usnj2-auto-tcp.ptoserver.com"].TCPPorts, uint16(80))
-	assert.ElementsMatch(t, []uint16{15021, 1210}, base["us2-auto-udp.ptoserver.com"].UDPPorts)
+	assert.Contains(t, base["usnj2-auto-tcp.ptoserver.com"].OpenVPNTCPPorts, uint16(80))
+	assert.ElementsMatch(t, []uint16{15021, 1210}, base["us2-auto-udp.ptoserver.com"].OpenVPNUDPPorts)
 }
 
 func Test_mergeHostToFallbackIPs(t *testing.T) {
@@ -148,7 +148,7 @@ func Test_mergeHostToFallbackIPs(t *testing.T) {
 		"usnj2-auto-tcp.ptoserver.com": {netip.MustParseAddr("3.3.3.3")},
 	}
 
-	merged := mergeHostToFallbackIPs(base, overlay)
+	merged := mergeInFallbackIPs(base, overlay)
 
 	assert.Equal(t, []netip.Addr{
 		netip.MustParseAddr("1.1.1.1"),

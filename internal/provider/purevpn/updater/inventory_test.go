@@ -65,15 +65,15 @@ func Test_parseInventoryJSON(t *testing.T) {
 	serverTCP := hts["aa2-tcp.ptoserver.com"]
 	assert.True(t, serverTCP.TCP)
 	assert.False(t, serverTCP.UDP)
-	assert.Equal(t, []uint16{80}, serverTCP.TCPPorts)
-	assert.Nil(t, serverTCP.UDPPorts)
+	assert.Equal(t, []uint16{80}, serverTCP.OpenVPNTCPPorts)
+	assert.Nil(t, serverTCP.OpenVPNUDPPorts)
 	assert.Equal(t, []string{"p2p"}, serverTCP.Categories)
 
 	serverUDP := hts["aa2-udp.ptoserver.com"]
 	assert.True(t, serverUDP.UDP)
 	assert.False(t, serverUDP.TCP)
-	assert.Equal(t, []uint16{15021}, serverUDP.UDPPorts)
-	assert.Nil(t, serverUDP.TCPPorts)
+	assert.Equal(t, []uint16{15021}, serverUDP.OpenVPNUDPPorts)
+	assert.Nil(t, serverUDP.OpenVPNTCPPorts)
 	assert.Equal(t, []string{"p2p"}, serverUDP.Categories)
 
 	assert.Equal(t, []netip.Addr{

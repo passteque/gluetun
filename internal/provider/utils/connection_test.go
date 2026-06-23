@@ -55,7 +55,6 @@ func Test_GetConnection(t *testing.T) {
 				{
 					VPN:      vpn.OpenVPN,
 					UDP:      true,
-					UDPPorts: []uint16{15021},
 					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{1, 1, 1, 1})},
 					Hostname: "name",
 				},
@@ -68,7 +67,7 @@ func Test_GetConnection(t *testing.T) {
 				Type:     vpn.OpenVPN,
 				IP:       netip.AddrFrom4([4]byte{1, 1, 1, 1}),
 				Protocol: constants.UDP,
-				Port:     15021,
+				Port:     1194,
 				Hostname: "name",
 			}},
 		},
@@ -77,7 +76,6 @@ func Test_GetConnection(t *testing.T) {
 				{
 					VPN:      vpn.OpenVPN,
 					UDP:      true,
-					UDPPorts: []uint16{15021},
 					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{1, 1, 1, 1})},
 					Hostname: "hostname",
 					OvpnX509: "x509",
@@ -91,18 +89,18 @@ func Test_GetConnection(t *testing.T) {
 				Type:     vpn.OpenVPN,
 				IP:       netip.AddrFrom4([4]byte{1, 1, 1, 1}),
 				Protocol: constants.UDP,
-				Port:     15021,
+				Port:     1194,
 				Hostname: "x509",
 			}},
 		},
 		"OpenVPN server uses protocol-specific TCP port when no custom port set": {
 			filteredServers: []models.Server{
 				{
-					VPN:      vpn.OpenVPN,
-					TCP:      true,
-					TCPPorts: []uint16{4433},
-					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{8, 8, 8, 8})},
-					Hostname: "name",
+					VPN:             vpn.OpenVPN,
+					TCP:             true,
+					OpenVPNTCPPorts: []uint16{4433},
+					IPs:             []netip.Addr{netip.AddrFrom4([4]byte{8, 8, 8, 8})},
+					Hostname:        "name",
 				},
 			},
 			serverSelection: func() settings.ServerSelection {
@@ -123,11 +121,11 @@ func Test_GetConnection(t *testing.T) {
 		"OpenVPN server uses protocol-specific UDP port when no custom port set": {
 			filteredServers: []models.Server{
 				{
-					VPN:      vpn.OpenVPN,
-					UDP:      true,
-					UDPPorts: []uint16{15021},
-					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{9, 9, 9, 9})},
-					Hostname: "name",
+					VPN:             vpn.OpenVPN,
+					UDP:             true,
+					OpenVPNUDPPorts: []uint16{15021},
+					IPs:             []netip.Addr{netip.AddrFrom4([4]byte{9, 9, 9, 9})},
+					Hostname:        "name",
 				},
 			},
 			serverSelection: settings.ServerSelection{}.
@@ -142,14 +140,14 @@ func Test_GetConnection(t *testing.T) {
 				Hostname: "name",
 			}},
 		},
-		"OpenVPN explicit custom port overrides protocol-specific port": {
+		"OpenVPN custom port overrides protocol-specific port": {
 			filteredServers: []models.Server{
 				{
-					VPN:      vpn.OpenVPN,
-					UDP:      true,
-					UDPPorts: []uint16{15021},
-					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{10, 10, 10, 10})},
-					Hostname: "name",
+					VPN:             vpn.OpenVPN,
+					UDP:             true,
+					OpenVPNUDPPorts: []uint16{15021},
+					IPs:             []netip.Addr{netip.AddrFrom4([4]byte{10, 10, 10, 10})},
+					Hostname:        "name",
 				},
 			},
 			serverSelection: func() settings.ServerSelection {
@@ -172,9 +170,6 @@ func Test_GetConnection(t *testing.T) {
 				{
 					VPN: vpn.OpenVPN,
 					UDP: true,
-					UDPPorts: []uint16{
-						15021,
-					},
 					IPs: []netip.Addr{
 						netip.AddrFrom4([4]byte{1, 1, 1, 1}),
 						// All IPv6 is ignored
@@ -190,23 +185,18 @@ func Test_GetConnection(t *testing.T) {
 				WithDefaults(providers.Mullvad),
 			defaults:   NewConnectionDefaults(443, 1194, 58820),
 			randSource: rand.NewSource(0),
-			connections: []models.Connection{
-				{
-					Type:     vpn.OpenVPN,
-					IP:       netip.AddrFrom4([4]byte{1, 1, 1, 1}),
-					Protocol: constants.UDP,
-					Port:     15021,
-				},
-			},
+			connections: []models.Connection{{
+				Type:     vpn.OpenVPN,
+				IP:       netip.AddrFrom4([4]byte{1, 1, 1, 1}),
+				Protocol: constants.UDP,
+				Port:     1194,
+			}},
 		},
 		"server with IPv4 and IPv6 and ipv6 supported": {
 			filteredServers: []models.Server{
 				{
 					VPN: vpn.OpenVPN,
 					UDP: true,
-					UDPPorts: []uint16{
-						15021,
-					},
 					IPs: []netip.Addr{
 						netip.AddrFrom4([4]byte{1, 1, 1, 1}),
 						netip.IPv6Unspecified(),
@@ -218,28 +208,24 @@ func Test_GetConnection(t *testing.T) {
 			defaults:      NewConnectionDefaults(443, 1194, 58820),
 			ipv6Supported: true,
 			randSource:    rand.NewSource(0),
-			connections: []models.Connection{
-				{
-					Type:     vpn.OpenVPN,
-					IP:       netip.IPv6Unspecified(),
-					Protocol: constants.UDP,
-					Port:     15021,
-				},
-			},
+			connections: []models.Connection{{
+				Type:     vpn.OpenVPN,
+				IP:       netip.IPv6Unspecified(),
+				Protocol: constants.UDP,
+				Port:     1194,
+			}},
 		},
 		"mixed servers": {
 			filteredServers: []models.Server{
 				{
 					VPN:      vpn.OpenVPN,
 					UDP:      true,
-					UDPPorts: []uint16{15021},
 					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{1, 1, 1, 1})},
 					OvpnX509: "ovpnx509",
 				},
 				{
-					VPN:      vpn.OpenVPN,
-					UDP:      true,
-					UDPPorts: []uint16{15021},
+					VPN: vpn.OpenVPN,
+					UDP: true,
 					IPs: []netip.Addr{
 						netip.AddrFrom4([4]byte{3, 3, 3, 3}),
 						netip.AddrFrom16([16]byte{1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1}), // ipv6 ignored
@@ -255,7 +241,7 @@ func Test_GetConnection(t *testing.T) {
 				Type:     vpn.OpenVPN,
 				IP:       netip.AddrFrom4([4]byte{1, 1, 1, 1}),
 				Protocol: constants.UDP,
-				Port:     15021,
+				Port:     1194,
 				Hostname: "ovpnx509",
 			}, {
 				Type:     vpn.OpenVPN,
@@ -288,44 +274,6 @@ func Test_GetConnection(t *testing.T) {
 			} else {
 				assert.NoError(t, err)
 			}
-		})
-	}
-}
-
-func Test_getPortForServer_InventoryPorts(t *testing.T) {
-	t.Parallel()
-
-	testCases := map[string]struct {
-		server         models.Server
-		protocol       string
-		defaultTCPPort uint16
-		defaultUDPPort uint16
-		expectedPort   uint16
-	}{
-		"TCP uses inventory port": {
-			server:         models.Server{TCPPorts: []uint16{80, 443}},
-			protocol:       constants.TCP,
-			defaultTCPPort: 443,
-			defaultUDPPort: 15021,
-			expectedPort:   80,
-		},
-		"UDP uses inventory port": {
-			server:         models.Server{UDPPorts: []uint16{15021, 1194}},
-			protocol:       constants.UDP,
-			defaultTCPPort: 443,
-			defaultUDPPort: 15021,
-			expectedPort:   15021,
-		},
-	}
-
-	for name, testCase := range testCases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-
-			port := getPortForServer(testCase.server, testCase.protocol,
-				testCase.defaultTCPPort, testCase.defaultUDPPort)
-
-			assert.Equal(t, testCase.expectedPort, port)
 		})
 	}
 }

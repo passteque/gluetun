@@ -6,11 +6,13 @@ import (
 	"net/netip"
 	"regexp"
 	"strings"
+
+	"github.com/qdm12/gluetun/internal/constants"
 )
 
 const (
-	inventoryEndpointsAsarPath = "node_modules/atom-sdk/node_modules/utils/lib/constants/end-points.js"
-	inventoryOfflineAsarPath   = "node_modules/atom-sdk/node_modules/inventory/lib/offline-data/inventory-data.js"
+	asarSrcInventoryDataPath = "node_modules/atom-sdk/node_modules/inventory/src/offline-data/inventory-data.js"
+	asarLibInventoryDataPath = "node_modules/atom-sdk/node_modules/inventory/lib/offline-data/inventory-data.js"
 )
 
 var (
@@ -88,7 +90,7 @@ type inventoryCountry struct {
 }
 
 type inventoryDataCenterRef struct {
-	ID int `json:"id"`
+	ID uint `json:"id"`
 }
 
 type inventoryProtocol struct {
@@ -97,34 +99,34 @@ type inventoryProtocol struct {
 }
 
 type inventoryProtocolDNS struct {
-	DNSID      int `json:"dns_id"`
-	PortNumber int `json:"port_number"`
+	DNSID      uint   `json:"dns_id"`
+	PortNumber uint16 `json:"port_number"`
 }
 
 type inventoryDNS struct {
-	ID                   int      `json:"id"`
+	ID                   uint     `json:"id"`
 	Hostname             string   `json:"hostname"`
 	ConfigurationVersion string   `json:"configuration_version"`
 	Tags                 []string `json:"tags"`
 }
 
 type inventoryDataCenter struct {
-	ID int    `json:"id"`
-	IP string `json:"ip"`
+	ID uint       `json:"id"`
+	IP netip.Addr `json:"ip"`
 }
 
-func parseInventoryJSON(content []byte) (hts hostToServer, hostToFallbackIPs map[string][]netip.Addr, err error) {
+func parseInventoryJSON(content []byte) (hts hostToServer, err error) {
 	var response inventoryResponse
 	if err := json.Unmarshal(content, &response); err != nil {
-		return nil, nil, fmt.Errorf("unmarshalling inventory JSON: %w", err)
+		return nil, fmt.Errorf("unmarshalling inventory JSON: %w", err)
 	}
 
 	if len(response.Body.Countries) == 0 {
-		return nil, nil, fmt.Errorf("no countries found in inventory JSON")
+		return nil, fmt.Errorf("no countries found in inventory JSON")
 	}
 
-	dnsIDToHostname := make(map[int]string, len(response.Body.DNS))
-	dnsIDToP2PTagged := make(map[int]bool, len(response.Body.DNS))
+	dnsIDToHostname := make(map[uint]string, len(response.Body.DNS))
+	dnsIDToP2PTagged := make(map[uint]bool, len(response.Body.DNS))
 	for _, dnsEntry := range response.Body.DNS {
 		if dnsEntry.ID == 0 || dnsEntry.Hostname == "" {
 			continue
@@ -133,20 +135,15 @@ func parseInventoryJSON(content []byte) (hts hostToServer, hostToFallbackIPs map
 		dnsIDToP2PTagged[dnsEntry.ID] = hasP2PTag(dnsEntry.Tags)
 	}
 
-	dataCenterIDToIP := make(map[int]netip.Addr, len(response.Body.DataCenters))
+	dataCenterIDToIP := make(map[uint]netip.Addr, len(response.Body.DataCenters))
 	for _, dataCenter := range response.Body.DataCenters {
-		if dataCenter.ID == 0 || dataCenter.IP == "" {
+		if dataCenter.ID == 0 || !dataCenter.IP.IsValid() {
 			continue
 		}
-		ip, parseErr := netip.ParseAddr(strings.TrimSpace(dataCenter.IP))
-		if parseErr != nil {
-			continue
-		}
-		dataCenterIDToIP[dataCenter.ID] = ip
+		dataCenterIDToIP[dataCenter.ID] = dataCenter.IP
 	}
 
 	hts = make(hostToServer)
-	hostToFallbackIPs = make(map[string][]netip.Addr)
 	blocksFound := 0
 
 	for _, country := range response.Body.Countries {
@@ -157,13 +154,13 @@ func parseInventoryJSON(content []byte) (hts hostToServer, hostToFallbackIPs map
 			if !ok {
 				continue
 			}
-			countryDataCenterIPs = appendIPIfMissing(countryDataCenterIPs, ip)
+			countryDataCenterIPs = appendIfMissing(countryDataCenterIPs, ip)
 		}
 
 		for _, protocol := range country.Protocols {
 			protocolName := strings.ToUpper(protocol.Protocol)
-			tcp := protocolName == "TCP"
-			udp := protocolName == "UDP"
+			tcp := strings.EqualFold(protocolName, constants.TCP)
+			udp := strings.EqualFold(protocolName, constants.UDP)
 			if !tcp && !udp {
 				continue
 			}
@@ -175,28 +172,27 @@ func parseInventoryJSON(content []byte) (hts hostToServer, hostToFallbackIPs map
 					continue
 				}
 
-				port := uint16(0)
-				if dns.PortNumber > 0 && dns.PortNumber <= 65535 {
-					port = uint16(dns.PortNumber)
+				var tcpPorts, udpPorts []uint16
+				if tcp {
+					tcpPorts = []uint16{dns.PortNumber}
+				}
+				if udp {
+					udpPorts = []uint16{dns.PortNumber}
 				}
 				p2pTagged := countryP2PTagged || dnsIDToP2PTagged[dns.DNSID]
-				hts.add(hostname, tcp, udp, port, p2pTagged)
-
-				for _, ip := range countryDataCenterIPs {
-					hostToFallbackIPs[hostname] = appendIPIfMissing(hostToFallbackIPs[hostname], ip)
-				}
+				hts.add(hostname, countryDataCenterIPs, tcp, udp, tcpPorts, udpPorts, p2pTagged)
 			}
 		}
 	}
 
 	if blocksFound == 0 {
-		return nil, nil, fmt.Errorf("no TCP/UDP protocol blocks found in inventory JSON")
+		return nil, fmt.Errorf("no TCP/UDP protocol blocks found in inventory JSON")
 	}
 	if len(hts) == 0 {
-		return nil, nil, fmt.Errorf("no OpenVPN TCP/UDP DNS hosts found in inventory JSON")
+		return nil, fmt.Errorf("no OpenVPN TCP/UDP DNS hosts found in inventory JSON")
 	}
 
-	return hts, hostToFallbackIPs, nil
+	return hts, nil
 }
 
 func parseInventoryConfigurationVersions(content []byte) (versions []string, err error) {

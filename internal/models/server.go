@@ -24,8 +24,8 @@ type Server struct {
 	Hostname         string       `json:"hostname,omitempty"`
 	TCP              bool         `json:"tcp,omitempty"`
 	UDP              bool         `json:"udp,omitempty"`
-	TCPPorts         []uint16     `json:"tcp_ports,omitempty"`
-	UDPPorts         []uint16     `json:"udp_ports,omitempty"`
+	OpenVPNTCPPorts  []uint16     `json:"openvpn_tcp_ports,omitempty"`
+	OpenVPNUDPPorts  []uint16     `json:"openvpn_udp_ports,omitempty"`
 	OvpnX509         string       `json:"x509,omitempty"`
 	RetroLoc         string       `json:"retroloc,omitempty"` // TODO remove in v4
 	MultiHop         bool         `json:"multihop,omitempty"`
@@ -60,25 +60,39 @@ func (s *Server) HasMinimumInformation() (err error) {
 }
 
 func (s *Server) Equal(other Server) (equal bool) {
-	if !ipsAreEqual(s.IPs, other.IPs) {
+	if !comparablesAreEqualNoOrder(s.IPs, other.IPs) ||
+		!comparablesAreEqualNoOrder(s.OpenVPNTCPPorts, other.OpenVPNTCPPorts) ||
+		!comparablesAreEqualNoOrder(s.OpenVPNUDPPorts, other.OpenVPNUDPPorts) {
 		return false
 	}
 
 	serverCopy := *s
 	serverCopy.IPs = nil
+	serverCopy.OpenVPNTCPPorts = nil
+	serverCopy.OpenVPNUDPPorts = nil
 	other.IPs = nil
+	other.OpenVPNTCPPorts = nil
+	other.OpenVPNUDPPorts = nil
 	return reflect.DeepEqual(serverCopy, other)
 }
 
-func ipsAreEqual(a, b []netip.Addr) (equal bool) {
+func comparablesAreEqualNoOrder[T comparable](a, b []T) bool {
 	if len(a) != len(b) {
 		return false
 	}
 
-	for i := range a {
-		if a[i].Compare(b[i]) != 0 {
+	// Track element frequencies
+	counts := make(map[T]int, len(a))
+	for _, v := range a {
+		counts[v]++
+	}
+
+	// Decrement counts and check for mismatches
+	for _, v := range b {
+		if counts[v] == 0 {
 			return false
 		}
+		counts[v]--
 	}
 
 	return true
