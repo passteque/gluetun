@@ -93,6 +93,78 @@ func Test_GetConnection(t *testing.T) {
 				Hostname: "x509",
 			}},
 		},
+		"OpenVPN server uses protocol-specific TCP port when no custom port set": {
+			filteredServers: []models.Server{
+				{
+					VPN:      vpn.OpenVPN,
+					TCP:      true,
+					TCPPorts: []uint16{4433},
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{8, 8, 8, 8})},
+					Hostname: "name",
+				},
+			},
+			serverSelection: func() settings.ServerSelection {
+				ss := settings.ServerSelection{}.WithDefaults(providers.Mullvad)
+				ss.OpenVPN.Protocol = constants.TCP
+				return ss
+			}(),
+			defaults:   NewConnectionDefaults(443, 1194, 58820),
+			randSource: rand.NewSource(0),
+			connections: []models.Connection{{
+				Type:     vpn.OpenVPN,
+				IP:       netip.AddrFrom4([4]byte{8, 8, 8, 8}),
+				Protocol: constants.TCP,
+				Port:     4433,
+				Hostname: "name",
+			}},
+		},
+		"OpenVPN server uses protocol-specific UDP port when no custom port set": {
+			filteredServers: []models.Server{
+				{
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					UDPPorts: []uint16{15021},
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{9, 9, 9, 9})},
+					Hostname: "name",
+				},
+			},
+			serverSelection: settings.ServerSelection{}.
+				WithDefaults(providers.Mullvad),
+			defaults:   NewConnectionDefaults(443, 1194, 58820),
+			randSource: rand.NewSource(0),
+			connections: []models.Connection{{
+				Type:     vpn.OpenVPN,
+				IP:       netip.AddrFrom4([4]byte{9, 9, 9, 9}),
+				Protocol: constants.UDP,
+				Port:     15021,
+				Hostname: "name",
+			}},
+		},
+		"OpenVPN custom port overrides protocol-specific port": {
+			filteredServers: []models.Server{
+				{
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					UDPPorts: []uint16{15021},
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{10, 10, 10, 10})},
+					Hostname: "name",
+				},
+			},
+			serverSelection: func() settings.ServerSelection {
+				ss := settings.ServerSelection{}.WithDefaults(providers.Mullvad)
+				*ss.OpenVPN.CustomPort = 1194
+				return ss
+			}(),
+			defaults:   NewConnectionDefaults(443, 53, 58820),
+			randSource: rand.NewSource(0),
+			connections: []models.Connection{{
+				Type:     vpn.OpenVPN,
+				IP:       netip.AddrFrom4([4]byte{10, 10, 10, 10}),
+				Protocol: constants.UDP,
+				Port:     1194,
+				Hostname: "name",
+			}},
+		},
 		"server with IPv4 and IPv6": {
 			filteredServers: []models.Server{
 				{
