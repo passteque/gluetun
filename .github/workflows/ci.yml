@@ -41,7 +41,7 @@ jobs:
     env:
       DOCKER_BUILDKIT: "1"
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: reviewdog/action-misspell@v1
         with:
@@ -79,7 +79,7 @@ jobs:
       actions: read
       contents: read
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-go@v6
         with:
@@ -105,7 +105,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: secrets
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - run: docker build -t qmcgaw/gluetun .
 
@@ -157,7 +157,7 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
@@ -183,7 +183,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: secrets
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       # extract metadata (tags, labels) for Docker
       # https://github.com/docker/metadata-action

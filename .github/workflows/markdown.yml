@@ -23,7 +23,7 @@ jobs:
       contents: read
     environment: secrets
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
 
       - uses: DavidAnson/markdownlint-cli2-action@v22
         with:
