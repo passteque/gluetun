@@ -57,6 +57,7 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 
 	// Validate TCP
 	if o.Protocol == constants.TCP && helpers.IsOneOf(vpnProvider,
+		providers.Azirevpn,
 		providers.Giganews,
 		providers.Ipvanish,
 		providers.Perfectprivacy,

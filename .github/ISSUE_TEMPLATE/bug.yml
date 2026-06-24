@@ -46,6 +46,7 @@ body:
       label: VPN service provider
       options:
         - AirVPN
+        - AzireVPN
         - Custom
         - Cyberghost
         - ExpressVPN
