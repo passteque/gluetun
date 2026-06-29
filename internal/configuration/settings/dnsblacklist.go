@@ -16,7 +16,6 @@ import (
 type DNSBlacklist struct {
 	BlockMalicious       *bool
 	BlockAds             *bool
-	BlockSurveillance    *bool
 	AllowedHosts         []string
 	AddBlockedHosts      []string
 	AddBlockedIPs        []netip.Addr
@@ -31,7 +30,6 @@ type DNSBlacklist struct {
 func (b *DNSBlacklist) setDefaults() {
 	b.BlockMalicious = gosettings.DefaultPointer(b.BlockMalicious, true)
 	b.BlockAds = gosettings.DefaultPointer(b.BlockAds, false)
-	b.BlockSurveillance = gosettings.DefaultPointer(b.BlockSurveillance, true)
 }
 
 var hostRegex = regexp.MustCompile(`^([a-zA-Z0-9]|[a-zA-Z0-9_][a-zA-Z0-9\-_]{0,61}[a-zA-Z0-9_])(\.([a-zA-Z0-9]|[a-zA-Z0-9_][a-zA-Z0-9\-_]{0,61}[a-zA-Z0-9]))*$`) //nolint:lll
@@ -65,7 +63,6 @@ func (b DNSBlacklist) copy() (copied DNSBlacklist) {
 	return DNSBlacklist{
 		BlockMalicious:                     gosettings.CopyPointer(b.BlockMalicious),
 		BlockAds:                           gosettings.CopyPointer(b.BlockAds),
-		BlockSurveillance:                  gosettings.CopyPointer(b.BlockSurveillance),
 		AllowedHosts:                       gosettings.CopySlice(b.AllowedHosts),
 		AddBlockedHosts:                    gosettings.CopySlice(b.AddBlockedHosts),
 		AddBlockedIPs:                      gosettings.CopySlice(b.AddBlockedIPs),
@@ -77,7 +74,6 @@ func (b DNSBlacklist) copy() (copied DNSBlacklist) {
 func (b *DNSBlacklist) overrideWith(other DNSBlacklist) {
 	b.BlockMalicious = gosettings.OverrideWithPointer(b.BlockMalicious, other.BlockMalicious)
 	b.BlockAds = gosettings.OverrideWithPointer(b.BlockAds, other.BlockAds)
-	b.BlockSurveillance = gosettings.OverrideWithPointer(b.BlockSurveillance, other.BlockSurveillance)
 	b.AllowedHosts = gosettings.OverrideWithSlice(b.AllowedHosts, other.AllowedHosts)
 	b.AddBlockedHosts = gosettings.OverrideWithSlice(b.AddBlockedHosts, other.AddBlockedHosts)
 	b.AddBlockedIPs = gosettings.OverrideWithSlice(b.AddBlockedIPs, other.AddBlockedIPs)
@@ -93,7 +89,6 @@ func (b DNSBlacklist) ToBlockBuilderSettings(client *http.Client) (
 		Client:               client,
 		BlockMalicious:       b.BlockMalicious,
 		BlockAds:             b.BlockAds,
-		BlockSurveillance:    b.BlockSurveillance,
 		AllowedHosts:         b.AllowedHosts,
 		AddBlockedHosts:      b.AddBlockedHosts,
 		AddBlockedIPs:        b.AddBlockedIPs,
@@ -110,7 +105,6 @@ func (b DNSBlacklist) toLinesNode() (node *gotree.Node) {
 
 	node.Appendf("Block malicious: %s", gosettings.BoolToYesNo(b.BlockMalicious))
 	node.Appendf("Block ads: %s", gosettings.BoolToYesNo(b.BlockAds))
-	node.Appendf("Block surveillance: %s", gosettings.BoolToYesNo(b.BlockSurveillance))
 
 	if len(b.AllowedHosts) > 0 {
 		allowedHostsNode := node.Append("Allowed hosts:")
@@ -152,12 +146,6 @@ func (b DNSBlacklist) toLinesNode() (node *gotree.Node) {
 
 func (b *DNSBlacklist) read(r *reader.Reader) (err error) {
 	b.BlockMalicious, err = r.BoolPtr("BLOCK_MALICIOUS")
-	if err != nil {
-		return err
-	}
-
-	b.BlockSurveillance, err = r.BoolPtr("BLOCK_SURVEILLANCE",
-		reader.RetroKeys("BLOCK_NSA"))
 	if err != nil {
 		return err
 	}
