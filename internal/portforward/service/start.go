@@ -44,6 +44,10 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 		Username:       s.settings.Username,
 		Password:       s.settings.Password,
 		PortsCount:     s.settings.PortsCount,
+		// ListeningPorts is only used for Cryptostorm to request specific ports
+		// from the forwarding server; for other providers, it is only used to
+		// redirect forwarded ports to different local ports.
+		ListeningPorts: s.settings.ListeningPorts,
 	}
 	internalToExternalPorts, err := s.settings.PortForwarder.PortForward(ctx, obj)
 	if err != nil {
@@ -109,6 +113,9 @@ func (s *Service) onNewPorts(ctx context.Context, internalToExternalPorts map[ui
 		switch {
 		case userRedirectionEnabled: // precedence over auto redirection
 			destinationPort = s.settings.ListeningPorts[i]
+			if internalPort == destinationPort {
+				continue // no-op; avoid self-redirect in firewall
+			}
 		case port != internalPort: // auto redirection needed, source and destination ports differ
 			destinationPort = port
 		default:
