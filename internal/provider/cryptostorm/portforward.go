@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/qdm12/gluetun/internal/provider/common"
 	"github.com/qdm12/gluetun/internal/provider/utils"
 )
 
@@ -81,8 +80,7 @@ func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObj
 	}
 
 	if listeningPort == 0 {
-		return nil, fmt.Errorf("%w: set VPN_PORT_FORWARDING_LISTENING_PORTS to a value between 30000 and 65535",
-			common.ErrPortForwardNotSupported)
+		return nil, fmt.Errorf("port forwarding not supported: set VPN_PORT_FORWARDING_LISTENING_PORTS to a value between 30000 and 65535")
 	}
 
 	postBody := "port=" + strconv.FormatUint(uint64(listeningPort), 10)
@@ -108,8 +106,7 @@ func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObj
 	}
 
 	if !requestedFound {
-		return nil, fmt.Errorf("%w: requested port %d not found in server response",
-			common.ErrPortForwardNotSupported, listeningPort)
+		return nil, fmt.Errorf("port forwarding not supported: requested port %d not found in server response", listeningPort)
 	}
 
 	p.forwardedPort = listeningPort
@@ -142,7 +139,7 @@ func (p *Provider) registerPort(ctx context.Context, client *http.Client,
 	defer response.Body.Close()
 
 	if response.StatusCode != http.StatusOK {
-		return false, fmt.Errorf("%w: %d %s", common.ErrHTTPStatusCodeNotOK,
+		return false, fmt.Errorf("HTTP status code not OK: %d %s",
 			response.StatusCode, response.Status)
 	}
 
@@ -210,10 +207,6 @@ func (p *Provider) KeepPortForward(ctx context.Context,
 	return ctx.Err()
 }
 
-func (p *Provider) deletePort(ctx context.Context, client *http.Client, port uint16) error {
-	return p.deletePortFromURL(ctx, client, portForwardURLs[0], port)
-}
-
 func (p *Provider) deletePortFromURL(ctx context.Context, client *http.Client, url string, port uint16) error {
 	body := strings.NewReader("delfwd=" + strconv.FormatUint(uint64(port), 10))
 	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url, body)
@@ -227,7 +220,7 @@ func (p *Provider) deletePortFromURL(ctx context.Context, client *http.Client, u
 	}
 	_ = response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return fmt.Errorf("%w: %d %s", common.ErrHTTPStatusCodeNotOK,
+		return fmt.Errorf("HTTP status code not OK: %d %s",
 			response.StatusCode, response.Status)
 	}
 	return nil
