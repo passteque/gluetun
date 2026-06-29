@@ -156,8 +156,7 @@ func (p *Provider) registerPort(ctx context.Context, client *http.Client,
 		matches = regexForwardHTML.FindAllStringSubmatch(bodyStr, -1)
 	}
 	if len(matches) == 0 {
-		return false, fmt.Errorf("%w: no active port forwards found in response",
-			common.ErrPortForwardNotSupported)
+		return false, fmt.Errorf("port forwarding not supported: no active port forwards found in response")
 	}
 
 	// The server response lists all currently active forwards for this session,
