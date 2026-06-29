@@ -24,6 +24,7 @@ func parseHardcodedServers() (allServers models.AllServers) {
 			// The updater can still populate servers at runtime.
 			const serversPath = "/gluetun/servers/"
 			allServers.ProviderToServers[provider] = models.Servers{
+				Version:  1,
 				Filepath: filepath.Join(serversPath, filename),
 			}
 			continue
