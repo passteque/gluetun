@@ -20,7 +20,13 @@ func parseHardcodedServers() (allServers models.AllServers) {
 		filename := provider + ".json"
 		providerFile, err := serversmodule.Files.Open(filename)
 		if err != nil {
-			panic(fmt.Sprintf("reading embedded provider file %s for %s: %s", filename, provider, err))
+			// Provider not yet in the gluetun-servers module; start with an empty list.
+			// The updater can still populate servers at runtime.
+			const serversPath = "/gluetun/servers/"
+			allServers.ProviderToServers[provider] = models.Servers{
+				Filepath: filepath.Join(serversPath, filename),
+			}
+			continue
 		}
 		defer providerFile.Close() // no-op
 
