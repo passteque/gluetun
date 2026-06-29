@@ -115,6 +115,8 @@ func getMarkdownHeaders(vpnProvider string) (headers []string, err error) {
 			regionHeader, countryHeader, cityHeader, vpnHeader,
 			udpHeader, tcpHeader, hostnameHeader, nameHeader,
 		}, nil
+	case providers.Azirevpn:
+		return []string{countryHeader, cityHeader, hostnameHeader, vpnHeader, ownedHeader, portForwardHeader}, nil
 	case providers.Cyberghost:
 		return []string{countryHeader, hostnameHeader, tcpHeader, udpHeader}, nil
 	case providers.Expressvpn:

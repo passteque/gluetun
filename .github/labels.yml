@@ -44,6 +44,8 @@
 # VPN providers
 - name: "☁️ AirVPN"
   color: "cfe8d4"
+- name: "☁️ AzireVPN"
+  color: "cfe8d4"
 - name: "☁️ Custom"
   color: "cfe8d4"
 - name: "☁️ Cyberghost"

@@ -256,7 +256,8 @@ func validateSubscriptionTierFilters(settings ServerSelection, vpnServiceProvide
 
 func validateFeatureFilters(settings ServerSelection, vpnServiceProvider string) error {
 	switch {
-	case *settings.OwnedOnly && vpnServiceProvider != providers.Mullvad:
+	case *settings.OwnedOnly &&
+		!helpers.IsOneOf(vpnServiceProvider, providers.Mullvad, providers.Azirevpn):
 		return errors.New("owned only filter is not supported")
 	case vpnServiceProvider == providers.Protonvpn && *settings.FreeOnly && *settings.PortForwardOnly:
 		return errors.New("port forwarding only filter is not supported: together with free only filter")
@@ -266,7 +267,8 @@ func validateFeatureFilters(settings ServerSelection, vpnServiceProvider string)
 	case *settings.MultiHopOnly && vpnServiceProvider != providers.Surfshark:
 		return errors.New("multi hop only filter is not supported")
 	case *settings.PortForwardOnly &&
-		!helpers.IsOneOf(vpnServiceProvider, providers.PrivateInternetAccess, providers.Protonvpn):
+		!helpers.IsOneOf(vpnServiceProvider, providers.Azirevpn,
+			providers.PrivateInternetAccess, providers.Protonvpn):
 		return errors.New("port forwarding only filter is not supported")
 	case *settings.SecureCoreOnly && vpnServiceProvider != providers.Protonvpn:
 		return errors.New("secure core only filter is not supported")
