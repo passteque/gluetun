@@ -2,6 +2,7 @@ package iptables
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/netip"
@@ -173,6 +174,29 @@ func (c *Config) AcceptOutput(ctx context.Context,
 		return c.runIptablesInstruction(ctx, instruction)
 	} else if c.ip6Tables == "" {
 		return fmt.Errorf("accept output to VPN server %s: %s", ip, needIP6Tables)
+	}
+	return c.runIP6tablesInstruction(ctx, instruction)
+}
+
+func (c *Config) AcceptOutputFromIPPortToIPPort(ctx context.Context,
+	protocol, intf string, source, destination netip.AddrPort, remove bool,
+) error {
+	if source.Addr().BitLen() != destination.Addr().BitLen() {
+		return errors.New("source and destination address families do not match")
+	}
+
+	interfaceFlag := "-o " + intf
+	if intf == "*" { // all interfaces
+		interfaceFlag = ""
+	}
+
+	instruction := fmt.Sprintf("%s OUTPUT %s -s %s -d %s -p %s -m %s --sport %d --dport %d -j ACCEPT",
+		appendOrDelete(remove), interfaceFlag, source.Addr(), destination.Addr(),
+		protocol, protocol, source.Port(), destination.Port())
+	if destination.Addr().Is4() {
+		return c.runIptablesInstruction(ctx, instruction)
+	} else if c.ip6Tables == "" {
+		return fmt.Errorf("accept output from %s to %s: %s", source, destination, needIP6Tables)
 	}
 	return c.runIP6tablesInstruction(ctx, instruction)
 }

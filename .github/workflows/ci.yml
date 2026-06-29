@@ -67,6 +67,10 @@ jobs:
           -v "$(pwd)/coverage.txt:/tmp/gobuild/coverage.txt" \
           test-container
 
+      - name: Run integration tests in test container
+        run: |
+          docker run --rm --entrypoint go test-container test -tags=integration ./internal/restrictednet
+
       - name: Verify dev cross platform compatibility
         run: docker build --target xcompile .
 
