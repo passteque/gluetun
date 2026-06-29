@@ -66,7 +66,7 @@ Lightweight swiss-army-knife-like VPN client to multiple VPN service providers
   - For custom Wireguard configurations using [the custom provider](https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/custom.md)
   - More in progress, see [#134](https://github.com/passteque/gluetun/issues/134)
 - DNS over TLS baked in with service provider(s) of your choice
-- DNS fine blocking of malicious/ads/surveillance hostnames and IP addresses, with live update every 24 hours
+- DNS fine blocking of malicious/ads hostnames and IP addresses, with live update every 24 hours
 - Choose the vpn network protocol, `udp` or `tcp`
 - Built in firewall kill switch to allow traffic only with needed the VPN servers and LAN devices
 - Built in Shadowsocks proxy server (protocol based on SOCKS5 with an encryption layer, tunnels TCP+UDP)
