@@ -59,8 +59,7 @@ func Test_Settings_String(t *testing.T) {
 |   ├── Update period: every 24h0m0s
 |   └── DNS filtering settings:
 |       ├── Block malicious: yes
-|       ├── Block ads: no
-|       └── Block surveillance: yes
+|       └── Block ads: no
 ├── Firewall settings:
 |   ├── Enabled: yes
 |   └── Iptables settings:

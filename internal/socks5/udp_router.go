@@ -76,7 +76,7 @@ func (r *udpRouter) registerAssociation(controlConn net.Conn, expectedAddrPort n
 	r.mutex.Lock()
 	defer r.mutex.Unlock()
 
-	const udpPacketChannelBuffer = 2
+	const udpPacketChannelBuffer = 64
 	associationID := r.nextAssociationID
 	r.nextAssociationID++
 

@@ -36,6 +36,7 @@ func streamLines(done chan<- struct{}, logger Logger,
 		case line, ok := <-stdout:
 			if ok {
 				logger.Info(line)
+				break
 			}
 			if stderr == nil {
 				return
@@ -44,6 +45,7 @@ func streamLines(done chan<- struct{}, logger Logger,
 		case line, ok := <-stderr:
 			if ok {
 				logger.Error(line)
+				break
 			}
 			if stdout == nil {
 				return
