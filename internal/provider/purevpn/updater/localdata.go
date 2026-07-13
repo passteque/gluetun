@@ -181,6 +181,7 @@ func parseHostPortFromDNSEntry(entry string) (host string, port uint16, ok bool)
 	if portStart == -1 {
 		return "", 0, false
 	}
+	portStart += len(portNeedle)
 
 	remaining := entry[portStart:]
 
