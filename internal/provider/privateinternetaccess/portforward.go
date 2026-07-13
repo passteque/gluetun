@@ -28,13 +28,13 @@ func (p *Provider) PortForward(ctx context.Context,
 ) (internalToExternalPorts map[uint16]uint16, err error) {
 	switch {
 	case objects.ServerName == "":
-		panic("server name cannot be empty")
+		return nil, errors.New("server name cannot be empty")
 	case !objects.Gateway.IsValid():
-		panic("gateway is not set")
+		return nil, errors.New("gateway is not set")
 	case objects.Username == "":
-		panic("username is not set")
+		return nil, errors.New("username is not set")
 	case objects.Password == "":
-		panic("password is not set")
+		return nil, errors.New("password is not set")
 	}
 
 	serverName := objects.ServerName
@@ -109,9 +109,9 @@ func (p *Provider) KeepPortForward(ctx context.Context,
 ) (err error) {
 	switch {
 	case objects.ServerName == "":
-		panic("server name cannot be empty")
+		return errors.New("server name cannot be empty")
 	case !objects.Gateway.IsValid():
-		panic("gateway is not set")
+		return errors.New("gateway is not set")
 	}
 
 	privateIPClient, err := newHTTPClient(objects.ServerName)
@@ -156,8 +156,9 @@ func (p *Provider) KeepPortForward(ctx context.Context,
 func findAPIIP(ctx context.Context, client *http.Client, gateway netip.Addr) (
 	apiIP netip.Addr, err error,
 ) {
-	if gateway.Is6() {
-		panic("IPv6 gateway not supported")
+	err = validateRegistrationIPv4(gateway, "gateway")
+	if err != nil {
+		return netip.Addr{}, err
 	}
 
 	gatewayBytes := gateway.As4()
@@ -240,6 +241,12 @@ func readPIAPortForwardData(portForwardPath string) (data piaPortForwardData, er
 	} else if err != nil {
 		return data, err
 	}
+	const permission = fs.FileMode(0o600)
+	err = file.Chmod(permission)
+	if err != nil {
+		_ = file.Close()
+		return data, err
+	}
 
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&data); err != nil {
@@ -251,9 +258,14 @@ func readPIAPortForwardData(portForwardPath string) (data piaPortForwardData, er
 }
 
 func writePIAPortForwardData(portForwardPath string, data piaPortForwardData) (err error) {
-	const permission = fs.FileMode(0o644)
+	const permission = fs.FileMode(0o600)
 	file, err := os.OpenFile(portForwardPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, permission)
 	if err != nil {
+		return err
+	}
+	err = file.Chmod(permission)
+	if err != nil {
+		_ = file.Close()
 		return err
 	}
 
@@ -299,8 +311,16 @@ func packPayload(port uint16, token string, expiration time.Time) (payload strin
 	return payload, nil
 }
 
+const piaTokenURL = "https://www.privateinternetaccess.com/api/client/v2/token"
+
 func fetchToken(ctx context.Context, client *http.Client,
 	username, password string,
+) (token string, err error) {
+	return fetchTokenFromURL(ctx, client, piaTokenURL, username, password)
+}
+
+func fetchTokenFromURL(ctx context.Context, client *http.Client,
+	tokenURL, username, password string,
 ) (token string, err error) {
 	errSubstitutions := map[string]string{
 		url.QueryEscape(username): "<username>",
@@ -316,12 +336,7 @@ func fetchToken(ctx context.Context, client *http.Client,
 	form := url.Values{}
 	form.Add("username", username)
 	form.Add("password", password)
-	url := url.URL{
-		Scheme: "https",
-		Host:   "www.privateinternetaccess.com",
-		Path:   "/api/client/v2/token",
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url.String(), strings.NewReader(form.Encode()))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", replaceInErr(err, errSubstitutions)
 	}

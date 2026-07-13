@@ -22,7 +22,15 @@ func (c *Config) SetEnabled(ctx context.Context, enabled bool) (err error) {
 
 	if !enabled {
 		c.logger.Info("disabling...")
-		c.restore(ctx)
+		cleanupCtx, cancelCleanup := newTemporaryCleanupContext(ctx)
+		cleanupErr := c.sweepTemporaryConnectionRules(cleanupCtx, true)
+		cancelCleanup()
+		if cleanupErr != nil {
+			c.logger.Warn(cleanupErr.Error())
+		}
+		restoreCtx, cancelRestore := newTemporaryCleanupContext(ctx)
+		c.restore(restoreCtx)
+		cancelRestore()
 		c.enabled = false
 		c.logger.Info("disabled successfully")
 		return nil

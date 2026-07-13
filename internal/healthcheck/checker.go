@@ -67,16 +67,18 @@ func (c *Checker) SetConfig(tlsDialAddrs []string, icmpTargets []netip.Addr,
 // internal field startupOnFail, which is set by calling [Checker.SetConfig].
 //
 // By default, startupOnFail should be false and the behavior is as follows:
-// A blocking 6s-timed TCP+TLS check is performed first. If it fails,
-// an error is returned and the [Checker] is not started.
+// Blocking TCP+TLS checks are retried for up to 60 seconds, with each attempt
+// limited to 6 seconds. If all attempts fail, an error is returned and the
+// [Checker] is not started.
 // On success, it starts the periodic checks in a separate goroutine, returning
 // the runError error channel and a nil error.
 //
 // If startupOnFail is true, the behavior is as follows:
-// A blocking 6s-timed TCP+TLS check is performed first. If it fails,
-// the error is sent to the runError channel, but no error is returned
-// and the [Checker] continues to start the periodic checks in a separate goroutine, returning
-// the runError error channel and a nil error.
+// Blocking TCP+TLS checks are retried for up to 60 seconds, with each attempt
+// limited to 6 seconds. If all attempts fail, the error is sent to the runError
+// channel, but no error is returned, and the [Checker] continues to start the
+// periodic checks in a separate goroutine, returning the runError error channel
+// and a nil error.
 //
 // The periodic checks consist in:
 // - a "small" ICMP echo check every minute
@@ -213,6 +215,13 @@ func (c *Checker) fullPeriodicCheck(ctx context.Context) error {
 }
 
 func tcpTLSCheck(ctx context.Context, dialer *net.Dialer, targetAddress string) error {
+	return tcpTLSCheckWithDialContext(ctx, dialer.DialContext, targetAddress)
+}
+
+func tcpTLSCheckWithDialContext(ctx context.Context,
+	dialContext func(context.Context, string, string) (net.Conn, error),
+	targetAddress string,
+) (err error) {
 	// TODO use mullvad API if current provider is Mullvad
 
 	address, err := makeAddressToDial(targetAddress)
@@ -221,10 +230,16 @@ func tcpTLSCheck(ctx context.Context, dialer *net.Dialer, targetAddress string) 
 	}
 
 	const dialNetwork = "tcp4"
-	connection, err := dialer.DialContext(ctx, dialNetwork, address)
+	connection, err := dialContext(ctx, dialNetwork, address)
 	if err != nil {
 		return fmt.Errorf("dialing: %w", err)
 	}
+	defer func() {
+		closeErr := connection.Close()
+		if err == nil && closeErr != nil {
+			err = fmt.Errorf("closing connection: %w", closeErr)
+		}
+	}()
 
 	if strings.HasSuffix(address, ":443") {
 		host, _, err := net.SplitHostPort(address)
@@ -240,11 +255,6 @@ func tcpTLSCheck(ctx context.Context, dialer *net.Dialer, targetAddress string) 
 		if err != nil {
 			return fmt.Errorf("running TLS handshake: %w", err)
 		}
-	}
-
-	err = connection.Close()
-	if err != nil {
-		return fmt.Errorf("closing connection: %w", err)
 	}
 
 	return nil
@@ -298,17 +308,63 @@ func withRetries(ctx context.Context, tryTimeouts []time.Duration,
 	return fmt.Errorf("all check tries failed:\n\t%s", strings.Join(errStrings, "\n\t"))
 }
 
+// startupCheck retries short parallel TCP+TLS attempts within a longer startup
+// budget so the tunnel and its DNS server have time to become ready.
 func (c *Checker) startupCheck(ctx context.Context) error {
-	// connection isn't under load yet when the checker starts, so a short
-	// 6 seconds timeout suffices and provides quick enough feedback that
-	// the new connection is not working. However, since the addresses to dial
-	// may be multiple, we run the check in parallel. If any succeeds, the check passes.
+	// Allow enough time for the VPN tunnel and its DNS server to become ready
+	// while retaining short individual checks for fast success and feedback.
+	const totalBudget = 60 * time.Second
+	const attemptTimeout = 6 * time.Second
+	const retryInterval = 2 * time.Second
+	return startupCheckWithRetries(ctx, totalBudget, attemptTimeout, retryInterval, c.startupCheckAttempt)
+}
+
+func startupCheckWithRetries(ctx context.Context, totalBudget, attemptTimeout, retryInterval time.Duration,
+	check func(context.Context) error,
+) error {
+	startupCtx, cancelStartup := context.WithTimeout(ctx, totalBudget)
+	defer cancelStartup()
+
+	var lastErr error
+	for {
+		attemptCtx, cancelAttempt := context.WithTimeout(startupCtx, attemptTimeout)
+		lastErr = check(attemptCtx)
+		cancelAttempt()
+		if lastErr == nil {
+			return nil
+		}
+
+		err := ctx.Err()
+		if err != nil {
+			return fmt.Errorf("checking startup connection: %w", err)
+		}
+		if startupCtx.Err() != nil {
+			return lastErr
+		}
+
+		retryTimer := time.NewTimer(retryInterval)
+		select {
+		case <-ctx.Done():
+			retryTimer.Stop()
+			return fmt.Errorf("checking startup connection: %w", ctx.Err())
+		case <-startupCtx.Done():
+			retryTimer.Stop()
+			return lastErr
+		case <-retryTimer.C:
+		}
+	}
+}
+
+func (c *Checker) startupCheckAttempt(ctx context.Context) error {
+	// The connection isn't under load yet when the checker starts, so each short
+	// 6-second attempt provides quick feedback for the retry loop. Since the
+	// addresses to dial may be multiple, we run the check in parallel. If any
+	// succeeds, the check passes.
 	// This is to prevent false negatives at startup, if one of the addresses is down
 	// for external reasons.
-	const timeout = 6 * time.Second
-	ctx, cancel := context.WithTimeout(ctx, timeout)
+	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	errCh := make(chan error)
+	errCh := make(chan error, len(c.tlsDialAddrs))
 
 	for _, address := range c.tlsDialAddrs {
 		go func(addr string) {

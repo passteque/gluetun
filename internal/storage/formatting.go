@@ -19,11 +19,13 @@ func noServerFoundError(selection settings.ServerSelection) (err error) {
 
 	messageParts = append(messageParts, "VPN "+selection.VPN)
 
-	protocol := constants.UDP
-	if selection.OpenVPN.Protocol == constants.TCP {
-		protocol = constants.TCP
+	if selection.VPN == vpn.OpenVPN {
+		protocol := constants.UDP
+		if selection.OpenVPN.Protocol == constants.TCP {
+			protocol = constants.TCP
+		}
+		messageParts = append(messageParts, "protocol "+protocol)
 	}
-	messageParts = append(messageParts, "protocol "+protocol)
 
 	switch len(selection.Countries) {
 	case 0:
@@ -113,7 +115,7 @@ func noServerFoundError(selection settings.ServerSelection) (err error) {
 		messageParts = append(messageParts, part)
 	}
 
-	if *selection.OpenVPN.PIAEncPreset != "" {
+	if selection.VPN == vpn.OpenVPN && *selection.OpenVPN.PIAEncPreset != "" {
 		part := "encryption preset " + *selection.OpenVPN.PIAEncPreset
 		messageParts = append(messageParts, part)
 	}
@@ -150,7 +152,7 @@ func noServerFoundError(selection settings.ServerSelection) (err error) {
 	if selection.VPN == vpn.Wireguard {
 		targetIP = selection.Wireguard.EndpointIP
 	}
-	if targetIP.IsValid() {
+	if targetIP.IsValid() && !targetIP.IsUnspecified() {
 		messageParts = append(messageParts,
 			"target ip address "+targetIP.String())
 	}

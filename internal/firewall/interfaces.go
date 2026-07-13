@@ -28,6 +28,8 @@ type firewallImpl interface { //nolint:interfacebloat
 	AcceptIpv6MulticastOutput(ctx context.Context, intf string) error
 	AcceptOutput(ctx context.Context, protocol, intf string,
 		ip netip.Addr, port uint16, remove bool) error
+	AcceptOutputMarked(ctx context.Context, protocol, intf string,
+		ip netip.Addr, port uint16, mark uint32, remove bool) error
 	AcceptOutputFromIPToSubnet(ctx context.Context, intf string, assignedIP netip.Addr,
 		subnet netip.Prefix, remove bool) error
 	AcceptOutputThroughInterface(ctx context.Context, intf string, remove bool) error

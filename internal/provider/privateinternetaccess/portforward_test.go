@@ -1,15 +1,201 @@
 package privateinternetaccess
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"net/http"
+	"net/http/httptest"
+	"net/netip"
+	"os"
 	"testing"
 	"time"
 
+	"github.com/qdm12/gluetun/internal/provider/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+const testPIAServerName = "vancouver439"
+
+func Test_fetchToken(t *testing.T) {
+	t.Parallel()
+
+	type receivedRequest struct {
+		method   string
+		username string
+		password string
+	}
+	received := make(chan receivedRequest, 1)
+	server := httptest.NewServer(http.HandlerFunc(func(responseWriter http.ResponseWriter, request *http.Request) {
+		_ = request.ParseForm()
+		received <- receivedRequest{
+			method:   request.Method,
+			username: request.Form.Get("username"),
+			password: request.Form.Get("password"),
+		}
+		responseWriter.Header().Set("Content-Type", "application/json")
+		_, _ = responseWriter.Write([]byte(`{"token":"test-token"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	token, err := fetchTokenFromURL(context.Background(), server.Client(),
+		server.URL, "test-user", "test-password")
+	require.NoError(t, err)
+
+	request := <-received
+	assert.Equal(t, http.MethodPost, request.method)
+	assert.Equal(t, "test-user", request.username)
+	assert.Equal(t, "test-password", request.password)
+	assert.Equal(t, "test-token", token)
+}
+
+func Test_PortForward_inputValidation(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		objects    utils.PortForwardObjects
+		errMessage string
+	}{
+		"server_name_not_set": {
+			errMessage: "server name cannot be empty",
+		},
+		"gateway_not_set": {
+			objects: utils.PortForwardObjects{
+				ServerName: testPIAServerName,
+			},
+			errMessage: "gateway is not set",
+		},
+		"username_not_set": {
+			objects: utils.PortForwardObjects{
+				ServerName: testPIAServerName,
+				Gateway:    netip.MustParseAddr("10.13.161.1"),
+			},
+			errMessage: "username is not set",
+		},
+		"password_not_set": {
+			objects: utils.PortForwardObjects{
+				ServerName: testPIAServerName,
+				Gateway:    netip.MustParseAddr("10.13.161.1"),
+				Username:   "username",
+			},
+			errMessage: "password is not set",
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			provider := &Provider{}
+
+			_, err := provider.PortForward(context.Background(), testCase.objects)
+
+			assert.ErrorContains(t, err, testCase.errMessage)
+		})
+	}
+}
+
+func Test_KeepPortForward_inputValidation(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		objects    utils.PortForwardObjects
+		errMessage string
+	}{
+		"server_name_not_set": {
+			errMessage: "server name cannot be empty",
+		},
+		"gateway_not_set": {
+			objects: utils.PortForwardObjects{
+				ServerName: testPIAServerName,
+			},
+			errMessage: "gateway is not set",
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			provider := &Provider{}
+
+			err := provider.KeepPortForward(context.Background(), testCase.objects)
+
+			assert.ErrorContains(t, err, testCase.errMessage)
+		})
+	}
+}
+
+func Test_findAPIIP_rejectsUnsupportedGateway(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		gateway    netip.Addr
+		errMessage string
+	}{
+		"not_set": {
+			errMessage: "gateway is not set",
+		},
+		"unspecified": {
+			gateway:    netip.IPv4Unspecified(),
+			errMessage: "gateway is unspecified",
+		},
+		"ipv6": {
+			gateway:    netip.MustParseAddr("2001:db8::1"),
+			errMessage: "gateway is IPv6, which PIA registration does not support",
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			_, err := findAPIIP(t.Context(), nil, testCase.gateway)
+
+			require.Error(t, err)
+			assert.ErrorContains(t, err, testCase.errMessage)
+		})
+	}
+}
+
+func Test_readPIAPortForwardData_restrictsPermissionsOnReuse(t *testing.T) {
+	t.Parallel()
+
+	expectedData := piaPortForwardData{
+		Port:       12345,
+		Token:      "secret-token",
+		Signature:  "signature",
+		Expiration: time.Now().Add(time.Hour).UTC().Truncate(time.Second),
+	}
+	contents, err := json.Marshal(expectedData)
+	require.NoError(t, err)
+	path := t.TempDir() + "/pia.json"
+	require.NoError(t, os.WriteFile(path, contents, 0o644))
+	require.NoError(t, os.Chmod(path, 0o644))
+
+	data, err := readPIAPortForwardData(path)
+	require.NoError(t, err)
+	assert.Equal(t, expectedData, data)
+
+	fileInfo, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), fileInfo.Mode().Perm())
+}
+
+func Test_writePIAPortForwardData_restrictsPermissions(t *testing.T) {
+	t.Parallel()
+
+	path := t.TempDir() + "/pia.json"
+	require.NoError(t, os.WriteFile(path, []byte("old data"), 0o644))
+	require.NoError(t, os.Chmod(path, 0o644))
+
+	err := writePIAPortForwardData(path, piaPortForwardData{Token: "secret"})
+	require.NoError(t, err)
+
+	fileInfo, err := os.Stat(path)
+	require.NoError(t, err)
+	assert.Equal(t, os.FileMode(0o600), fileInfo.Mode().Perm())
+}
 
 func Test_unpackPayload(t *testing.T) {
 	t.Parallel()

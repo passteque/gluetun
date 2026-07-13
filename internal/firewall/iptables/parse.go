@@ -128,11 +128,11 @@ func parseInstructionFlag(fields []string, instruction *iptablesInstruction) (co
 	case "--mark":
 		const base = 0 // auto-detect
 		const bits = 32
-		value, err := strconv.ParseUint(value, base, bits)
+		markValue, err := strconv.ParseUint(value, base, bits)
 		if err != nil {
-			return 0, fmt.Errorf("parsing mark value %q: %w", fields[2], err)
+			return 0, fmt.Errorf("parsing mark value %q: %w", value, err)
 		}
-		instruction.mark.value = uint(value)
+		instruction.mark.value = uint(markValue)
 	case "-i", "--in-interface":
 		instruction.inputInterface = value
 	case "-o", "--out-interface":
@@ -232,13 +232,15 @@ func parseMatchModule(fields []string, instruction *iptablesInstruction) (
 		// parse it twice.
 	case "mark":
 		consumed++
-		switch fields[consumed] {
-		case "!":
+		// An optional "!" negates the match. The "--mark <value>" flag that
+		// follows (whether negated or not) is parsed by the main flag loop,
+		// so we must not consume it here.
+		if consumed < len(fields) && fields[consumed] == "!" {
 			consumed++
 			instruction.mark.invert = true
-		default:
-			return consumed, fmt.Errorf("iptables command is malformed: unsupported match mark with value: %s",
-				fields[2])
+		}
+		if consumed+1 >= len(fields) || fields[consumed] != "--mark" {
+			return 0, errors.New("iptables command is malformed: mark match requires --mark followed by a value")
 		}
 	default:
 		return 0, fmt.Errorf("iptables command is malformed: unknown match value: %s",

@@ -26,6 +26,35 @@ func Test_parseIptablesInstruction(t *testing.T) {
 			s:          "-x something",
 			errMessage: "parsing \"-x something\": iptables command is malformed: unknown key \"-x\"",
 		},
+		"mark_match_missing_flag_and_value": {
+			s: "-m mark",
+			errMessage: "parsing \"-m mark\": parsing match module: " +
+				"iptables command is malformed: mark match requires --mark followed by a value",
+		},
+		"inverted_mark_match_missing_flag_and_value": {
+			s: "-m mark !",
+			errMessage: "parsing \"-m mark !\": parsing match module: " +
+				"iptables command is malformed: mark match requires --mark followed by a value",
+		},
+		"invalid_mark_value": {
+			s: "--mark bogus",
+			errMessage: "parsing \"--mark bogus\": parsing mark value \"bogus\": " +
+				"strconv.ParseUint: parsing \"bogus\": invalid syntax",
+		},
+		"mark_match": {
+			s: "-m mark --mark 51820",
+			instruction: iptablesInstruction{
+				table: "filter",
+				mark:  mark{value: 51820},
+			},
+		},
+		"inverted_mark_match": {
+			s: "-m mark ! --mark 51820",
+			instruction: iptablesInstruction{
+				table: "filter",
+				mark:  mark{value: 51820, invert: true},
+			},
+		},
 		"one_pair": {
 			s: "-A INPUT",
 			instruction: iptablesInstruction{

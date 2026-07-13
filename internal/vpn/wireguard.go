@@ -3,7 +3,10 @@ package vpn
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/netip"
+	"strings"
+	"time"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/models"
@@ -11,22 +14,67 @@ import (
 	"github.com/qdm12/gluetun/internal/provider"
 	"github.com/qdm12/gluetun/internal/wireguard"
 	"github.com/qdm12/gosettings"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 // setupWireguard sets Wireguard up using the configurators and settings given.
-// It returns a serverName for port forwarding (PIA) and an error if it fails.
+// It returns the selected connection, an optional provider-generated gateway
+// for port forwarding, and an error if setup fails.
 func setupWireguard(ctx context.Context, netlinker NetLinker,
 	fw Firewall, providerConf provider.Provider,
 	settings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel, logger wireguard.Logger) (
-	wireguarder *wireguard.Wireguard, connection models.Connection, err error,
+	wireguarder *wireguard.Wireguard, connection models.Connection,
+	gateway netip.Addr, err error,
 ) {
 	ipv6Internet := ipv6SupportLevel == netlink.IPv6Internet
-	connection, err = providerConf.GetConnection(settings.Provider.ServerSelection, ipv6Internet)
+	dynamicProvider, dynamic := providerConf.(provider.DynamicWireguardProvider)
+	var lookupNetIP func(context.Context, string, string) ([]netip.Addr, error)
+	var bootstrapDialContext func(context.Context, string, string) (net.Conn, error)
+	if dynamic {
+		bootstrapSettings := wireguard.Settings{}
+		bootstrapSettings.SetDefaults()
+		bootstrapResolver := newBootstrapResolver(bootstrapSettings.FirewallMark,
+			fw.TempAllowConnection)
+		lookupNetIP = bootstrapResolver.LookupNetIP
+		bootstrapDialContext = bootstrapResolver.dialContext
+		connection, err = dynamicProvider.GetWireguardConnection(ctx,
+			settings.Provider.ServerSelection, lookupNetIP, bootstrapDialContext,
+			fw.TempAllowConnection)
+	} else {
+		connection, err = providerConf.GetConnection(settings.Provider.ServerSelection, ipv6Internet)
+	}
 	if err != nil {
-		return nil, models.Connection{}, fmt.Errorf("finding a VPN server: %w", err)
+		return nil, models.Connection{}, netip.Addr{}, fmt.Errorf("finding a VPN server: %w", err)
 	}
 
-	wireguardSettings := buildWireguardSettings(connection, settings.Wireguard, ipv6SupportLevel.IsSupported())
+	var wireguardSettings wireguard.Settings
+	if dynamic {
+		wireguardConnection, err := dynamicProvider.RegisterWireguard(ctx, connection,
+			*settings.OpenVPN.User, *settings.OpenVPN.Password,
+			lookupNetIP, bootstrapDialContext, fw.TempAllowConnection)
+		if err != nil {
+			return nil, models.Connection{}, netip.Addr{}, fmt.Errorf("registering Wireguard connection: %w", err)
+		}
+		connection = wireguardConnection.Connection
+		wireguardSettings = buildRegisteredWireguardSettings(wireguardConnection,
+			settings.Wireguard, ipv6SupportLevel.IsSupported())
+		gateway = wireguardConnection.Gateway
+		clientPrivateKey, err := wgtypes.ParseKey(wireguardSettings.PrivateKey)
+		if err != nil {
+			return nil, models.Connection{}, netip.Addr{}, fmt.Errorf("parsing registered private key: %w", err)
+		}
+		logger.Info(fmt.Sprintf("PIA addKey Wireguard configuration: endpoint %s, peer public key %s, "+
+			"client public key %s, interface addresses %s",
+			wireguardSettings.Endpoint, shortWireguardKey(wireguardSettings.PublicKey),
+			shortWireguardKey(clientPrivateKey.PublicKey().String()),
+			wireguardAddresses(wireguardSettings.Addresses)))
+		if len(wireguardConnection.DNSServers) > 0 {
+			logger.Debugf("Wireguard provider DNS servers: %v", wireguardConnection.DNSServers)
+		}
+	} else {
+		wireguardSettings = buildWireguardSettings(connection,
+			settings.Wireguard, ipv6SupportLevel.IsSupported())
+	}
 
 	logger.Debug("Wireguard server public key: " + wireguardSettings.PublicKey)
 	logger.Debug("Wireguard client private key: " + gosettings.ObfuscateKey(wireguardSettings.PrivateKey))
@@ -34,15 +82,44 @@ func setupWireguard(ctx context.Context, netlinker NetLinker,
 
 	wireguarder, err = wireguard.New(wireguardSettings, netlinker, logger)
 	if err != nil {
-		return nil, models.Connection{}, fmt.Errorf("creating Wireguard: %w", err)
+		return nil, models.Connection{}, netip.Addr{}, fmt.Errorf("creating Wireguard: %w", err)
 	}
 
 	err = fw.SetVPNConnection(ctx, connection, settings.Wireguard.Interface)
 	if err != nil {
-		return nil, models.Connection{}, fmt.Errorf("setting firewall: %w", err)
+		return nil, models.Connection{}, netip.Addr{}, fmt.Errorf("setting firewall: %w", err)
 	}
 
-	return wireguarder, connection, nil
+	return wireguarder, connection, gateway, nil
+}
+
+func buildRegisteredWireguardSettings(registration models.WireguardConnection,
+	userSettings settings.Wireguard, ipv6Supported bool,
+) wireguard.Settings {
+	privateKey := registration.PrivateKey
+	userSettings.PrivateKey = &privateKey
+	userSettings.Addresses = append([]netip.Prefix(nil), registration.Addresses...)
+	if *userSettings.PersistentKeepaliveInterval == 0 {
+		piaPersistentKeepalive := 25 * time.Second
+		userSettings.PersistentKeepaliveInterval = &piaPersistentKeepalive
+	}
+	return buildWireguardSettings(registration.Connection, userSettings, ipv6Supported)
+}
+
+func shortWireguardKey(key string) string {
+	const visibleCharacters = 8
+	if len(key) <= 2*visibleCharacters {
+		return key
+	}
+	return key[:visibleCharacters] + "..." + key[len(key)-visibleCharacters:]
+}
+
+func wireguardAddresses(addresses []netip.Prefix) string {
+	addressStrings := make([]string, len(addresses))
+	for i, address := range addresses {
+		addressStrings[i] = address.String()
+	}
+	return strings.Join(addressStrings, ", ")
 }
 
 func buildWireguardSettings(connection models.Connection,

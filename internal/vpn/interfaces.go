@@ -17,6 +17,8 @@ import (
 
 type Firewall interface {
 	SetVPNConnection(ctx context.Context, connection models.Connection, interfaceName string) error
+	TempAllowConnection(ctx context.Context, connection models.Connection) (
+		remove func(context.Context) error, err error)
 	SetAllowedPort(ctx context.Context, port uint16, interfaceName string) error
 	RemoveAllowedPort(ctx context.Context, port uint16) error
 	tcp.Firewall

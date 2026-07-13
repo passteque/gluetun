@@ -53,11 +53,18 @@ var regexpInterfaceName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 // Validate validates Wireguard settings.
 // It should only be ran if the VPN type chosen is Wireguard or AmneziaWg.
 func (w Wireguard) validate(vpnProvider string, ipv6Supported, amneziawg bool) (err error) {
+	dynamicPIAWireguard := vpnProvider == providers.PrivateInternetAccess && !amneziawg
+	if dynamicPIAWireguard && *w.PrivateKey != "" {
+		return errors.New("private key must not be set for Private Internet Access")
+	}
+
 	// Validate PrivateKey
-	if *w.PrivateKey == "" {
+	if *w.PrivateKey == "" && !dynamicPIAWireguard {
 		return errors.New("private key is not set")
 	}
-	_, err = wgtypes.ParseKey(*w.PrivateKey)
+	if *w.PrivateKey != "" {
+		_, err = wgtypes.ParseKey(*w.PrivateKey)
+	}
 	if err != nil {
 		err = fmt.Errorf("private key is not valid: %w", err)
 		if vpnProvider == providers.Nordvpn &&
@@ -82,7 +89,7 @@ func (w Wireguard) validate(vpnProvider string, ipv6Supported, amneziawg bool) (
 	}
 
 	// Validate Addresses
-	if len(w.Addresses) == 0 {
+	if len(w.Addresses) == 0 && !dynamicPIAWireguard {
 		return errors.New("interface address is not set")
 	}
 	for i, ipNet := range w.Addresses {
