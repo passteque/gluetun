@@ -153,7 +153,7 @@ func connectSourceConnection(ctx context.Context, fd int, destinationAddrPort ne
 	file := os.NewFile(uintptr(fd), "")
 	if file == nil {
 		closeFD(fd)
-		return nil, fmt.Errorf("creating socket file")
+		return nil, fmt.Errorf("creating socket file for destination %s", destinationAddrPort)
 	}
 	defer file.Close()
 

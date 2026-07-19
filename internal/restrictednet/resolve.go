@@ -194,12 +194,8 @@ func parseDestinationPort(portStr string) (port uint16, err error) {
 		return 0, err
 	}
 
-	const maxPortUint = 65535
-	switch {
-	case portUint == 0:
+	if portUint == 0 {
 		return 0, errors.New("port cannot be 0")
-	case portUint > maxPortUint:
-		return 0, fmt.Errorf("port cannot be greater than %d", maxPortUint)
 	}
 	return uint16(portUint), nil
 }
