@@ -85,13 +85,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: ./devrun/go.mod
       - run: go test ./...
         working-directory: ./devrun
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: ./ci/go.mod
       - run: go test ./...
@@ -114,7 +114,7 @@ jobs:
       - run: docker build -t qmcgaw/gluetun .
 
       - name: Setup Go for CI utility
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: ci/go.mod
 
@@ -162,7 +162,7 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - uses: github/codeql-action/init@v4
