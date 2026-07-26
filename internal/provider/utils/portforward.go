@@ -1,6 +1,7 @@
 package utils
 
 import (
+	"context"
 	"net/http"
 	"net/netip"
 )
@@ -27,6 +28,15 @@ type PortForwardObjects struct {
 	Password string
 	// PortsCount is used by ProtonVPN for port forwarding.
 	PortsCount uint16
+	// OnPortsChanged is called by a KeepPortForward implementation when the VPN
+	// gateway assigns different external ports whilst refreshing an existing
+	// mapping. It updates the firewall, the port forwarded file and runs the up
+	// command for the new ports, so that a reassignment does not require tearing
+	// down and restarting the whole port forwarding service.
+	// It is nil when the port forwarding service does not support reassignment,
+	// in which case a KeepPortForward implementation must return an error rather
+	// than silently keep forwarding a port the client no longer listens on.
+	OnPortsChanged func(ctx context.Context, internalToExternalPorts map[uint16]uint16) error
 }
 
 type Routing interface {

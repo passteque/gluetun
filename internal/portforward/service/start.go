@@ -44,6 +44,7 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 		Username:       s.settings.Username,
 		Password:       s.settings.Password,
 		PortsCount:     s.settings.PortsCount,
+		OnPortsChanged: s.onPortsChanged,
 	}
 	internalToExternalPorts, err := s.settings.PortForwarder.PortForward(ctx, obj)
 	if err != nil {
@@ -86,6 +87,30 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 	<-readyCh
 
 	return runErrorCh, nil
+}
+
+// onPortsChanged applies ports newly assigned by the VPN gateway whilst the
+// service is running, without restarting it. It is passed to the port forwarder
+// through [utils.PortForwardObjects] and is called from the KeepPortForward
+// goroutine, so it must not take the start-stop mutex: Stop holds that mutex
+// whilst waiting for the very same goroutine to return.
+func (s *Service) onPortsChanged(ctx context.Context, internalToExternalPorts map[uint16]uint16) (err error) {
+	s.portMutex.Lock()
+	defer s.portMutex.Unlock()
+
+	// Close the firewall for the previous ports before opening the new ones,
+	// so a reassignment cannot leave a stale port allowed.
+	err = s.cleanup()
+	if err != nil {
+		return fmt.Errorf("cleaning up previously forwarded ports: %w", err)
+	}
+
+	err = s.onNewPorts(ctx, internalToExternalPorts)
+	if err != nil {
+		return fmt.Errorf("handling newly assigned ports: %w", err)
+	}
+
+	return nil
 }
 
 func (s *Service) onNewPorts(ctx context.Context, internalToExternalPorts map[uint16]uint16) (err error) {

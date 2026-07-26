@@ -6,12 +6,19 @@ import (
 	"fmt"
 	"maps"
 	"net/netip"
+	"slices"
 	"strings"
 	"time"
 
 	"github.com/qdm12/gluetun/internal/natpmp"
 	"github.com/qdm12/gluetun/internal/provider/utils"
 )
+
+// ErrPortsReassigned is returned when the gateway reassigns external ports
+// whilst refreshing a mapping and the port forwarding service has no way to
+// apply them. Continuing would leave the client listening on a port that is
+// no longer forwarded, so the caller restarts port forwarding instead.
+var ErrPortsReassigned = errors.New("gateway reassigned external ports")
 
 // PortForward obtains a VPN server side port forwarded from ProtonVPN gateway.
 func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObjects) (
@@ -92,12 +99,13 @@ func addPortMappingTCPUDP(ctx context.Context, client *natpmp.Client, logger uti
 		}
 		protocolToExternalPort[protocol] = assignedExternalPort
 		checkLifetime(logger, protocolStr, lifetime, assignedLifetime)
+		// Note the external port is deliberately not validated against the
+		// requested one. The gateway is free to hand back a different external
+		// port, notably when refreshing an existing mapping, and the caller
+		// decides what to do with the port it actually received.
 		if internalPort != assignedInternalPort {
 			return 0, 0, fmt.Errorf("%s internal port requested as %d but received %d",
 				protocolStr, internalPort, assignedInternalPort)
-		} else if externalPort != 0 && externalPort != 1 && externalPort != assignedExternalPort {
-			return 0, 0, fmt.Errorf("%s external port requested as %d but received %d",
-				protocolStr, externalPort, assignedExternalPort)
 		}
 	}
 
@@ -107,6 +115,21 @@ func addPortMappingTCPUDP(ctx context.Context, client *natpmp.Client, logger uti
 	}
 
 	return assignedInternalPort, assignedExternalPort, nil
+}
+
+// portsMapToString describes an external port reassignment as a sorted list of
+// "was -> now" pairs, keyed by internal port so the output is deterministic.
+func portsMapToString(previous, current map[uint16]uint16) string {
+	internalPorts := slices.Sorted(maps.Keys(current))
+	pairs := make([]string, 0, len(internalPorts))
+	for _, internalPort := range internalPorts {
+		was, ok := previous[internalPort]
+		if !ok || was == current[internalPort] {
+			continue
+		}
+		pairs = append(pairs, fmt.Sprintf("%d -> %d", was, current[internalPort]))
+	}
+	return strings.Join(pairs, ", ")
 }
 
 func checkLifetime(logger utils.Logger, protocol string,
@@ -135,13 +158,35 @@ func (p *Provider) KeepPortForward(ctx context.Context,
 
 		objects.Logger.Debug("refreshing forwarded ports since 45 seconds have elapsed")
 		const lifetime = 60 * time.Second
+		refreshedPorts := make(map[uint16]uint16, len(p.internalToExternalPorts))
+		portsChanged := false
 		for internalPort, externalPort := range p.internalToExternalPorts {
-			_, _, err := addPortMappingTCPUDP(ctx, client, logger, objects.Gateway, internalPort, externalPort, lifetime)
+			assignedInternalPort, assignedExternalPort, err := addPortMappingTCPUDP(ctx,
+				client, logger, objects.Gateway, internalPort, externalPort, lifetime)
 			if err != nil {
 				return fmt.Errorf("refreshing port mapping for internal port %d and external port %d: %w",
 					internalPort, externalPort, err)
 			}
+			refreshedPorts[assignedInternalPort] = assignedExternalPort
+			if assignedExternalPort != externalPort {
+				portsChanged = true
+				logger.Info(fmt.Sprintf("gateway reassigned external port %d to %d",
+					externalPort, assignedExternalPort))
+				continue
+			}
 			objects.Logger.Debug(fmt.Sprintf("port forwarded %d maintained", externalPort))
+		}
+
+		if portsChanged {
+			if objects.OnPortsChanged == nil {
+				return fmt.Errorf("%w: %s", ErrPortsReassigned,
+					portsMapToString(p.internalToExternalPorts, refreshedPorts))
+			}
+			p.internalToExternalPorts = refreshedPorts
+			err = objects.OnPortsChanged(ctx, maps.Clone(refreshedPorts))
+			if err != nil {
+				return fmt.Errorf("handling reassigned ports: %w", err)
+			}
 		}
 
 		timer.Reset(refreshTimeout)
