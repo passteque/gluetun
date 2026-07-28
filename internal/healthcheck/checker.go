@@ -159,8 +159,6 @@ func (c *Checker) Start(ctx context.Context) (runError <-chan error, err error) 
 func (c *Checker) Stop() error {
 	c.stop()
 	<-c.done
-	c.configMutex.Lock()
-	defer c.configMutex.Unlock()
 	c.tlsDialAddrs = nil
 	c.icmpTargetIPs = nil
 	c.smallCheckType = ""
@@ -172,9 +170,6 @@ func (c *Checker) smallPeriodicCheck(ctx context.Context) error {
 	icmpTargetIPs := make([]netip.Addr, len(c.icmpTargetIPs))
 	copy(icmpTargetIPs, c.icmpTargetIPs)
 	c.configMutex.Unlock()
-	if c.smallCheckType != smallCheckDNS && len(icmpTargetIPs) == 0 {
-		return nil
-	}
 	tryTimeouts := []time.Duration{
 		5 * time.Second,
 		5 * time.Second,
@@ -207,18 +202,11 @@ func (c *Checker) smallPeriodicCheck(ctx context.Context) error {
 }
 
 func (c *Checker) fullPeriodicCheck(ctx context.Context) error {
-	c.configMutex.Lock()
-	tlsDialAddrs := make([]string, len(c.tlsDialAddrs))
-	copy(tlsDialAddrs, c.tlsDialAddrs)
-	c.configMutex.Unlock()
-	if len(tlsDialAddrs) == 0 {
-		return nil
-	}
 	// 20s timeout in case the connection is under stress
 	// See https://github.com/qdm12/gluetun/issues/2270
 	tryTimeouts := []time.Duration{10 * time.Second, 15 * time.Second, 30 * time.Second}
 	check := func(ctx context.Context, try int) error {
-		tlsDialAddr := tlsDialAddrs[try%len(tlsDialAddrs)]
+		tlsDialAddr := c.tlsDialAddrs[try%len(c.tlsDialAddrs)]
 		return tcpTLSCheck(ctx, c.dialer, tlsDialAddr)
 	}
 	return withRetries(ctx, tryTimeouts, c.logger, "TCP+TLS dial", check)

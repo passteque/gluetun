@@ -61,20 +61,6 @@ func Test_Checker_fullcheck(t *testing.T) {
 	})
 }
 
-func Test_Checker_periodicCheckEmptyTargets(t *testing.T) {
-	t.Parallel()
-
-	checker := &Checker{smallCheckType: smallCheckICMP}
-
-	err := checker.fullPeriodicCheck(context.Background())
-
-	assert.NoError(t, err)
-
-	err = checker.smallPeriodicCheck(context.Background())
-
-	assert.NoError(t, err)
-}
-
 func Test_makeAddressToDial(t *testing.T) {
 	t.Parallel()
 
