@@ -241,3 +241,5 @@ jobs:
             VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
           tags: ${{ steps.meta.outputs.tags }}
           push: true
+          provenance: mode=max
+          sbom: true
