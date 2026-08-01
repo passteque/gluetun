@@ -3,7 +3,10 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"strconv"
 	"strings"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
@@ -47,6 +50,13 @@ func (h *vpnHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			h.getSettings(w)
 		case http.MethodPut:
 			h.patchSettings(w, r)
+		default:
+			errMethodNotSupported(w, r.Method)
+		}
+	case "/stats":
+		switch r.Method {
+		case http.MethodGet:
+			h.getStats(w)
 		default:
 			errMethodNotSupported(w, r.Method)
 		}
@@ -127,5 +137,47 @@ func (h *vpnHandler) patchSettings(w http.ResponseWriter, r *http.Request) {
 	_, err = w.Write([]byte(outcome))
 	if err != nil {
 		h.warner.Warn("writing response: " + err.Error())
+	}
+}
+
+type tunStats struct {
+	RxBytes uint64 `json:"rx_bytes"`
+	TxBytes uint64 `json:"tx_bytes"`
+}
+
+func (h *vpnHandler) getStats(w http.ResponseWriter) {
+	// Default tun interface name used by Gluetun
+	const iface = "tun0"
+	rxPath := fmt.Sprintf("/sys/class/net/%s/statistics/rx_bytes", iface)
+	txPath := fmt.Sprintf("/sys/class/net/%s/statistics/tx_bytes", iface)
+
+	rxData, err := os.ReadFile(rxPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("reading rx_bytes: %v", err), http.StatusNotFound)
+		return
+	}
+	txData, err := os.ReadFile(txPath)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("reading tx_bytes: %v", err), http.StatusNotFound)
+		return
+	}
+
+	rxBytes, err := strconv.ParseUint(strings.TrimSpace(string(rxData)), 10, 64)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("parsing rx_bytes: %v", err), http.StatusInternalServerError)
+		return
+	}
+	txBytes, err := strconv.ParseUint(strings.TrimSpace(string(txData)), 10, 64)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("parsing tx_bytes: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	encoder := json.NewEncoder(w)
+	data := tunStats{RxBytes: rxBytes, TxBytes: txBytes}
+	if err := encoder.Encode(data); err != nil {
+		h.warner.Warn(err.Error())
+		w.WriteHeader(http.StatusInternalServerError)
+		return
 	}
 }
