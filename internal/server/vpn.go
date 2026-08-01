@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
+	"github.com/qdm12/gluetun/internal/constants/vpn"
 )
 
 func newVPNHandler(ctx context.Context, looper VPNLooper,
@@ -140,25 +141,39 @@ func (h *vpnHandler) patchSettings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// tunStats is the response for GET /v1/vpn/stats.
 type tunStats struct {
-	RxBytes uint64 `json:"rx_bytes"`
-	TxBytes uint64 `json:"tx_bytes"`
+	Interface string `json:"interface"`
+	RxBytes   uint64 `json:"rx_bytes"`
+	TxBytes   uint64 `json:"tx_bytes"`
 }
 
 func (h *vpnHandler) getStats(w http.ResponseWriter) {
-	// Default tun interface name used by Gluetun
-	const iface = "tun0"
+	iface := h.resolveTunInterface()
 	rxPath := fmt.Sprintf("/sys/class/net/%s/statistics/rx_bytes", iface)
 	txPath := fmt.Sprintf("/sys/class/net/%s/statistics/tx_bytes", iface)
 
 	rxData, err := os.ReadFile(rxPath)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("reading rx_bytes: %v", err), http.StatusNotFound)
-		return
+		// Fallback: try the other common name if the configured one is missing
+		fallback := "tun0"
+		if iface == "tun0" {
+			fallback = "wg0"
+		}
+		rxPath = fmt.Sprintf("/sys/class/net/%s/statistics/rx_bytes", fallback)
+		txPath = fmt.Sprintf("/sys/class/net/%s/statistics/tx_bytes", fallback)
+		rxData, err = os.ReadFile(rxPath)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("TUN interface %q (and fallback) not found or not up: %v", iface, err),
+				http.StatusNotFound)
+			return
+		}
+		iface = fallback
 	}
+
 	txData, err := os.ReadFile(txPath)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("reading tx_bytes: %v", err), http.StatusNotFound)
+		http.Error(w, fmt.Sprintf("reading tx_bytes for %s: %v", iface, err), http.StatusInternalServerError)
 		return
 	}
 
@@ -174,10 +189,37 @@ func (h *vpnHandler) getStats(w http.ResponseWriter) {
 	}
 
 	encoder := json.NewEncoder(w)
-	data := tunStats{RxBytes: rxBytes, TxBytes: txBytes}
+	data := tunStats{
+		Interface: iface,
+		RxBytes:   rxBytes,
+		TxBytes:   txBytes,
+	}
 	if err := encoder.Encode(data); err != nil {
 		h.warner.Warn(err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		return
+	}
+}
+
+// resolveTunInterface returns the configured TUN/WG interface name
+// based on the current VPN settings.
+func (h *vpnHandler) resolveTunInterface() string {
+	s := h.looper.GetSettings()
+	switch s.Type {
+	case vpn.OpenVPN:
+		if s.OpenVPN.Interface != "" {
+			return s.OpenVPN.Interface
+		}
+		return "tun0"
+	case vpn.Wireguard, vpn.AmneziaWg:
+		if s.Wireguard.Interface != "" {
+			return s.Wireguard.Interface
+		}
+		if s.Type == vpn.AmneziaWg && s.AmneziaWg.Wireguard.Interface != "" {
+			return s.AmneziaWg.Wireguard.Interface
+		}
+		return "wg0"
+	default:
+		return "tun0"
 	}
 }
