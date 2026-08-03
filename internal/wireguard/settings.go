@@ -48,6 +48,11 @@ type Settings struct {
 	// Implementation is the implementation to use.
 	// It can be auto, kernelspace or userspace, and defaults to auto.
 	Implementation string
+	// DisableGSO creates the TUN device without IFF_VNET_HDR so that
+	// wireguard-go falls back to single-packet reads and writes instead
+	// of its GRO/GSO batch I/O path.
+	// See WIREGUARD_DISABLE_GSO for details.
+	DisableGSO bool
 }
 
 func (s *Settings) SetDefaults() {

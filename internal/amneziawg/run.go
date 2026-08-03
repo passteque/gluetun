@@ -36,9 +36,22 @@ func setupUserspace(ctx context.Context,
 ) (
 	linkIndex uint32, waitAndCleanup func() error, err error,
 ) {
-	tun, err := amneziatun.CreateTUN(interfaceName, int(mtu))
-	if err != nil {
-		return 0, nil, fmt.Errorf("creating TUN device: %w", err)
+	var tun amneziatun.Device
+	if settings.Wireguard.DisableGSO {
+		tunFile, err := wireguard.OpenTUNFile(interfaceName)
+		if err != nil {
+			return 0, nil, fmt.Errorf("opening TUN device without IFF_VNET_HDR: %w", err)
+		}
+		tun, err = amneziatun.CreateTUNFromFile(tunFile, int(mtu))
+		if err != nil {
+			return 0, nil, fmt.Errorf("creating TUN device from file: %w", err)
+		}
+	} else {
+		var err error
+		tun, err = amneziatun.CreateTUN(interfaceName, int(mtu))
+		if err != nil {
+			return 0, nil, fmt.Errorf("creating TUN device: %w", err)
+		}
 	}
 
 	cleanups.Add("closing TUN device", 7, tun.Close)

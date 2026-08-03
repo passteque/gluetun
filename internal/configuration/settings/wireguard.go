@@ -46,6 +46,13 @@ type Wireguard struct {
 	// It defaults to "auto" and cannot be the empty string
 	// in the internal state.
 	Implementation string `json:"implementation"`
+	// DisableGSO creates the WireGuard TUN device without IFF_VNET_HDR,
+	// preventing wireguard-go from enabling its GRO/GSO batch-write path.
+	// This is needed on some kernels (e.g. certain NAS devices) that claim
+	// IFF_VNET_HDR support but return EINVAL when wireguard-go writes
+	// GRO-coalesced packets with virtio_net_hdr structs under load.
+	// It defaults to false and cannot be nil in the internal state.
+	DisableGSO *bool `json:"disable_gso"`
 }
 
 var regexpInterfaceName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
@@ -136,6 +143,7 @@ func (w *Wireguard) copy() (copied Wireguard) {
 		Interface:                   w.Interface,
 		MTU:                         w.MTU,
 		Implementation:              w.Implementation,
+		DisableGSO:                  gosettings.CopyPointer(w.DisableGSO),
 	}
 }
 
@@ -149,6 +157,7 @@ func (w *Wireguard) overrideWith(other Wireguard) {
 	w.Interface = gosettings.OverrideWithComparable(w.Interface, other.Interface)
 	w.MTU = gosettings.OverrideWithComparable(w.MTU, other.MTU)
 	w.Implementation = gosettings.OverrideWithComparable(w.Implementation, other.Implementation)
+	w.DisableGSO = gosettings.OverrideWithPointer(w.DisableGSO, other.DisableGSO)
 }
 
 func (w *Wireguard) setDefaults(vpnProvider string) {
@@ -173,6 +182,7 @@ func (w *Wireguard) setDefaults(vpnProvider string) {
 	w.Interface = gosettings.DefaultComparable(w.Interface, "wg0")
 	w.MTU = gosettings.DefaultPointer(w.MTU, 0)
 	w.Implementation = gosettings.DefaultComparable(w.Implementation, "auto")
+	w.DisableGSO = gosettings.DefaultPointer(w.DisableGSO, false)
 }
 
 func (w Wireguard) String() string {
@@ -215,6 +225,10 @@ func (w Wireguard) toLinesNode() (node *gotree.Node) {
 
 	if w.Implementation != "auto" {
 		node.Appendf("Implementation: %s", w.Implementation)
+	}
+
+	if *w.DisableGSO {
+		node.Append("GSO disabled")
 	}
 
 	return node
@@ -265,5 +279,11 @@ func (w *Wireguard) read(r *reader.Reader, amneziaWG bool) (err error) {
 	if err != nil {
 		return err
 	}
+
+	w.DisableGSO, err = r.BoolPtr("WIREGUARD_DISABLE_GSO")
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

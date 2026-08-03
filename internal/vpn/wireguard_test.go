@@ -40,6 +40,7 @@ func Test_buildWireguardSettings(t *testing.T) {
 				PersistentKeepaliveInterval: ptrTo(time.Hour),
 				Interface:                   "wg1",
 				MTU:                         ptrTo(uint32(1000)),
+				DisableGSO:                  ptrTo(false),
 			},
 			ipv6Supported: false,
 			settings: wireguard.Settings{
@@ -58,6 +59,34 @@ func Test_buildWireguardSettings(t *testing.T) {
 				RulePriority:                101,
 				IPv6:                        ptrTo(false),
 				MTU:                         1000,
+			},
+		},
+		"gso_disabled": {
+			connection: models.Connection{
+				IP:     netip.AddrFrom4([4]byte{5, 6, 7, 8}),
+				Port:   58820,
+				PubKey: "public",
+			},
+			userSettings: settings.Wireguard{
+				PrivateKey:                  ptrTo("private"),
+				PreSharedKey:                ptrTo(""),
+				PersistentKeepaliveInterval: ptrTo(time.Duration(0)),
+				Interface:                   "wg0",
+				MTU:                         ptrTo(uint32(0)),
+				DisableGSO:                  ptrTo(true),
+			},
+			ipv6Supported: false,
+			settings: wireguard.Settings{
+				InterfaceName: "wg0",
+				PrivateKey:    "private",
+				PublicKey:     "public",
+				Endpoint:      netip.AddrPortFrom(netip.AddrFrom4([4]byte{5, 6, 7, 8}), 58820),
+				Addresses:     []netip.Prefix{},
+				AllowedIPs:    []netip.Prefix{},
+				RulePriority:  101,
+				IPv6:          ptrTo(false),
+				MTU:           1320,
+				DisableGSO:    true,
 			},
 		},
 	}
