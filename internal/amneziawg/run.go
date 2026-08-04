@@ -8,7 +8,6 @@ import (
 
 	amneziaconn "github.com/amnezia-vpn/amneziawg-go/conn"
 	amneziadevice "github.com/amnezia-vpn/amneziawg-go/device"
-	amneziatun "github.com/amnezia-vpn/amneziawg-go/tun"
 	"github.com/qdm12/gluetun/internal/cleanup"
 	"github.com/qdm12/gluetun/internal/wireguard"
 )
@@ -36,22 +35,9 @@ func setupUserspace(ctx context.Context,
 ) (
 	linkIndex uint32, waitAndCleanup func() error, err error,
 ) {
-	var tun amneziatun.Device
-	if !*settings.Wireguard.GSO {
-		tunFile, err := wireguard.OpenTUNFile(interfaceName)
-		if err != nil {
-			return 0, nil, fmt.Errorf("opening TUN device without IFF_VNET_HDR: %w", err)
-		}
-		tun, err = amneziatun.CreateTUNFromFile(tunFile, int(mtu))
-		if err != nil {
-			return 0, nil, fmt.Errorf("creating TUN device from file: %w", err)
-		}
-	} else {
-		var err error
-		tun, err = amneziatun.CreateTUN(interfaceName, int(mtu))
-		if err != nil {
-			return 0, nil, fmt.Errorf("creating TUN device: %w", err)
-		}
+	tun, err := createTUN(interfaceName, int(mtu), *settings.Wireguard.GSO)
+	if err != nil {
+		return 0, nil, fmt.Errorf("creating TUN device: %w", err)
 	}
 
 	cleanups.Add("closing TUN device", 7, tun.Close)
