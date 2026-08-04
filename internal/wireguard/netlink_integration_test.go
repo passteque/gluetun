@@ -17,6 +17,7 @@ type noopDebugLogger struct{}
 func (n noopDebugLogger) Debug(_ string)            {}
 func (n noopDebugLogger) Debugf(_ string, _ ...any) {}
 func (n noopDebugLogger) Info(_ string)             {}
+func (n noopDebugLogger) Warn(_ string)             {}
 func (n noopDebugLogger) Error(_ string)            {}
 func (n noopDebugLogger) Errorf(_ string, _ ...any) {}
 func (n noopDebugLogger) Patch(_ ...log.Option)     {}

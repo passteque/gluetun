@@ -37,7 +37,7 @@ func setupUserspace(ctx context.Context,
 	linkIndex uint32, waitAndCleanup func() error, err error,
 ) {
 	var tun amneziatun.Device
-	if settings.Wireguard.DisableGSO {
+	if !*settings.Wireguard.GSO {
 		tunFile, err := wireguard.OpenTUNFile(interfaceName)
 		if err != nil {
 			return 0, nil, fmt.Errorf("opening TUN device without IFF_VNET_HDR: %w", err)

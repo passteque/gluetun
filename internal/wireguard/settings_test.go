@@ -25,6 +25,7 @@ func Test_Settings_SetDefaults(t *testing.T) {
 				MTU:            device.DefaultMTU,
 				IPv6:           ptr(false),
 				Implementation: "auto",
+				GSO:            ptr(true),
 			},
 		},
 		"default endpoint port": {
@@ -39,6 +40,7 @@ func Test_Settings_SetDefaults(t *testing.T) {
 				MTU:            device.DefaultMTU,
 				IPv6:           ptr(false),
 				Implementation: "auto",
+				GSO:            ptr(true),
 			},
 		},
 		"not empty settings": {
@@ -50,6 +52,7 @@ func Test_Settings_SetDefaults(t *testing.T) {
 				MTU:            device.DefaultMTU,
 				IPv6:           ptr(true),
 				Implementation: "userspace",
+				GSO:            ptr(false),
 			},
 			expected: Settings{
 				InterfaceName:  "wg1",
@@ -59,6 +62,7 @@ func Test_Settings_SetDefaults(t *testing.T) {
 				MTU:            device.DefaultMTU,
 				IPv6:           ptr(true),
 				Implementation: "userspace",
+				GSO:            ptr(false),
 			},
 		},
 	}

@@ -62,6 +62,7 @@ func Test_New(t *testing.T) {
 						MTU:            device.DefaultMTU,
 						IPv6:           ptrTo(false),
 						Implementation: "auto",
+						GSO:            ptrTo(true),
 					},
 				},
 			},

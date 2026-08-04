@@ -62,7 +62,7 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 	) {
 		return setupFunction(ctx,
 			w.settings.InterfaceName, w.netlink, w.settings.MTU,
-			w.settings.DisableGSO, cleanups, w.logger)
+			*w.settings.GSO, cleanups, w.logger)
 	}
 
 	Run(ctx, waitError, ready, setup, w.settings, w.netlink, w.logger)
@@ -191,10 +191,10 @@ func setupKernelSpace(ctx context.Context,
 
 func setupUserSpace(ctx context.Context,
 	interfaceName string, netLinker NetLinker, mtu uint32,
-	disableGSO bool, cleanups *cleanup.Cleanups, logger Logger) (
+	gso bool, cleanups *cleanup.Cleanups, logger Logger) (
 	linkIndex uint32, waitAndCleanup func() error, err error,
 ) {
-	tun, err := createTUN(interfaceName, int(mtu), disableGSO)
+	tun, err := createTUN(interfaceName, int(mtu), gso)
 	if err != nil {
 		return 0, nil, fmt.Errorf("creating TUN device: %w", err)
 	}
@@ -220,7 +220,7 @@ func setupUserSpace(ctx context.Context,
 
 	cleanups.Add("closing bind", 7, bind.Close)
 
-	deviceLogger := makeDeviceLogger(logger)
+	deviceLogger := makeDeviceLogger(logger, gso)
 	device := device.NewDevice(tun, bind, deviceLogger)
 
 	cleanups.Add("closing Wireguard device", 6, func() error {

@@ -40,7 +40,7 @@ func Test_buildWireguardSettings(t *testing.T) {
 				PersistentKeepaliveInterval: ptrTo(time.Hour),
 				Interface:                   "wg1",
 				MTU:                         ptrTo(uint32(1000)),
-				DisableGSO:                  ptrTo(false),
+				GSO:                         ptrTo(true),
 			},
 			ipv6Supported: false,
 			settings: wireguard.Settings{
@@ -59,6 +59,7 @@ func Test_buildWireguardSettings(t *testing.T) {
 				RulePriority:                101,
 				IPv6:                        ptrTo(false),
 				MTU:                         1000,
+				GSO:                         ptrTo(true),
 			},
 		},
 		"gso_disabled": {
@@ -73,7 +74,7 @@ func Test_buildWireguardSettings(t *testing.T) {
 				PersistentKeepaliveInterval: ptrTo(time.Duration(0)),
 				Interface:                   "wg0",
 				MTU:                         ptrTo(uint32(0)),
-				DisableGSO:                  ptrTo(true),
+				GSO:                         ptrTo(false),
 			},
 			ipv6Supported: false,
 			settings: wireguard.Settings{
@@ -86,7 +87,7 @@ func Test_buildWireguardSettings(t *testing.T) {
 				RulePriority:  101,
 				IPv6:          ptrTo(false),
 				MTU:           1320,
-				DisableGSO:    true,
+				GSO:           ptrTo(false),
 			},
 		},
 	}

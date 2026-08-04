@@ -48,11 +48,13 @@ type Settings struct {
 	// Implementation is the implementation to use.
 	// It can be auto, kernelspace or userspace, and defaults to auto.
 	Implementation string
-	// DisableGSO creates the TUN device without IFF_VNET_HDR so that
-	// wireguard-go falls back to single-packet reads and writes instead
-	// of its GRO/GSO batch I/O path.
-	// See WIREGUARD_DISABLE_GSO for details.
-	DisableGSO bool
+	// GSO enables wireguard-go's GRO/GSO batch I/O path by creating
+	// the TUN device with IFF_VNET_HDR. When set to false, the TUN
+	// device is created without IFF_VNET_HDR so that wireguard-go
+	// falls back to single-packet reads and writes.
+	// It defaults to true and cannot be nil in the internal state.
+	// See WIREGUARD_GSO for details.
+	GSO *bool
 }
 
 func (s *Settings) SetDefaults() {
@@ -90,6 +92,11 @@ func (s *Settings) SetDefaults() {
 	if s.Implementation == "" {
 		const defaultImplementation = "auto"
 		s.Implementation = defaultImplementation
+	}
+
+	if s.GSO == nil {
+		gso := true
+		s.GSO = &gso
 	}
 }
 

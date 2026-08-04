@@ -8,19 +8,23 @@ import (
 	"golang.zx2c4.com/wireguard/tun"
 )
 
-// createTUN creates a TUN device. When disableGSO is true, IFF_VNET_HDR is
+// createTUN creates a TUN device. When gso is false, IFF_VNET_HDR is
 // omitted so wireguard-go's initFromFlags sees no vnet header support and
 // keeps tun.vnetHdr=false, falling back to simple single-packet writes instead
 // of the GRO/GSO batch path that causes EINVAL on some vendor kernels.
-func createTUN(name string, mtu int, disableGSO bool) (tun.Device, error) { //nolint:ireturn
-	if !disableGSO {
+func createTUN(name string, mtu int, gso bool) (tun.Device, error) { //nolint:ireturn
+	if gso {
 		return tun.CreateTUN(name, mtu)
 	}
 	tunFile, err := OpenTUNFile(name)
 	if err != nil {
 		return nil, err
 	}
-	return tun.CreateTUNFromFile(tunFile, mtu)
+	tunDevice, err := tun.CreateTUNFromFile(tunFile, mtu)
+	if err != nil {
+		return nil, fmt.Errorf("creating tun fd file: %w", err)
+	}
+	return tunDevice, nil
 }
 
 // OpenTUNFile opens /dev/net/tun with IFF_TUN|IFF_NO_PI but without
