@@ -18,11 +18,11 @@ func createTUN(name string, mtu int, gso bool) (tun.Device, error) { //nolint:ir
 	}
 	tunFile, err := OpenTUNFile(name)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating tun fd file: %w", err)
 	}
 	tunDevice, err := tun.CreateTUNFromFile(tunFile, mtu)
 	if err != nil {
-		return nil, fmt.Errorf("creating tun fd file: %w", err)
+		return nil, fmt.Errorf("creating TUN device from file: %w", err)
 	}
 	return tunDevice, nil
 }
