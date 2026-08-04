@@ -4,7 +4,7 @@ go 1.25.0
 
 require (
 	github.com/ProtonMail/go-srp v0.0.7
-	github.com/amnezia-vpn/amneziawg-go v0.2.18
+	github.com/amnezia-vpn/amneziawg-go v0.2.19
 	github.com/breml/rootcerts v0.3.4
 	github.com/fatih/color v1.18.0
 	github.com/jsimonetti/rtnetlink v1.4.2
