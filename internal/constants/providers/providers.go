@@ -4,6 +4,7 @@ const (
 	// Custom is the VPN provider name for custom
 	// VPN configurations.
 	Airvpn                = "airvpn"
+	Azirevpn              = "azirevpn"
 	Custom                = "custom"
 	Cyberghost            = "cyberghost"
 	Example               = "example"
@@ -34,6 +35,7 @@ const (
 func All() []string {
 	return []string{
 		Airvpn,
+		Azirevpn,
 		Cyberghost,
 		Expressvpn,
 		Fastestvpn,

@@ -36,6 +36,8 @@ type Updater struct {
 	ProtonEmail *string
 	// ProtonPassword is the password to authenticate with the Proton API.
 	ProtonPassword *string
+	// AzirevpnToken is the token for AzireVPN API.
+	AzirevpnToken string
 }
 
 func (u Updater) Validate() (err error) {
@@ -81,6 +83,7 @@ func (u *Updater) copy() (copied Updater) {
 		PreferDirectDownload: gosettings.CopyPointer(u.PreferDirectDownload),
 		ProtonEmail:          gosettings.CopyPointer(u.ProtonEmail),
 		ProtonPassword:       gosettings.CopyPointer(u.ProtonPassword),
+		AzirevpnToken:        u.AzirevpnToken,
 	}
 }
 
@@ -94,6 +97,7 @@ func (u *Updater) overrideWith(other Updater) {
 	u.PreferDirectDownload = gosettings.OverrideWithPointer(u.PreferDirectDownload, other.PreferDirectDownload)
 	u.ProtonEmail = gosettings.OverrideWithPointer(u.ProtonEmail, other.ProtonEmail)
 	u.ProtonPassword = gosettings.OverrideWithPointer(u.ProtonPassword, other.ProtonPassword)
+	u.AzirevpnToken = gosettings.OverrideWithComparable(u.AzirevpnToken, other.AzirevpnToken)
 }
 
 func (u *Updater) SetDefaults(vpnProvider string) {
@@ -112,6 +116,7 @@ func (u *Updater) SetDefaults(vpnProvider string) {
 	u.PreferDirectDownload = gosettings.DefaultPointer(u.PreferDirectDownload, false)
 	u.ProtonEmail = gosettings.DefaultPointer(u.ProtonEmail, "")
 	u.ProtonPassword = gosettings.DefaultPointer(u.ProtonPassword, "")
+	u.AzirevpnToken = gosettings.DefaultComparable(u.AzirevpnToken, "")
 }
 
 func (u Updater) String() string {
@@ -131,6 +136,9 @@ func (u Updater) toLinesNode() (node *gotree.Node) {
 	if slices.Contains(u.Providers, providers.Protonvpn) {
 		node.Appendf("Proton API email: %s", *u.ProtonEmail)
 		node.Appendf("Proton API password: %s", gosettings.ObfuscateKey(*u.ProtonPassword))
+	}
+	if slices.Contains(u.Providers, providers.Azirevpn) && u.AzirevpnToken != "" {
+		node.Appendf("AzireVPN API token: %s", gosettings.ObfuscateKey(u.AzirevpnToken))
 	}
 
 	return node
@@ -163,6 +171,7 @@ func (u *Updater) read(r *reader.Reader) (err error) {
 		}
 	}
 	u.ProtonPassword = r.Get("UPDATER_PROTONVPN_PASSWORD")
+	u.AzirevpnToken = r.String("AZIREVPN_TOKEN", reader.ForceLowercase(false))
 
 	return nil
 }
