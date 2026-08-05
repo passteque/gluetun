@@ -14,7 +14,7 @@ func commaJoin(slice []string) string {
 	return strings.Join(slice, ", ")
 }
 
-func noServerFoundError(selection settings.ServerSelection) (err error) {
+func noServerFoundError(selection settings.ServerSelection) (err error) { //nolint:gocyclo
 	var messageParts []string
 
 	messageParts = append(messageParts, "VPN "+selection.VPN)
@@ -153,6 +153,15 @@ func noServerFoundError(selection settings.ServerSelection) (err error) {
 	if targetIP.IsValid() {
 		messageParts = append(messageParts,
 			"target ip address "+targetIP.String())
+	}
+
+	customPort := *selection.OpenVPN.CustomPort
+	if selection.VPN == vpn.Wireguard {
+		customPort = *selection.Wireguard.EndpointPort
+	}
+	if customPort > 0 {
+		messageParts = append(messageParts,
+			fmt.Sprintf("%s endpoint port %d", selection.VPN, customPort))
 	}
 
 	message := "for " + strings.Join(messageParts, "; ")

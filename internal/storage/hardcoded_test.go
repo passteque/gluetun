@@ -33,7 +33,10 @@ func Test_parseHardcodedServers(t *testing.T) {
 func Test_parseHardcodedServers_filepathsAndEmbeddedProviderFiles(t *testing.T) {
 	t.Parallel()
 
-	hardcodedServers := parseHardcodedServers()
+	var hardcodedServers models.AllServers
+	require.NotPanics(t, func() {
+		hardcodedServers = parseHardcodedServers()
+	})
 
 	allProviders := providers.All()
 	for _, provider := range allProviders {

@@ -63,6 +63,9 @@ type ServerSelection struct {
 	// TorOnly is true if VPN servers without tor should
 	// be filtered. This is used with ProtonVPN.
 	TorOnly *bool `json:"tor_only"`
+	// Dedicated is true if dedicated VPN servers should be chosen only.
+	// This is used with OVPN.
+	Dedicated *bool `json:"dedicated"`
 	// OpenVPN contains settings to select OpenVPN servers
 	// and the final connection.
 	OpenVPN OpenVPNSelection `json:"openvpn"`
@@ -272,6 +275,8 @@ func validateFeatureFilters(settings ServerSelection, vpnServiceProvider string)
 		return errors.New("secure core only filter is not supported")
 	case *settings.TorOnly && vpnServiceProvider != providers.Protonvpn:
 		return errors.New("tor only filter is not supported")
+	case *settings.Dedicated && vpnServiceProvider != providers.Ovpn:
+		return errors.New("dedicated filter is not supported")
 	default:
 		return nil
 	}
@@ -296,6 +301,7 @@ func (ss *ServerSelection) copy() (copied ServerSelection) {
 		TorOnly:         gosettings.CopyPointer(ss.TorOnly),
 		PortForwardOnly: gosettings.CopyPointer(ss.PortForwardOnly),
 		MultiHopOnly:    gosettings.CopyPointer(ss.MultiHopOnly),
+		Dedicated:       gosettings.CopyPointer(ss.Dedicated),
 		OpenVPN:         ss.OpenVPN.copy(),
 		Wireguard:       ss.Wireguard.copy(),
 	}
@@ -319,6 +325,7 @@ func (ss *ServerSelection) overrideWith(other ServerSelection) {
 	ss.TorOnly = gosettings.OverrideWithPointer(ss.TorOnly, other.TorOnly)
 	ss.MultiHopOnly = gosettings.OverrideWithPointer(ss.MultiHopOnly, other.MultiHopOnly)
 	ss.PortForwardOnly = gosettings.OverrideWithPointer(ss.PortForwardOnly, other.PortForwardOnly)
+	ss.Dedicated = gosettings.OverrideWithPointer(ss.Dedicated, other.Dedicated)
 	ss.OpenVPN.overrideWith(other.OpenVPN)
 	ss.Wireguard.overrideWith(other.Wireguard)
 }
@@ -335,6 +342,7 @@ func (ss *ServerSelection) setDefaults(vpnProvider string, portForwardingEnabled
 	defaultPortForwardOnly := portForwardingEnabled &&
 		helpers.IsOneOf(vpnProvider, providers.PrivateInternetAccess, providers.Protonvpn)
 	ss.PortForwardOnly = gosettings.DefaultPointer(ss.PortForwardOnly, defaultPortForwardOnly)
+	ss.Dedicated = gosettings.DefaultPointer(ss.Dedicated, false)
 	ss.OpenVPN.setDefaults(vpnProvider)
 	ss.Wireguard.setDefaults()
 }
@@ -408,6 +416,10 @@ func (ss ServerSelection) toLinesNode() (node *gotree.Node) {
 
 	if *ss.MultiHopOnly {
 		node.Appendf("Multi-hop only servers: yes")
+	}
+
+	if *ss.Dedicated {
+		node.Appendf("Dedicated servers: yes")
 	}
 
 	if *ss.PortForwardOnly {
@@ -497,6 +509,12 @@ func (ss *ServerSelection) read(r *reader.Reader,
 
 	// PIA and ProtonVPN only
 	ss.PortForwardOnly, err = r.BoolPtr("PORT_FORWARD_ONLY")
+	if err != nil {
+		return err
+	}
+
+	// Ovpn only
+	ss.Dedicated, err = r.BoolPtr("SERVER_DEDICATED")
 	if err != nil {
 		return err
 	}

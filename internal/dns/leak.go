@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"math/rand/v2"
 	"net/http"
@@ -84,11 +85,14 @@ func triggerDNSQuery(ctx context.Context, client *http.Client, session string) (
 		IP      map[string]uint `json:"ip"`
 	}
 
-	decoder := json.NewDecoder(response.Body)
-	var data ipLeakData
-	err = decoder.Decode(&data)
+	rawData, err := io.ReadAll(response.Body)
 	if err != nil {
-		return nil, fmt.Errorf("decoding response: %w", err)
+		return nil, fmt.Errorf("reading response body: %w", err)
+	}
+	var data ipLeakData
+	err = json.Unmarshal(rawData, &data)
+	if err != nil {
+		return nil, fmt.Errorf("decoding response %q: %w", rawData, err)
 	} else if data.Session != session {
 		return nil, fmt.Errorf("ipleak.net session mismatch: expected %s, got %s", session, data.Session)
 	}

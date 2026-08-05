@@ -6,6 +6,7 @@ import (
 	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/constants"
 	"github.com/qdm12/gluetun/internal/constants/vpn"
+	"github.com/qdm12/gluetun/internal/models"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,6 +23,7 @@ func Test_GetPort(t *testing.T) {
 
 	testCases := map[string]struct {
 		selection         settings.ServerSelection
+		server            models.Server
 		defaultOpenVPNTCP uint16
 		defaultOpenVPNUDP uint16
 		defaultWireguard  uint16
@@ -47,6 +49,20 @@ func Test_GetPort(t *testing.T) {
 			defaultOpenVPNUDP: defaultOpenVPNUDP,
 			defaultWireguard:  defaultWireguard,
 			port:              defaultOpenVPNUDP,
+		},
+		"OpenVPN_server_port_udp": {
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					CustomPort: uint16Ptr(0),
+					Protocol:   constants.UDP,
+				},
+			},
+			server: models.Server{
+				PortsUDP: []uint16{1234},
+			},
+			defaultOpenVPNUDP: defaultOpenVPNUDP,
+			port:              1234,
 		},
 		"OpenVPN UDP no default port defined": {
 			selection: settings.ServerSelection{
@@ -88,6 +104,20 @@ func Test_GetPort(t *testing.T) {
 			},
 			port: 1234,
 		},
+		"OpenVPN_server_port_tcp": {
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					CustomPort: uint16Ptr(0),
+					Protocol:   constants.TCP,
+				},
+			},
+			server: models.Server{
+				PortsTCP: []uint16{1234},
+			},
+			defaultOpenVPNTCP: defaultOpenVPNTCP,
+			port:              1234,
+		},
 		"Wireguard": {
 			selection: settings.ServerSelection{
 				VPN: vpn.Wireguard,
@@ -101,6 +131,19 @@ func Test_GetPort(t *testing.T) {
 				Wireguard: settings.WireguardSelection{
 					EndpointPort: uint16Ptr(1234),
 				},
+			},
+			defaultWireguard: defaultWireguard,
+			port:             1234,
+		},
+		"Wireguard_server_port": {
+			selection: settings.ServerSelection{
+				VPN: vpn.Wireguard,
+				Wireguard: settings.WireguardSelection{
+					EndpointPort: uint16Ptr(0),
+				},
+			},
+			server: models.Server{
+				PortsUDP: []uint16{1234},
 			},
 			defaultWireguard: defaultWireguard,
 			port:             1234,
@@ -120,6 +163,7 @@ func Test_GetPort(t *testing.T) {
 			if testCase.panics != "" {
 				assert.PanicsWithValue(t, testCase.panics, func() {
 					_ = getPort(testCase.selection,
+						testCase.server,
 						testCase.defaultOpenVPNTCP,
 						testCase.defaultOpenVPNUDP,
 						testCase.defaultWireguard)
@@ -128,6 +172,7 @@ func Test_GetPort(t *testing.T) {
 			}
 
 			port := getPort(testCase.selection,
+				testCase.server,
 				testCase.defaultOpenVPNTCP,
 				testCase.defaultOpenVPNUDP,
 				testCase.defaultWireguard)

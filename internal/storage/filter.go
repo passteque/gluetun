@@ -3,6 +3,7 @@ package storage
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
@@ -48,6 +49,7 @@ func (s *Storage) FilterServers(provider string, selection settings.ServerSelect
 	return servers, nil
 }
 
+//nolint:gocognit,gocyclo
 func filterServer(server models.Server,
 	selection settings.ServerSelection,
 ) (filtered bool) {
@@ -90,6 +92,11 @@ func filterServer(server models.Server,
 		return true
 	}
 
+	if (*selection.Dedicated && !server.Dedicated) ||
+		(!*selection.Dedicated && server.Dedicated) {
+		return false
+	}
+
 	if filterByPossibilities(server.Country, selection.Countries) {
 		return true
 	}
@@ -119,6 +126,14 @@ func filterServer(server models.Server,
 	}
 
 	if filterByPossibilities(server.Hostname, selection.Hostnames) {
+		return true
+	}
+
+	serverPorts := server.PortsUDP
+	if server.VPN == vpn.OpenVPN && server.TCP {
+		serverPorts = server.PortsTCP
+	}
+	if filterByPorts(selection, serverPorts) {
 		return true
 	}
 
@@ -164,4 +179,22 @@ func filterByProtocol(selection settings.ServerSelection,
 		wantUDP := !wantTCP
 		return (wantTCP && !serverTCP) || (wantUDP && !serverUDP)
 	}
+}
+
+func filterByPorts(selection settings.ServerSelection,
+	serverPorts []uint16,
+) (filtered bool) {
+	if len(serverPorts) == 0 {
+		return false
+	}
+
+	customPort := *selection.OpenVPN.CustomPort
+	if selection.VPN == vpn.Wireguard {
+		customPort = *selection.Wireguard.EndpointPort
+	}
+	if customPort == 0 {
+		return false
+	}
+
+	return !slices.Contains(serverPorts, customPort)
 }
