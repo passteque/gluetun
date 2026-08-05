@@ -43,7 +43,8 @@ type PortForwarding struct {
 	// forwarded ports. The redirection is disabled if it is the slice [0],
 	// which is its default as well. If set and not [0], its length must match
 	// the PortsCount value, such that each forwarded port is redirected to
-	// the corresponding listening port.
+	// the corresponding listening port. For Cryptostorm, ListeningPorts[0]
+	// also specifies the port to request from the forwarding server (30000–65535).
 	ListeningPorts []uint16 `json:"listening_port"`
 	// PortsCount is the number of ports to forward. It is optional for ProtonVPN
 	// and be between 1 and 5. For other providers, it must be set to 1 if port
@@ -66,6 +67,7 @@ func (p PortForwarding) Validate(vpnProvider string) (err error) {
 		providerSelected = *p.Provider
 	}
 	validProviders := []string{
+		providers.Cryptostorm,
 		providers.Perfectprivacy,
 		providers.PrivateInternetAccess,
 		providers.Privatevpn,
@@ -143,14 +145,21 @@ func (p *PortForwarding) OverrideWith(other PortForwarding) {
 	p.Password = gosettings.OverrideWithComparable(p.Password, other.Password)
 }
 
-func (p *PortForwarding) setDefaults() {
+func (p *PortForwarding) setDefaults(vpnProvider string) {
 	p.Enabled = gosettings.DefaultPointer(p.Enabled, false)
 	p.Provider = gosettings.DefaultPointer(p.Provider, "")
 	p.Filepath = gosettings.DefaultPointer(p.Filepath, "/tmp/gluetun/forwarded_port")
 	p.UpCommand = gosettings.DefaultPointer(p.UpCommand, "")
 	p.DownCommand = gosettings.DefaultPointer(p.DownCommand, "")
 	p.ListeningPorts = gosettings.DefaultSlice(p.ListeningPorts, []uint16{0}) // disabled
-	p.PortsCount = gosettings.DefaultComparable(p.PortsCount, 1)
+	// For Cryptostorm, default PortsCount to the number of listening ports
+	// specified, since each listening port maps directly to a requested port.
+	defaultPortsCount := uint16(1)
+	if vpnProvider == providers.Cryptostorm &&
+		len(p.ListeningPorts) > 0 && p.ListeningPorts[0] != 0 {
+		defaultPortsCount = uint16(len(p.ListeningPorts))
+	}
+	p.PortsCount = gosettings.DefaultComparable(p.PortsCount, defaultPortsCount)
 }
 
 func (p PortForwarding) String() string {

@@ -44,6 +44,7 @@ func (p *Provider) validate(vpnType string, filterChoicesGetter FilterChoicesGet
 	case vpn.Wireguard:
 		validNames = []string{
 			providers.Airvpn,
+			providers.Cryptostorm,
 			providers.Custom,
 			providers.Fastestvpn,
 			providers.Ivpn,
@@ -87,7 +88,7 @@ func (p *Provider) overrideWith(other Provider) {
 
 func (p *Provider) setDefaults() {
 	p.Name = gosettings.DefaultComparable(p.Name, providers.PrivateInternetAccess)
-	p.PortForwarding.setDefaults()
+	p.PortForwarding.setDefaults(p.Name)
 	p.ServerSelection.setDefaults(p.Name, *p.PortForwarding.Enabled)
 }
 

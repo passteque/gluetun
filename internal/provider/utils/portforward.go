@@ -27,6 +27,10 @@ type PortForwardObjects struct {
 	Password string
 	// PortsCount is used by ProtonVPN for port forwarding.
 	PortsCount uint16
+	// ListeningPorts are the user-specified ports. For Cryptostorm, ListeningPorts[0]
+	// is the port to request from the forwarding server (must be 30000–65535).
+	// A nil or [0] value means fall back to the persisted port.
+	ListeningPorts []uint16
 }
 
 type Routing interface {
