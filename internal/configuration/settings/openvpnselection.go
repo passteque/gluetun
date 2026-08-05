@@ -74,7 +74,7 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 		// no custom port allowed
 		case providers.Expressvpn, providers.Fastestvpn,
 			providers.Giganews, providers.Ipvanish,
-			providers.Nordvpn, providers.Purevpn,
+			providers.Nordvpn,
 			providers.Surfshark, providers.VPNSecure,
 			providers.VPNUnlimited, providers.Vyprvpn:
 			return fmt.Errorf("custom endpoint port is not allowed: for VPN service provider %s", vpnProvider)
@@ -105,6 +105,9 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 			case providers.Protonvpn:
 				allowedTCP = []uint16{443, 5995, 8443}
 				allowedUDP = []uint16{80, 443, 1194, 4569, 5060, 51820}
+			case providers.Purevpn:
+				allowedTCP = []uint16{80, 443}
+				allowedUDP = []uint16{53, 1194, 15021}
 			case providers.SlickVPN:
 				allowedTCP = []uint16{443, 8080, 8888}
 				allowedUDP = []uint16{443, 8080, 8888}

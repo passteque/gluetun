@@ -2,6 +2,7 @@ package updater
 
 import (
 	"net/netip"
+	"slices"
 
 	"github.com/qdm12/gluetun/internal/constants/vpn"
 	"github.com/qdm12/gluetun/internal/models"
@@ -9,19 +10,54 @@ import (
 
 type hostToServer map[string]models.Server
 
-func (hts hostToServer) add(host string, tcp, udp bool) {
+func (hts hostToServer) add(host string, ips []netip.Addr, tcp, udp bool, tcpPorts, udpPorts []uint16, p2pTagged bool) {
 	server, ok := hts[host]
 	if !ok {
 		server.VPN = vpn.OpenVPN
 		server.Hostname = host
 	}
+	for _, ip := range ips {
+		server.IPs = appendIfMissing(server.IPs, ip)
+	}
+	portForward, quantumResistant, obfuscated, p2pInHost := inferPureVPNTraits(host)
+	server.PortForward = server.PortForward || portForward
+	server.QuantumResistant = server.QuantumResistant || quantumResistant
+	server.Obfuscated = server.Obfuscated || obfuscated
+	if p2pTagged || p2pInHost {
+		server.Categories = appendIfMissing(server.Categories, "p2p")
+	}
 	if tcp {
 		server.TCP = true
+		for _, port := range tcpPorts {
+			server.TCPPorts = appendIfMissing(server.TCPPorts, port)
+		}
 	}
 	if udp {
 		server.UDP = true
+		for _, port := range udpPorts {
+			server.UDPPorts = appendIfMissing(server.UDPPorts, port)
+		}
 	}
 	hts[host] = server
+}
+
+func (hts hostToServer) mergeWithFallback(fallback hostToServer) {
+	for host, server := range fallback {
+		existing, ok := hts[host]
+		if !ok {
+			hts[host] = server
+			continue
+		}
+
+		// Do not add IP from fallback if existing server already has IPs
+		fallbackIPs := server.IPs
+		if len(existing.IPs) > 0 {
+			fallbackIPs = nil
+		}
+
+		p2pTagged := slices.Contains(server.Categories, "p2p")
+		hts.add(host, fallbackIPs, server.TCP, server.UDP, server.TCPPorts, server.UDPPorts, p2pTagged)
+	}
 }
 
 func (hts hostToServer) toHostsSlice() (hosts []string) {

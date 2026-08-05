@@ -52,8 +52,6 @@ func GetConnection(provider string,
 	})
 
 	protocol := getProtocol(selection)
-	port := getPort(selection, defaults.OpenVPNTCPPort,
-		defaults.OpenVPNUDPPort, defaults.WireguardPort)
 
 	connections := make([]models.Connection, 0, len(servers))
 	for _, server := range servers {
@@ -61,6 +59,9 @@ func GetConnection(provider string,
 			if !ipv6Supported && ip.Is6() {
 				continue
 			}
+
+			port := getPort(selection, server, defaults.OpenVPNTCPPort,
+				defaults.OpenVPNUDPPort, defaults.WireguardPort)
 
 			hostname := server.Hostname
 			if selection.VPN == vpn.OpenVPN && server.OvpnX509 != "" {
