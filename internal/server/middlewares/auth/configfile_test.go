@@ -27,7 +27,7 @@ func Test_Read(t *testing.T) {
 			fileContent: `unknown = "what is this"`,
 			errMessage: `toml decoding file: strict mode: fields in the document are missing in the target struct:
 1| unknown = "what is this"
- | ~~~~~~~ missing field`,
+ | ~~~~~~~ unknown field`,
 		},
 		"filled_settings": {
 			fileContent: `[[roles]]
