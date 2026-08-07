@@ -198,6 +198,7 @@ ENV VPN_SERVICE_PROVIDER=pia \
     FIREWALL_VPN_INPUT_PORTS= \
     FIREWALL_INPUT_PORTS= \
     FIREWALL_OUTBOUND_SUBNETS= \
+    FIREWALL_IMPLEMENTATION=auto \
     FIREWALL_IPTABLES_LOG_LEVEL=info \
     # IPv6
     IPV6_CHECK_ADDRESSES=[2001:4860:4860::8888]:53,[2606:4700:4700::1111]:53 \
@@ -283,7 +284,7 @@ RUN apk add --no-cache --update -l wget && \
     apk add --no-cache --update -X "https://dl-cdn.alpinelinux.org/alpine/v3.17/main" openvpn\~2.5 && \
     mv /usr/sbin/openvpn /usr/sbin/openvpn2.5 && \
     apk del openvpn && \
-    apk add --no-cache --update openvpn ca-certificates iptables iptables-legacy tzdata && \
+    apk add --no-cache --update openvpn ca-certificates nftables iptables iptables-legacy tzdata && \
     mv /usr/sbin/openvpn /usr/sbin/openvpn2.6 && \
     rm -rf /var/cache/apk/* /etc/openvpn/*.sh /usr/lib/openvpn/plugins/openvpn-plugin-down-root.so && \
     deluser openvpn && \
