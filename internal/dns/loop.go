@@ -52,7 +52,8 @@ func NewLoop(settings settings.DNS,
 	state := state.New(statusManager, settings, updateTicker)
 
 	filter, err := mapfilter.New(mapfilter.Settings{
-		Logger: buildFilterLogger(logger),
+		PublicNamesAsLocal: settings.PublicNamesAsLocal,
+		Logger:             buildFilterLogger(logger),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("creating map filter: %w", err)

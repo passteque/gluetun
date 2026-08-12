@@ -3,6 +3,7 @@ package settings
 import (
 	"fmt"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/qdm12/dns/v2/pkg/provider"
@@ -48,6 +49,11 @@ type DNS struct {
 	// Note, if the upstream type is [dnsUpstreamTypePlain] and this field is set,
 	// the Providers field is ignored.
 	UpstreamPlainAddresses []netip.AddrPort
+	// PublicNamesAsLocal is a list of hostnames that should be resolved
+	// as local hostnames, even if they are public. This is useful for
+	// split-horizon DNS setups where certain public names should be resolved
+	// using local resolvers.
+	PublicNamesAsLocal []string `json:"public_names_as_local"`
 }
 
 func (d DNS) validate() (err error) {
@@ -127,6 +133,7 @@ func (d *DNS) Copy() (copied DNS) {
 		IPv6:                   gosettings.CopyPointer(d.IPv6),
 		Blacklist:              d.Blacklist.copy(),
 		UpstreamPlainAddresses: gosettings.CopySlice(d.UpstreamPlainAddresses),
+		PublicNamesAsLocal:     gosettings.CopySlice(d.PublicNamesAsLocal),
 	}
 }
 
@@ -142,6 +149,7 @@ func (d *DNS) overrideWith(other DNS) {
 	d.IPv6 = gosettings.OverrideWithPointer(d.IPv6, other.IPv6)
 	d.Blacklist.overrideWith(other.Blacklist)
 	d.UpstreamPlainAddresses = gosettings.OverrideWithSlice(d.UpstreamPlainAddresses, other.UpstreamPlainAddresses)
+	d.PublicNamesAsLocal = gosettings.OverrideWithSlice(d.PublicNamesAsLocal, other.PublicNamesAsLocal)
 }
 
 func (d *DNS) setDefaults() {
@@ -158,6 +166,7 @@ func (d *DNS) setDefaults() {
 	d.Caching = gosettings.DefaultPointer(d.Caching, true)
 	d.IPv6 = gosettings.DefaultPointer(d.IPv6, false)
 	d.Blacklist.setDefaults()
+	d.PublicNamesAsLocal = gosettings.DefaultSlice(d.PublicNamesAsLocal, []string{})
 }
 
 func defaultDNSProviders() []string {
@@ -212,6 +221,11 @@ func (d DNS) toLinesNode() (node *gotree.Node) {
 
 	node.AppendNode(d.Blacklist.toLinesNode())
 
+	if len(d.PublicNamesAsLocal) > 0 {
+		node.Appendf("Public names to resolve using local resolvers: %s",
+			strings.Join(d.PublicNamesAsLocal, ", "))
+	}
+
 	return node
 }
 
@@ -249,6 +263,8 @@ func (d *DNS) read(r *reader.Reader) (err error) {
 	if err != nil {
 		return err
 	}
+
+	d.PublicNamesAsLocal = r.CSV("DNS_PUBLIC_NAMES_AS_LOCAL")
 
 	return nil
 }

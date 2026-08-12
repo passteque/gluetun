@@ -103,8 +103,9 @@ func buildServerSettings(userSettings settings.DNS,
 		localResolversAddrPorts[i] = netip.AddrPortFrom(addr, defaultDNSPort)
 	}
 	localDNSMiddleware, err := localdns.New(localdns.Settings{
-		Resolvers: localResolversAddrPorts, // auto-detected at container start only
-		Logger:    logger,
+		Resolvers:          localResolversAddrPorts, // auto-detected at container start only
+		PublicNamesAsLocal: userSettings.PublicNamesAsLocal,
+		Logger:             logger,
 	})
 	if err != nil {
 		return server.Settings{}, fmt.Errorf("creating local DNS middleware: %w", err)
