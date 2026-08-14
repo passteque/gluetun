@@ -38,6 +38,10 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 			vpnInterface = settings.AmneziaWg.Wireguard.Interface
 			vpnRunner, connection, err = setupAmneziaWg(ctx, l.netLinker, l.fw,
 				providerConf, settings, l.ipv6SupportLevel, subLogger)
+		case vpn.Custom:
+			vpnInterface = settings.CustomVPN.Interface
+			vpnRunner, connection, err = setupCustomVPN(ctx, l.fw,
+				l.netLinker, settings, l.cmder, subLogger)
 		case vpn.OpenVPN:
 			vpnInterface = settings.OpenVPN.Interface
 			vpnRunner, connection, err = setupOpenVPN(ctx, l.fw,
@@ -56,7 +60,10 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		tunnelUpData := tunnelUpData{
 			upCommand: *settings.UpCommand,
 			pmtud: tunnelUpPMTUDData{
-				enabled:   settings.Type != vpn.Wireguard || *settings.Wireguard.MTU == 0,
+				// PMTUD is disabled for the custom VPN type since the tunnel
+				// overhead of a custom VPN binary is unknown.
+				enabled: settings.Type != vpn.Custom &&
+					(settings.Type != vpn.Wireguard || *settings.Wireguard.MTU == 0),
 				vpnType:   settings.Type,
 				network:   connection.Protocol,
 				ipv6:      l.isIPv6Used(settings),

@@ -75,7 +75,7 @@ func (ss *ServerSelection) validate(vpnServiceProvider string,
 	filterChoicesGetter FilterChoicesGetter, warner Warner,
 ) (err error) {
 	switch ss.VPN {
-	case vpn.AmneziaWg, vpn.OpenVPN, vpn.Wireguard:
+	case vpn.AmneziaWg, vpn.Custom, vpn.OpenVPN, vpn.Wireguard:
 	default:
 		return fmt.Errorf("VPN type is not valid: %s", ss.VPN)
 	}
@@ -108,12 +108,16 @@ func (ss *ServerSelection) validate(vpnServiceProvider string,
 		return fmt.Errorf("for VPN service provider %s: %w", vpnServiceProvider, err)
 	}
 
-	if ss.VPN == vpn.OpenVPN {
+	switch ss.VPN {
+	case vpn.Custom:
+		// The connection endpoint is defined by the custom VPN settings,
+		// so there is no server selection to validate.
+	case vpn.OpenVPN:
 		err = ss.OpenVPN.validate(vpnServiceProvider)
 		if err != nil {
 			return fmt.Errorf("OpenVPN server selection settings: %w", err)
 		}
-	} else {
+	default:
 		err = ss.Wireguard.validate(vpnServiceProvider)
 		if err != nil {
 			return fmt.Errorf("Wireguard server selection settings: %w", err)

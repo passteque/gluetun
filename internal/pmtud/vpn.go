@@ -31,6 +31,12 @@ func MaxTheoreticalVPNMTU(vpnType, network string, ipv6 bool) uint32 {
 		vpnLinkMTU -= pconstants.WireguardHeaderLength
 	case vpn.OpenVPN:
 		vpnLinkMTU -= pconstants.OpenVPNHeaderMaxLength
+	case vpn.Custom:
+		// The tunnel overhead of a custom VPN binary is unknown, so
+		// the largest known VPN header overhead is used. This is only
+		// defensive, since path MTU discovery is disabled for the
+		// custom VPN type.
+		vpnLinkMTU -= pconstants.OpenVPNHeaderMaxLength
 	default:
 		panic("unknown VPN type: " + vpnType)
 	}
