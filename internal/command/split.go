@@ -8,7 +8,7 @@ import (
 	"unicode/utf8"
 )
 
-// split splits a command string into a slice of arguments.
+// Split splits a command string into a slice of arguments.
 // This is especially important for commands such as:
 // /bin/sh -c "echo hello"
 // which should be split into: ["/bin/sh", "-c", "echo hello"]
@@ -16,7 +16,7 @@ import (
 // It does not support:
 // - the $" quoting style.
 // - expansion (brace, shell or pathname).
-func split(command string) (words []string, err error) {
+func Split(command string) (words []string, err error) {
 	if command == "" {
 		return nil, errors.New("command is empty")
 	}
