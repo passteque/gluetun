@@ -65,6 +65,7 @@ type testNetLinker struct {
 	link      netlink.Link
 	linkErr   error
 	addresses []netip.Prefix
+	routes    []netlink.Route
 }
 
 func (n *testNetLinker) LinkByName(string) (link netlink.Link, err error) {
@@ -75,6 +76,10 @@ func (n *testNetLinker) AddrList(uint32, uint8) (
 	addresses []netip.Prefix, err error,
 ) {
 	return n.addresses, nil
+}
+
+func (n *testNetLinker) RouteList(uint8) (routes []netlink.Route, err error) {
+	return n.routes, nil
 }
 
 func newTestSettings(args, readyLine string) settings.CustomVPN {
@@ -200,6 +205,7 @@ func Test_Runner_Run_interface_polling_ready(t *testing.T) {
 	netLinker := &testNetLinker{
 		link:      netlink.Link{Index: 1, Name: "tun0"},
 		addresses: []netip.Prefix{netip.MustParsePrefix("10.0.0.2/32")},
+		routes:    []netlink.Route{{LinkIndex: 1}},
 	}
 	runnerSettings := newTestSettings("", "")
 	runner := NewRunner(runnerSettings, starter, netLinker, &testLogger{})
@@ -219,6 +225,45 @@ func Test_Runner_Run_interface_polling_ready(t *testing.T) {
 
 	err := receiveErrorWithTimeout(t, errCh)
 	assert.ErrorIs(t, err, errProcess)
+}
+
+func Test_Runner_Run_interface_polling_waits_for_the_route(t *testing.T) {
+	t.Parallel()
+
+	// An address on the interface is not enough: path MTU discovery lists the
+	// routes of the interface and port forwarding reads the VPN gateway out of
+	// them, so a tunnel announced between the address and the route makes both
+	// fail on a client that was about to work.
+	starter := &testStarter{
+		stdout:    make(chan string),
+		stderr:    make(chan string),
+		waitError: make(chan error),
+	}
+	netLinker := &testNetLinker{
+		link:      netlink.Link{Index: 1, Name: "tun0"},
+		addresses: []netip.Prefix{netip.MustParsePrefix("10.0.0.2/32")},
+		routes:    []netlink.Route{{LinkIndex: 2}}, // another interface
+	}
+	runnerSettings := newTestSettings("", "")
+	runner := NewRunner(runnerSettings, starter, netLinker, &testLogger{})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	errCh := make(chan error)
+	ready := make(chan struct{})
+	go runner.Run(ctx, errCh, ready)
+
+	const pollPeriods = 5 * 200 * time.Millisecond
+	select {
+	case <-ready:
+		t.Fatal("tunnel was signaled as ready with no route through its interface")
+	case <-time.After(pollPeriods):
+	}
+
+	cancel()
+	close(starter.stdout)
+	close(starter.stderr)
+	starter.waitError <- nil
 }
 
 func Test_Runner_Run_start_error(t *testing.T) {

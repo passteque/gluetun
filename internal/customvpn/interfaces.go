@@ -22,4 +22,5 @@ type NetLinker interface {
 	LinkByName(name string) (link netlink.Link, err error)
 	AddrList(linkIndex uint32, family uint8) (
 		addresses []netip.Prefix, err error)
+	RouteList(family uint8) (routes []netlink.Route, err error)
 }

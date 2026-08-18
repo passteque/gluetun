@@ -36,9 +36,9 @@ type CustomVPN struct {
 	// the binary writes to its standard output or standard error.
 	// The tunnel is considered ready on the first matching line.
 	// If it is empty, the tunnel is considered ready when the
-	// tunnel network interface exists with at least one address
-	// assigned, checked periodically. It cannot be nil in the
-	// internal state.
+	// tunnel network interface exists, carries at least one address
+	// and has a route through it, checked periodically. It cannot
+	// be nil in the internal state.
 	ReadyLine *string `json:"ready_line"`
 	// EndpointIP is the VPN server IP address, used to allow the
 	// VPN connection through the firewall. It cannot be the zero
