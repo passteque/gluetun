@@ -60,10 +60,7 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		tunnelUpData := tunnelUpData{
 			upCommand: *settings.UpCommand,
 			pmtud: tunnelUpPMTUDData{
-				// PMTUD is disabled for the custom VPN type since the tunnel
-				// overhead of a custom VPN binary is unknown.
-				enabled: settings.Type != vpn.Custom &&
-					(settings.Type != vpn.Wireguard || *settings.Wireguard.MTU == 0),
+				enabled:   settings.Type != vpn.Wireguard || *settings.Wireguard.MTU == 0,
 				vpnType:   settings.Type,
 				network:   connection.Protocol,
 				ipv6:      l.isIPv6Used(settings),
