@@ -107,8 +107,13 @@ func filterData(cmdOutput []byte) (filtered string, err error) {
 		case strings.HasPrefix(line, ":DOCKER_OUTPUT"),
 			strings.HasPrefix(line, ":DOCKER_POSTROUTING"),
 			strings.HasPrefix(line, "-A DOCKER_OUTPUT"),
-			strings.HasPrefix(line, "-A DOCKER_POSTROUTING"):
-			// Do not touch (aka save and restore) NAT rules added by Docker
+			strings.HasPrefix(line, "-A DOCKER_POSTROUTING"),
+			strings.HasSuffix(line, "-j DOCKER_OUTPUT"),
+			strings.HasSuffix(line, "-j DOCKER_POSTROUTING"):
+			// Do not touch (aka save and restore) NAT rules added by Docker,
+			// nor the rules jumping to them, otherwise iptables-restore fails
+			// with 'Couldn't load target' since the jump target chain would
+			// be undefined in the filtered ruleset.
 			continue
 		case strings.Contains(line, "[unsupported revision]"):
 			return "", fmt.Errorf("mismatch container iptables-save and kernel: %s", line)
