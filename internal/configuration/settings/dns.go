@@ -58,7 +58,7 @@ type DNS struct {
 	// should be considered local when reading the nameservers from the OS, for example
 	// from /etc/resolv.conf. For example if you use your own DNS server at 55.66.77.88,
 	// then you can set this to 55.66.77.88/32.
-	PublicNameserverCIDRsAsLocal []netip.Prefix `json:"public_nameservers_as_local"`
+	PublicNameserverCIDRsAsLocal []netip.Prefix `json:"public_nameserver_cidrs_as_local"`
 }
 
 func (d DNS) validate() (err error) {
