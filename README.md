@@ -131,7 +131,7 @@ services:
 
 ## Fun graphs
 
-[![Star History Chart](https://api.star-history.com/svg?repos=passteque/gluetun&type=date&legend=top-left)](https://www.star-history.com/#passteque/gluetun&type=date&legend=top-left)
+[![Star History Chart](https://star-history.dera.page/svg?repos=passteque/gluetun&type=date&legend=top-left)](https://star-history.dera.page/#passteque/gluetun&type=date&legend=top-left)
 
 ## License
 

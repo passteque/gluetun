@@ -53,7 +53,6 @@ func NewProviders(storage Storage, timeNow func() time.Time,
 	parallelResolver common.ParallelResolver, ipFetcher common.IPFetcher,
 	extractor custom.Extractor, credentials settings.Updater,
 ) *Providers {
-	//nolint:lll
 	providerNameToProvider := map[string]Provider{
 		providers.Airvpn:                airvpn.New(storage, client),
 		providers.Custom:                custom.New(extractor),
@@ -69,7 +68,7 @@ func NewProviders(storage Storage, timeNow func() time.Time,
 		providers.Privado:               privado.New(storage, client, updaterWarner),
 		providers.PrivateInternetAccess: privateinternetaccess.New(storage, timeNow, client),
 		providers.Privatevpn:            privatevpn.New(storage, client, updaterWarner, parallelResolver),
-		providers.Protonvpn:             protonvpn.New(storage, client, updaterWarner, *credentials.ProtonEmail, *credentials.ProtonPassword),
+		providers.Protonvpn:             protonvpn.New(storage, client, updaterWarner, *credentials.ProtonEmail, *credentials.ProtonPassword, *credentials.ProtonTOTPSecret, *credentials.ProtonTOTPCode), //nolint:lll
 		providers.Purevpn:               purevpn.New(storage, ipFetcher, unzipper, updaterWarner, parallelResolver),
 		providers.SlickVPN:              slickvpn.New(storage, client, updaterWarner, parallelResolver),
 		providers.Surfshark:             surfshark.New(storage, client, unzipper, updaterWarner, parallelResolver),

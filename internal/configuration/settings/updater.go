@@ -36,6 +36,16 @@ type Updater struct {
 	ProtonEmail *string
 	// ProtonPassword is the password to authenticate with the Proton API.
 	ProtonPassword *string
+	// ProtonTOTPSecret is the TOTP secret key to use for two-factor authentication
+	// with the Proton API. It can be a base32 string or an otpauth:// URL.
+	ProtonTOTPSecret *string
+	// ProtonTOTPCode is the temporary 6-digit TOTP code to use for
+	// two-factor authentication with the Proton API, as shown in the
+	// authenticator app. It can only be set with the `gluetun update`
+	// -proton-totp-code flag, not with environment variables, since it is
+	// only valid for a short time. The TOTP secret takes precedence when
+	// both are set.
+	ProtonTOTPCode *string
 }
 
 func (u Updater) Validate() (err error) {
@@ -81,6 +91,8 @@ func (u *Updater) copy() (copied Updater) {
 		PreferDirectDownload: gosettings.CopyPointer(u.PreferDirectDownload),
 		ProtonEmail:          gosettings.CopyPointer(u.ProtonEmail),
 		ProtonPassword:       gosettings.CopyPointer(u.ProtonPassword),
+		ProtonTOTPSecret:     gosettings.CopyPointer(u.ProtonTOTPSecret),
+		ProtonTOTPCode:       gosettings.CopyPointer(u.ProtonTOTPCode),
 	}
 }
 
@@ -94,6 +106,8 @@ func (u *Updater) overrideWith(other Updater) {
 	u.PreferDirectDownload = gosettings.OverrideWithPointer(u.PreferDirectDownload, other.PreferDirectDownload)
 	u.ProtonEmail = gosettings.OverrideWithPointer(u.ProtonEmail, other.ProtonEmail)
 	u.ProtonPassword = gosettings.OverrideWithPointer(u.ProtonPassword, other.ProtonPassword)
+	u.ProtonTOTPSecret = gosettings.OverrideWithPointer(u.ProtonTOTPSecret, other.ProtonTOTPSecret)
+	u.ProtonTOTPCode = gosettings.OverrideWithPointer(u.ProtonTOTPCode, other.ProtonTOTPCode)
 }
 
 func (u *Updater) SetDefaults(vpnProvider string) {
@@ -112,6 +126,8 @@ func (u *Updater) SetDefaults(vpnProvider string) {
 	u.PreferDirectDownload = gosettings.DefaultPointer(u.PreferDirectDownload, false)
 	u.ProtonEmail = gosettings.DefaultPointer(u.ProtonEmail, "")
 	u.ProtonPassword = gosettings.DefaultPointer(u.ProtonPassword, "")
+	u.ProtonTOTPSecret = gosettings.DefaultPointer(u.ProtonTOTPSecret, "")
+	u.ProtonTOTPCode = gosettings.DefaultPointer(u.ProtonTOTPCode, "")
 }
 
 func (u Updater) String() string {
@@ -131,6 +147,12 @@ func (u Updater) toLinesNode() (node *gotree.Node) {
 	if slices.Contains(u.Providers, providers.Protonvpn) {
 		node.Appendf("Proton API email: %s", *u.ProtonEmail)
 		node.Appendf("Proton API password: %s", gosettings.ObfuscateKey(*u.ProtonPassword))
+		if *u.ProtonTOTPSecret != "" {
+			node.Appendf("Proton API TOTP secret: %s", gosettings.ObfuscateKey(*u.ProtonTOTPSecret))
+		}
+		if *u.ProtonTOTPCode != "" {
+			node.Appendf("Proton API TOTP code: %s", gosettings.ObfuscateKey(*u.ProtonTOTPCode))
+		}
 	}
 
 	return node
@@ -163,6 +185,7 @@ func (u *Updater) read(r *reader.Reader) (err error) {
 		}
 	}
 	u.ProtonPassword = r.Get("UPDATER_PROTONVPN_PASSWORD")
+	u.ProtonTOTPSecret = r.Get("UPDATER_PROTONVPN_TOTP_SECRET")
 
 	return nil
 }

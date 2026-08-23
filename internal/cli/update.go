@@ -37,6 +37,7 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 	var endUserMode, maintainerMode bool
 	var updateAll bool
 	var dnsServer, csvProviders, ipToken, protonUsername, protonEmail, protonPassword string
+	var protonTOTPSecret, protonTOTPCode string
 	flagSet := flag.NewFlagSet("update", flag.ExitOnError)
 	flagSet.StringVar(&dnsServer, "dns", "", "no longer used, your DNS will use DoH with Cloudflare and Google")
 	const defaultMinRatio = 0.8
@@ -49,6 +50,11 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 		"(Retro-compatibility) Username to use to authenticate with Proton. Use -proton-email instead.") // v4 remove this
 	flagSet.StringVar(&protonEmail, "proton-email", "", "Email to use to authenticate with Proton")
 	flagSet.StringVar(&protonPassword, "proton-password", "", "Password to use to authenticate with Proton")
+	flagSet.StringVar(&protonTOTPSecret, "proton-totp-secret", "",
+		"TOTP secret key to use for two-factor authentication with Proton")
+	flagSet.StringVar(&protonTOTPCode, "proton-totp-code", "",
+		"6-digit temporary TOTP code shown in the authenticator app, as an "+
+			"alternative to the TOTP secret")
 	flagSet.BoolVar(&endUserMode, "enduser", false, "deprecated")
 	flagSet.BoolVar(&maintainerMode, "maintainer", false, "deprecated")
 	if err := flagSet.Parse(args); err != nil {
@@ -81,6 +87,8 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 		}
 		options.ProtonEmail = &protonEmail
 		options.ProtonPassword = &protonPassword
+		options.ProtonTOTPSecret = &protonTOTPSecret
+		options.ProtonTOTPCode = &protonTOTPCode
 	}
 
 	options.SetDefaults(options.Providers[0])

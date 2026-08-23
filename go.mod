@@ -14,6 +14,7 @@ require (
 	github.com/mdlayher/netlink v1.9.0
 	github.com/miekg/dns v1.1.62
 	github.com/pelletier/go-toml/v2 v2.4.3
+	github.com/pquerna/otp v1.5.0
 	github.com/qdm12/dns/v2 v2.0.0-rc9.0.20260820122023-f9e5a4ced3dd
 	github.com/qdm12/gluetun-servers v0.2.0
 	github.com/qdm12/goservices v0.1.1-0.20251104135713-6bee97bd4978
@@ -40,6 +41,7 @@ require (
 	github.com/ProtonMail/bcrypt v0.0.0-20211005172633-e235017c1baf // indirect
 	github.com/ProtonMail/go-crypto v1.3.0-proton // indirect
 	github.com/beorn7/perks v1.0.1 // indirect
+	github.com/boombuler/barcode v1.0.1-0.20190219062509-6c824513bacc // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/cloudflare/circl v1.6.1 // indirect
 	github.com/cronokirby/saferith v0.33.0 // indirect
