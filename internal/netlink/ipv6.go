@@ -38,33 +38,44 @@ func (n *NetLink) FindIPv6SupportLevel(ctx context.Context,
 	// https://github.com/qdm12/gluetun/issues/1241#issuecomment-1333405949
 	level = IPv6Unsupported
 	for _, route := range routes {
-		link, err := n.LinkByIndex(route.LinkIndex)
-		if err != nil {
-			return IPv6Unsupported, fmt.Errorf("finding link corresponding to route: %w", err)
-		}
-
 		sourceIsIPv4 := route.Src.IsValid() && route.Src.Addr().Is4()
 		destinationIsIPv4 := route.Dst.IsValid() && route.Dst.Addr().Is4()
 		destinationIsIPv6 := route.Dst.IsValid() && route.Dst.Addr().Is6()
-		switch {
-		case sourceIsIPv4 && destinationIsIPv4,
-			destinationIsIPv6 && route.Dst.Addr().IsLoopback():
-		case route.Dst.Addr().IsUnspecified(): // default ipv6 route
-			n.debugLogger.Debugf("IPv6 default route found on link %s", link.Name)
-			for _, checkAddress := range checkAddresses {
-				err = dialAddrThroughFirewall(ctx, link.Name, checkAddress, firewall)
-				if err != nil {
-					n.debugLogger.Debugf("IPv6 query to %s through %s failed: %s",
-						checkAddress, link.Name, err)
-					level = IPv6Supported
-					continue
-				}
-				n.debugLogger.Debugf("IPv6 internet is accessible through link %s", link.Name)
-				return IPv6Internet, nil
-			}
-		default: // non-default ipv6 route found
+		if sourceIsIPv4 && destinationIsIPv4 ||
+			destinationIsIPv6 && route.Dst.Addr().IsLoopback() ||
+			isUnusableRouteType(route.Type) {
+			// Skip routes that can never deliver packets, in particular
+			// `unreachable default dev lo` routes that some kernels install
+			// in containers without IPv6. The netlink library synthesizes a
+			// `::/0` destination for them, and `::` is the unspecified
+			// address, not the loopback one, so they would otherwise be
+			// wrongly counted as IPv6 support.
+			// See: https://github.com/qdm12/gluetun/issues/3444
+			continue
+		}
+
+		link, err := n.LinkByIndex(route.LinkIndex)
+		if err != nil {
+			return IPv6Unsupported, fmt.Errorf("finding link corresponding to default IPv6 route: %w", err)
+		}
+
+		if !route.Dst.Addr().IsUnspecified() { // non-default ipv6 route
 			n.debugLogger.Debugf("IPv6 is supported by link %s", link.Name)
 			level = IPv6Supported
+			continue
+		}
+
+		n.debugLogger.Debugf("IPv6 default route found on link %s", link.Name)
+		for _, checkAddress := range checkAddresses {
+			err = dialAddrThroughFirewall(ctx, link.Name, checkAddress, firewall)
+			if err != nil {
+				n.debugLogger.Debugf("IPv6 query to %s through %s failed: %s",
+					checkAddress, link.Name, err)
+				level = IPv6Supported
+				continue
+			}
+			n.debugLogger.Debugf("IPv6 internet is accessible through link %s", link.Name)
+			return IPv6Internet, nil
 		}
 	}
 
@@ -72,6 +83,18 @@ func (n *NetLink) FindIPv6SupportLevel(ctx context.Context,
 		n.debugLogger.Debugf("no IPv6 route found in %d routes", len(routes))
 	}
 	return level, nil
+}
+
+// isUnusableRouteType reports whether a route of the given type can
+// never deliver packets, and therefore cannot be evidence of IPv6
+// support.
+func isUnusableRouteType(routeType uint8) bool {
+	switch routeType {
+	case routeTypeUnreachable, routeTypeProhibit, routeTypeBlackhole:
+		return true
+	default:
+		return false
+	}
 }
 
 func dialAddrThroughFirewall(ctx context.Context, intf string,
