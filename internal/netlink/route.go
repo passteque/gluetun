@@ -21,6 +21,10 @@ type Route struct {
 	AdvMSS    uint32
 }
 
+func (r Route) IsDefault() bool {
+	return !r.Dst.IsValid() || r.Dst.Addr().IsUnspecified()
+}
+
 func (r *Route) fromMessage(message rtnetlink.RouteMessage) {
 	table := uint32(message.Table)
 	if table == 0 || table == rtTableCompat {

@@ -59,7 +59,7 @@ func (n *NetLink) FindIPv6SupportLevel(ctx context.Context,
 			return IPv6Unsupported, fmt.Errorf("finding link corresponding to default IPv6 route: %w", err)
 		}
 
-		if !route.Dst.Addr().IsUnspecified() { // non-default ipv6 route
+		if !route.IsDefault() { // non-default ipv6 route
 			n.debugLogger.Debugf("IPv6 is supported by link %s", link.Name)
 			level = IPv6Supported
 			continue
