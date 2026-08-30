@@ -30,7 +30,7 @@ func (r *Routing) DefaultRoutes() (defaultRoutes []DefaultRoute, err error) {
 			// ignore non-main table
 			continue
 		}
-		if !route.IsDefault() {
+		if route.Dst.IsValid() && !route.Dst.Addr().IsUnspecified() {
 			continue
 		}
 		defaultRoute := DefaultRoute{
