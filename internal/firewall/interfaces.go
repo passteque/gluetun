@@ -16,6 +16,7 @@ type Logger interface {
 	Debug(s string)
 	Info(s string)
 	Warn(s string)
+	Warnf(format string, args ...any)
 	Error(s string)
 }
 
@@ -38,8 +39,7 @@ type firewallImpl interface { //nolint:interfacebloat
 	RedirectPort(ctx context.Context, intf string, sourcePort,
 		destinationPort uint16, remove bool) error
 	RunUserPostRules(ctx context.Context, customRulesPath string) error
-	SetIPv4AllPolicies(ctx context.Context, policy string) error
-	SetIPv6AllPolicies(ctx context.Context, policy string) error
+	SetBaseChainsPolicy(ctx context.Context, policy string) error
 	TempDropOutputTCPRST(ctx context.Context, src, dst netip.AddrPort, excludeMark int) (
 		revert func(ctx context.Context) error, err error)
 	Version(ctx context.Context) (version string, err error)

@@ -51,11 +51,7 @@ func (c *Config) enable(ctx context.Context) (err error) {
 		}
 	}()
 
-	if err = c.impl.SetIPv4AllPolicies(ctx, "DROP"); err != nil {
-		return err
-	}
-
-	if err = c.impl.SetIPv6AllPolicies(ctx, "DROP"); err != nil {
+	if err = c.impl.SetBaseChainsPolicy(ctx, "DROP"); err != nil {
 		return err
 	}
 

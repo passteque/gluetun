@@ -39,22 +39,6 @@ func (c *Config) Version(ctx context.Context) (string, error) {
 	return "iptables " + words[1], nil
 }
 
-func (c *Config) runIptablesInstructions(ctx context.Context, instructions []string) error {
-	c.iptablesMutex.Lock()
-	defer c.iptablesMutex.Unlock()
-
-	restore, err := c.saveAndRestoreIPv4(ctx)
-	if err != nil {
-		return err
-	}
-
-	err = c.runIptablesInstructionsNoSave(ctx, instructions)
-	if err != nil {
-		restore(ctx)
-	}
-	return err
-}
-
 func (c *Config) runIptablesInstructionsNoSave(ctx context.Context, instructions []string) error {
 	for _, instruction := range instructions {
 		if err := c.runIptablesInstructionNoSave(ctx, instruction); err != nil {
@@ -96,13 +80,14 @@ func (c *Config) runIptablesInstructionNoSave(ctx context.Context, instruction s
 	return nil
 }
 
-func (c *Config) SetIPv4AllPolicies(ctx context.Context, policy string) error {
+func (c *Config) SetBaseChainsPolicy(ctx context.Context, policy string) error {
+	policy = strings.ToUpper(policy)
 	switch policy {
 	case "ACCEPT", "DROP":
 	default:
 		return fmt.Errorf("unknown policy: %s", policy)
 	}
-	return c.runIptablesInstructions(ctx, []string{
+	return c.runMixedIptablesInstructions(ctx, []string{
 		"--policy INPUT " + policy,
 		"--policy OUTPUT " + policy,
 		"--policy FORWARD " + policy,
