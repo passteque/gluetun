@@ -9,9 +9,11 @@ import (
 	"io"
 	"net"
 	"net/netip"
+	"os"
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -172,6 +174,76 @@ func TestServerProxyTCPAndUDPParallel(t *testing.T) {
 			require.NoError(t, err)
 			err = <-udpErrCh
 			require.NoError(t, err)
+		})
+	}
+}
+
+func TestServerAllowedIPs(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		allowedIPs []netip.Prefix
+		expectedOK bool
+	}{
+		"client_ip_in_allowed_network": {
+			allowedIPs: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")},
+			expectedOK: true,
+		},
+		"client_ip_not_allowed": {
+			allowedIPs: []netip.Prefix{netip.MustParsePrefix("192.168.1.0/24")},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			backendListener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+
+			server := newServer(Settings{
+				Address:      "127.0.0.1:0",
+				AllowedCIDRs: testCase.allowedIPs,
+				Logger:       noopLogger{},
+			})
+			_, err = server.Start(t.Context())
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				_ = server.Stop()
+				_ = backendListener.Close()
+			})
+
+			clientConn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", server.listeningAddress().String())
+			require.NoError(t, err)
+			defer clientConn.Close()
+
+			if !testCase.expectedOK {
+				const readTimeout = 5 * time.Second
+				err = clientConn.SetReadDeadline(time.Now().Add(readTimeout))
+				require.NoError(t, err)
+				_, err = clientConn.Read(make([]byte, 1))
+				assert.Error(t, err)
+				return
+			}
+
+			backendConnCh := make(chan net.Conn, 1)
+			go func() {
+				backendConn, acceptErr := backendListener.Accept()
+				if acceptErr != nil {
+					return
+				}
+				backendConnCh <- backendConn
+			}()
+
+			proxyClientConn := dialSOCKS5(t, server.listeningAddress().String(),
+				backendListener.Addr().String(), "", "")
+			defer proxyClientConn.Close()
+
+			backendConn := <-backendConnCh
+			defer backendConn.Close()
+
+			err = runTCPProxyRoundTrip(proxyClientConn, backendConn)
+			assert.NoError(t, err)
 		})
 	}
 }
@@ -532,6 +604,16 @@ func Test_newServer(t *testing.T) {
 				address: "127.0.0.1:1080",
 			},
 		},
+		"with_allowed_ips": {
+			settings: Settings{
+				Address:      "127.0.0.1:1080",
+				AllowedCIDRs: []netip.Prefix{netip.MustParsePrefix("192.168.1.2/32")},
+			},
+			expected: &server{
+				address:      "127.0.0.1:1080",
+				allowedCIDRs: []netip.Prefix{netip.MustParsePrefix("192.168.1.2/32")},
+			},
+		},
 	}
 
 	for name, testCase := range testCases {
@@ -541,6 +623,7 @@ func Test_newServer(t *testing.T) {
 			assert.Equal(t, testCase.expected.username, result.username)
 			assert.Equal(t, testCase.expected.password, result.password)
 			assert.Equal(t, testCase.expected.address, result.address)
+			assert.Equal(t, testCase.expected.allowedCIDRs, result.allowedCIDRs)
 			assert.Equal(t, testCase.expected.logger, result.logger)
 		})
 	}
@@ -1031,7 +1114,7 @@ func Test_socksConn_udpAssociationAddresses(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			router, err := newUDPRouter(t.Context(), testCase.routerAddress, noopLogger{})
+			router, err := newUDPRouter(t.Context(), testCase.routerAddress, nil, noopLogger{})
 			require.NoError(t, err)
 			t.Cleanup(func() {
 				err := router.close()
@@ -1082,6 +1165,117 @@ func Test_socksConn_udpAssociationAddresses(t *testing.T) {
 			require.NoError(t, err)
 			assert.Equal(t, uint16(routerPort), bindPort)
 			assert.Equal(t, ipv4, bindAddrType)
+		})
+	}
+}
+
+func Test_udpRouter_DropDatagramsFromNonAllowedIP(t *testing.T) {
+	t.Parallel()
+
+	const payload = "udp payload"
+
+	testCases := map[string]struct {
+		allowedIPs   []netip.Prefix
+		expectPacket bool
+	}{
+		"source_ip_allowed": {
+			allowedIPs:   []netip.Prefix{netip.MustParsePrefix("127.0.0.1/32")},
+			expectPacket: true,
+		},
+		"source_ip_not_allowed": {
+			allowedIPs: []netip.Prefix{netip.MustParsePrefix("192.168.1.0/24")},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			backendUDPConn, err := (&net.ListenConfig{}).ListenPacket(t.Context(), "udp", "127.0.0.1:0")
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				err := backendUDPConn.Close()
+				assert.NoError(t, err)
+			})
+
+			router, err := newUDPRouter(t.Context(), "127.0.0.1:0", testCase.allowedIPs, noopLogger{})
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				err := router.close()
+				assert.NoError(t, err)
+			})
+
+			routerDoneCh := make(chan error)
+			go func() {
+				routerDoneCh <- router.run(t.Context())
+			}()
+
+			// Register an association backed by a local control connection, so that
+			// the only difference between test cases is the source IP check.
+			controlListener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				err := controlListener.Close()
+				assert.NoError(t, err)
+			})
+			acceptedConnCh := make(chan net.Conn, 1)
+			go func() {
+				acceptedConn, acceptErr := controlListener.Accept()
+				if acceptErr != nil {
+					return
+				}
+				acceptedConnCh <- acceptedConn
+			}()
+			clientControlConn, err := (&net.Dialer{}).DialContext(t.Context(), "tcp", controlListener.Addr().String())
+			require.NoError(t, err)
+			defer clientControlConn.Close()
+			serverControlConn := <-acceptedConnCh
+			defer serverControlConn.Close()
+
+			association, err := router.registerAssociation(serverControlConn, netip.AddrPort{})
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				router.unregisterAssociation(association)
+			})
+
+			associationCtx, associationCancel := context.WithCancel(t.Context())
+			defer associationCancel()
+			associationHandlerDoneCh := make(chan struct{})
+			go func() {
+				router.runAssociationHandler(associationCtx, association)
+				close(associationHandlerDoneCh)
+			}()
+			t.Cleanup(func() {
+				<-associationHandlerDoneCh
+			})
+
+			clientUDPConn, err := net.DialUDP("udp", nil, router.localAddress().(*net.UDPAddr)) //nolint:forcetypeassert
+			require.NoError(t, err)
+			t.Cleanup(func() {
+				err := clientUDPConn.Close()
+				assert.NoError(t, err)
+			})
+
+			targetAddrPort, err := netip.ParseAddrPort(backendUDPConn.LocalAddr().String())
+			require.NoError(t, err)
+			socksDatagramBuffer := &bytes.Buffer{}
+			err = encodeUDPDatagramToBuffer(socksDatagramBuffer, targetAddrPort, []byte(payload))
+			require.NoError(t, err)
+			_, err = clientUDPConn.Write(socksDatagramBuffer.Bytes())
+			require.NoError(t, err)
+
+			const readTimeout = 2 * time.Second
+			err = backendUDPConn.SetReadDeadline(time.Now().Add(readTimeout))
+			require.NoError(t, err)
+			receivedBuffer := make([]byte, maxUDPPacketLength)
+			receivedLength, _, err := backendUDPConn.ReadFrom(receivedBuffer)
+
+			if testCase.expectPacket {
+				require.NoError(t, err)
+				assert.Equal(t, payload, string(receivedBuffer[:receivedLength]))
+			} else {
+				assert.ErrorIs(t, err, os.ErrDeadlineExceeded)
+			}
 		})
 	}
 }

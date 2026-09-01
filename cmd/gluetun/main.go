@@ -413,11 +413,12 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	}
 
 	socks5Loop := socks5.NewLoop(socks5.Settings{
-		Enabled:  *allSettings.Socks5.Enabled,
-		Username: *allSettings.Socks5.Username,
-		Password: *allSettings.Socks5.Password,
-		Address:  allSettings.Socks5.ListeningAddress,
-		Logger:   logger.New(log.SetComponent("socks5")),
+		Enabled:      *allSettings.Socks5.Enabled,
+		Username:     *allSettings.Socks5.Username,
+		Password:     *allSettings.Socks5.Password,
+		Address:      allSettings.Socks5.ListeningAddress,
+		AllowedCIDRs: stringsToIPPrefixes(allSettings.Socks5.AllowedCIDRs),
+		Logger:       logger.New(log.SetComponent("socks5")),
 	})
 	socks5RunError, err := socks5Loop.Start(ctx)
 	if err != nil {
@@ -569,6 +570,14 @@ func localNetworksToPrefixes(localNetworks []routing.LocalNetwork) (prefixes []n
 	prefixes = make([]netip.Prefix, len(localNetworks))
 	for i, localNetwork := range localNetworks {
 		prefixes[i] = localNetwork.IPNet
+	}
+	return prefixes
+}
+
+func stringsToIPPrefixes(strings []string) (prefixes []netip.Prefix) {
+	prefixes = make([]netip.Prefix, len(strings))
+	for i, s := range strings {
+		prefixes[i] = netip.MustParsePrefix(s)
 	}
 	return prefixes
 }
