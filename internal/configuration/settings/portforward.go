@@ -53,6 +53,10 @@ type PortForwarding struct {
 	Username string `json:"username"`
 	// Password is only used for Private Internet Access port forwarding.
 	Password string `json:"password"`
+	// ServerName is only used for Private Internet Access port forwarding
+	// TLS certificate verification. It overrides the server name obtained
+	// from the VPN connection when set.
+	ServerName string `json:"server_name"`
 }
 
 func (p PortForwarding) Validate(vpnProvider string) (err error) {
@@ -128,6 +132,7 @@ func (p *PortForwarding) Copy() (copied PortForwarding) {
 		ListeningPorts: gosettings.CopySlice(p.ListeningPorts),
 		Username:       p.Username,
 		Password:       p.Password,
+		ServerName:     p.ServerName,
 	}
 }
 
@@ -140,6 +145,7 @@ func (p *PortForwarding) OverrideWith(other PortForwarding) {
 	p.ListeningPorts = gosettings.OverrideWithSlice(p.ListeningPorts, other.ListeningPorts)
 	p.Username = gosettings.OverrideWithComparable(p.Username, other.Username)
 	p.Password = gosettings.OverrideWithComparable(p.Password, other.Password)
+	p.ServerName = gosettings.OverrideWithComparable(p.ServerName, other.ServerName)
 }
 
 func (p *PortForwarding) setDefaults() {
@@ -197,6 +203,10 @@ func (p PortForwarding) toLinesNode() (node *gotree.Node) {
 		credentialsNode.Appendf("Password: %s", gosettings.ObfuscateKey(p.Password))
 	}
 
+	if p.ServerName != "" {
+		node.Appendf("Server name: %s", p.ServerName)
+	}
+
 	return node
 }
 
@@ -235,6 +245,9 @@ func (p *PortForwarding) read(r *reader.Reader) (err error) {
 	if err != nil {
 		return err
 	}
+
+	p.ServerName = r.String("VPN_PORT_FORWARDING_SERVER_NAME",
+		reader.ForceLowercase(false))
 
 	usernameKeys := []string{"VPN_PORT_FORWARDING_USERNAME", "OPENVPN_USER", "USER"}
 	for _, key := range usernameKeys {

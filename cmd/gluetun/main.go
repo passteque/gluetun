@@ -27,6 +27,8 @@ import (
 	"github.com/qdm12/gluetun/internal/configuration/sources/secrets"
 	"github.com/qdm12/gluetun/internal/constants"
 	copenvpn "github.com/qdm12/gluetun/internal/constants/openvpn"
+	cproviders "github.com/qdm12/gluetun/internal/constants/providers"
+	cvpn "github.com/qdm12/gluetun/internal/constants/vpn"
 	"github.com/qdm12/gluetun/internal/dns"
 	"github.com/qdm12/gluetun/internal/firewall"
 	"github.com/qdm12/gluetun/internal/healthcheck"
@@ -40,6 +42,7 @@ import (
 	"github.com/qdm12/gluetun/internal/pprof"
 	"github.com/qdm12/gluetun/internal/provider"
 	"github.com/qdm12/gluetun/internal/publicip"
+	"github.com/qdm12/gluetun/internal/restrictednet"
 	"github.com/qdm12/gluetun/internal/routing"
 	"github.com/qdm12/gluetun/internal/server"
 	"github.com/qdm12/gluetun/internal/shadowsocks"
@@ -459,12 +462,45 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		httpClient, unzipper, parallelResolver, publicIPLooper.Fetcher(),
 		openvpnFileExtractor, allSettings.Updater)
 
+	var restrictedClient provider.RestrictedClient
+	if allSettings.VPN.Type == cvpn.Wireguard &&
+		allSettings.VPN.Provider.Name == cproviders.PrivateInternetAccess {
+		defaultIPv4Interface := ""
+		for _, defaultRoute := range defaultRoutes {
+			if defaultRoute.Family == netlink.FamilyV4 {
+				defaultIPv4Interface = defaultRoute.NetInterface
+				break
+			}
+		}
+		if defaultIPv4Interface == "" {
+			return fmt.Errorf("creating restricted network client: IPv4 default interface is not found")
+		}
+
+		availableDNSProviders := dnsprovider.NewProviders()
+		upstreamResolvers := make([]dnsprovider.Provider, len(allSettings.DNS.Providers))
+		for i, providerName := range allSettings.DNS.Providers {
+			upstreamResolver, err := availableDNSProviders.Get(providerName)
+			if err != nil {
+				return fmt.Errorf("creating restricted network client: DNS provider %q: %w",
+					providerName, err)
+			}
+			upstreamResolvers[i] = upstreamResolver
+		}
+		ipv6Supported := false
+		restrictedClient = restrictednet.New(restrictednet.Settings{
+			DefaultInterface:  defaultIPv4Interface,
+			IPv6Supported:     &ipv6Supported,
+			Firewall:          firewallConf,
+			UpstreamResolvers: upstreamResolvers,
+		})
+	}
+
 	boringPollLogger := logger.New(log.SetComponent("boring poll"))
 	boringPoll := boringpoll.New(httpClient, boringPollLogger, allSettings.BoringPoll)
 
 	vpnLogger := logger.New(log.SetComponent("vpn"))
 	vpnLooper := vpn.NewLoop(allSettings.VPN, ipv6SupportLevel, allSettings.Firewall.VPNInputPorts,
-		providers, storage, boringPoll, allSettings.Health, healthChecker, healthcheckServer,
+		providers, restrictedClient, storage, boringPoll, allSettings.Health, healthChecker, healthcheckServer,
 		ovpnConf, netLinker, firewallConf, routingConf, portForwardLooper, cmder, publicIPLooper,
 		dnsLooper, vpnLogger, httpClient, buildInfo, *allSettings.Version.Enabled)
 	vpnHandler, vpnCtx, vpnDone := goshutdown.NewGoRoutineHandler(

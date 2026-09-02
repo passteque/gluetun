@@ -128,6 +128,12 @@ func getLocationFilterChoices(vpnServiceProvider string,
 	filterChoices models.FilterChoices, err error,
 ) {
 	filterChoices = filterChoicesGetter.GetFilterChoices(vpnServiceProvider)
+	if vpnServiceProvider == providers.PrivateInternetAccess && ss.VPN == vpn.Wireguard {
+		// PIA Wireguard region IDs and server names only exist in the live API,
+		// not in the embedded OpenVPN-only server list used for validation.
+		filterChoices.Regions = ss.Regions
+		filterChoices.Names = ss.Names
+	}
 
 	if vpnServiceProvider == providers.Surfshark {
 		// // Retro compatibility

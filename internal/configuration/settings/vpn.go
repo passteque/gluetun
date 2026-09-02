@@ -1,8 +1,10 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
 
+	"github.com/qdm12/gluetun/internal/constants/providers"
 	"github.com/qdm12/gluetun/internal/constants/vpn"
 	"github.com/qdm12/gosettings"
 	"github.com/qdm12/gosettings/reader"
@@ -57,6 +59,12 @@ func (v *VPN) Validate(filterChoicesGetter FilterChoicesGetter, ipv6Supported bo
 			return fmt.Errorf("OpenVPN settings: %w", err)
 		}
 	case vpn.Wireguard:
+		if v.Provider.Name == providers.PrivateInternetAccess {
+			err = v.validatePIAWireguard()
+			if err != nil {
+				return fmt.Errorf("private internet access settings: %w", err)
+			}
+		}
 		const amneziawg = false
 		err := v.Wireguard.validate(v.Provider.Name, ipv6Supported, amneziawg)
 		if err != nil {
@@ -70,6 +78,21 @@ func (v *VPN) Validate(filterChoicesGetter FilterChoicesGetter, ipv6Supported bo
 	}
 
 	return nil
+}
+
+func (v VPN) validatePIAWireguard() error {
+	switch {
+	case *v.OpenVPN.User == "":
+		return errors.New("username is empty: set OPENVPN_USER")
+	case *v.OpenVPN.Password == "":
+		return errors.New("password is empty: set OPENVPN_PASSWORD")
+	case len(v.Provider.ServerSelection.Regions) == 0 &&
+		len(v.Provider.ServerSelection.Names) == 0 &&
+		len(v.Provider.ServerSelection.Hostnames) == 0:
+		return errors.New("server selection is empty: set SERVER_REGIONS, SERVER_NAMES or SERVER_HOSTNAMES")
+	default:
+		return nil
+	}
 }
 
 func (v *VPN) Copy() (copied VPN) {

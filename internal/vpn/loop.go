@@ -9,18 +9,20 @@ import (
 	"github.com/qdm12/gluetun/internal/loopstate"
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/netlink"
+	"github.com/qdm12/gluetun/internal/provider"
 	"github.com/qdm12/gluetun/internal/vpn/state"
 	"github.com/qdm12/log"
 )
 
 type Loop struct {
-	statusManager  *loopstate.State
-	state          *state.State
-	providers      Providers
-	storage        Storage
-	healthSettings settings.Health
-	healthChecker  HealthChecker
-	healthServer   HealthServer
+	statusManager    *loopstate.State
+	state            *state.State
+	providers        Providers
+	restrictedClient provider.RestrictedClient
+	storage          Storage
+	healthSettings   settings.Health
+	healthChecker    HealthChecker
+	healthServer     HealthServer
 	// Fixed parameters
 	buildInfo        models.BuildInformation
 	versionInfo      bool
@@ -55,7 +57,7 @@ const (
 )
 
 func NewLoop(vpnSettings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel, vpnInputPorts []uint16,
-	providers Providers, storage Storage, boringPoll Service,
+	providers Providers, restrictedClient provider.RestrictedClient, storage Storage, boringPoll Service,
 	healthSettings settings.Health, healthChecker HealthChecker, healthServer HealthServer,
 	openvpnConf OpenVPN, netLinker NetLinker, fw Firewall, routing Routing,
 	portForward PortForward, cmder Cmder,
@@ -80,6 +82,7 @@ func NewLoop(vpnSettings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel
 		statusManager:    statusManager,
 		state:            state,
 		providers:        providers,
+		restrictedClient: restrictedClient,
 		storage:          storage,
 		healthSettings:   healthSettings,
 		healthChecker:    healthChecker,

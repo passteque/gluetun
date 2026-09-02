@@ -2,6 +2,7 @@ package vpn
 
 import (
 	"context"
+	"net/netip"
 
 	"github.com/qdm12/gluetun/internal/constants"
 	"github.com/qdm12/gluetun/internal/constants/vpn"
@@ -31,6 +32,7 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		}
 		var vpnInterface string
 		var connection models.Connection
+		var gateway netip.Addr
 		var err error
 		subLogger := l.logger.New(log.SetComponent(settings.Type))
 		switch settings.Type {
@@ -44,14 +46,18 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 				l.openvpnConf, providerConf, settings, l.ipv6SupportLevel, l.cmder, subLogger)
 		case vpn.Wireguard:
 			vpnInterface = settings.Wireguard.Interface
-			vpnRunner, connection, err = setupWireguard(ctx, l.netLinker, l.fw,
-				providerConf, settings, l.ipv6SupportLevel, subLogger)
+			vpnRunner, connection, gateway, err = setupWireguard(ctx, l.netLinker, l.fw,
+				providerConf, l.restrictedClient, settings, l.ipv6SupportLevel, subLogger)
 		default:
 			panic("vpn type not implemented: " + settings.Type)
 		}
 		if err != nil {
 			l.crashed(ctx, err)
 			continue
+		}
+		serverName := connection.ServerName
+		if settings.Provider.PortForwarding.ServerName != "" {
+			serverName = settings.Provider.PortForwarding.ServerName
 		}
 		tunnelUpData := tunnelUpData{
 			upCommand: *settings.UpCommand,
@@ -64,10 +70,11 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 				tcpAddrs:  settings.PMTUD.TCPAddresses,
 			},
 			serverIP:       connection.IP,
-			serverName:     connection.ServerName,
+			serverName:     serverName,
 			canPortForward: connection.PortForward,
 			portForwarder:  portForwarder,
 			vpnIntf:        vpnInterface,
+			gateway:        gateway,
 			username:       settings.Provider.PortForwarding.Username,
 			password:       settings.Provider.PortForwarding.Password,
 		}
