@@ -4,7 +4,11 @@ ARG GO_VERSION=1.26
 ARG XCPUTRANSLATE_VERSION=v0.9.0
 ARG GOLANGCI_LINT_VERSION=v2.11.4
 ARG MOCKGEN_VERSION=v0.6.0
-ARG BUILDPLATFORM=linux/amd64
+# Note: BUILDPLATFORM and TARGETPLATFORM are provided by BuildKit. BUILDPLATFORM must NOT
+# be declared with a default value here: a declared default overrides the value BuildKit
+# injects, which pins every build stage to that platform. With a linux/amd64 default, a
+# native build on an arm host (armhf/armv7/arm64) pulls the amd64 toolchain images and
+# fails with `exec /bin/sh: exec format error`.
 
 FROM --platform=${BUILDPLATFORM} ghcr.io/qdm12/xcputranslate:${XCPUTRANSLATE_VERSION} AS xcputranslate
 FROM --platform=${BUILDPLATFORM} ghcr.io/qdm12/binpot:golangci-lint-${GOLANGCI_LINT_VERSION} AS golangci-lint
