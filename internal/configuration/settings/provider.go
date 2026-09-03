@@ -31,7 +31,7 @@ func (p *Provider) validate(vpnType string, filterChoicesGetter FilterChoicesGet
 	// Validate Name
 	var validNames []string
 	switch vpnType {
-	case vpn.AmneziaWg:
+	case vpn.AmneziaWg, vpn.Custom:
 		validNames = []string{providers.Custom}
 	case vpn.OpenVPN:
 		validNames = providers.AllWithCustom()
