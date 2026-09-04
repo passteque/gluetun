@@ -12,6 +12,7 @@ import (
 	"github.com/qdm12/gluetun/internal/pmtud/tcp"
 	portforward "github.com/qdm12/gluetun/internal/portforward"
 	"github.com/qdm12/gluetun/internal/provider"
+	"github.com/qdm12/gluetun/internal/provider/common"
 	"github.com/qdm12/gluetun/internal/provider/utils"
 )
 
@@ -19,6 +20,7 @@ type Firewall interface {
 	SetVPNConnection(ctx context.Context, connection models.Connection, interfaceName string) error
 	SetAllowedPort(ctx context.Context, port uint16, interfaceName string) error
 	RemoveAllowedPort(ctx context.Context, port uint16) error
+	AcceptOutput(ctx context.Context, protocol, intf string, ip netip.Addr, port uint16, remove bool) error
 	tcp.Firewall
 }
 
@@ -46,6 +48,8 @@ type Provider interface {
 	OpenVPNConfig(connection models.Connection, settings settings.OpenVPN, ipv6Supported bool) (lines []string)
 	Name() string
 }
+
+type WireguardConfiger = common.WireguardConfiger
 
 type PortForwarder interface {
 	Name() string
