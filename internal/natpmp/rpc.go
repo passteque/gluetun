@@ -83,10 +83,9 @@ func (c *Client) rpc(ctx context.Context, gateway netip.Addr,
 
 		bytesRead, receivedRemoteAddress, err := connection.ReadFromUDP(response)
 		if err != nil {
-			shouldRetry, finalErr := retryAfterReadError(ctx, connectionDuration,
-				c.maxRetries, retryCount, err)
-			if !shouldRetry {
-				return nil, finalErr
+			if retryErr := retryAfterReadError(ctx, connectionDuration,
+				c.maxRetries, retryCount, err); retryErr != nil {
+				return nil, fmt.Errorf("reading from udp connection: %w", retryErr)
 			}
 			connectionDuration *= 2
 			failedAttempts = append(failedAttempts, err.Error())
@@ -123,38 +122,35 @@ func (c *Client) rpc(ctx context.Context, gateway netip.Addr,
 	return response, nil
 }
 
-// retryAfterReadError reports whether the request should be retried after a
-// read error, waiting for the retry pacing when needed. A read error is
-// retryable when it is a timeout, meaning the gateway did not respond, or a
-// connection refused error, which is the OS translation of an ICMP port
+// retryAfterReadError returns an error when the request must not be retried
+// after a read error, waiting for the retry pacing when needed. A read error
+// is retryable when it is a timeout, meaning the gateway did not respond, or
+// a connection refused error, which is the OS translation of an ICMP port
 // unreachable message, meaning nothing was listening on the gateway port at
 // that instant. A timed out read already waited for the connection duration
 // to elapse, so only a refused read requires an explicit wait, to keep the
 // same retry pace.
 func retryAfterReadError(ctx context.Context, connectionDuration time.Duration,
 	maxRetries, retryCount uint, readErr error,
-) (shouldRetry bool, finalErr error) {
+) (err error) {
 	if ctx.Err() != nil {
-		return false, fmt.Errorf("reading from udp connection: %w", ctx.Err())
+		return ctx.Err()
 	}
 	var netErr net.Error
 	isTimeout := errors.As(readErr, &netErr) && netErr.Timeout()
 	isConnectionRefused := errors.Is(readErr, syscall.ECONNREFUSED)
 	if !isTimeout && !isConnectionRefused {
-		return false, fmt.Errorf("reading from udp connection: %w", readErr)
+		return readErr
 	}
 	if !isTimeout && retryCount+1 < maxRetries {
-		waitTimer := time.NewTimer(connectionDuration)
+		timer := time.NewTimer(connectionDuration)
 		select {
 		case <-ctx.Done():
-			if !waitTimer.Stop() {
-				<-waitTimer.C
-			}
-			return false, ctx.Err()
-		case <-waitTimer.C:
+			return ctx.Err()
+		case <-timer.C:
 		}
 	}
-	return true, nil
+	return nil
 }
 
 func dedupFailedAttempts(failedAttempts []string) (errorMessage string) {

@@ -6,31 +6,54 @@ import (
 	"testing"
 	"time"
 
+	"github.com/qdm12/gluetun/internal/pmtud/constants"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"golang.org/x/sys/unix"
 )
 
 // enough for slow machines for local UDP server.
 const initialConnectionDuration = 3 * time.Second
 
-// allocateClosedUDPPort returns the port of a UDP socket which is
-// closed immediately, so that no process is listening on it.
-// The OS sends back an ICMP port unreachable message for datagrams
-// sent to that port, which surfaces on the sender as a connection
-// refused error on read.
-func allocateClosedUDPPort(t *testing.T) (port uint16) {
+// reserveClosedPort returns a UDP port which is reserved by a TCP socket
+// which is bound but not listening, so that no UDP process is listening on
+// it and the OS cannot assign the port to another process. The OS sends
+// back an ICMP port unreachable message for datagrams sent to that port,
+// which surfaces on the sender as a connection refused error on read.
+func reserveClosedPort(t *testing.T) (port uint16) {
 	t.Helper()
 
-	conn, err := net.ListenUDP("udp", nil)
+	fd, err := unix.Socket(constants.AF_INET, constants.SOCK_STREAM, constants.IPPROTO_TCP)
 	require.NoError(t, err)
+	t.Cleanup(func() {
+		err := unix.Close(fd)
+		assert.NoError(t, err)
+	})
 
-	localAddress, ok := conn.LocalAddr().(*net.UDPAddr)
-	require.True(t, ok, "listening address is not UDP")
+	addr := &unix.SockaddrInet4{
+		Port: 0,
+		Addr: [4]byte{127, 0, 0, 1},
+	}
 
-	err = conn.Close()
-	require.NoError(t, err)
+	err = unix.Bind(fd, addr)
+	if err != nil {
+		_ = unix.Close(fd)
+		t.Fatal(err)
+	}
 
-	return uint16(localAddress.Port) //nolint:gosec
+	sockAddr, err := unix.Getsockname(fd)
+	if err != nil {
+		_ = unix.Close(fd)
+		t.Fatal(err)
+	}
+
+	sockAddr4, ok := sockAddr.(*unix.SockaddrInet4)
+	if !ok {
+		_ = unix.Close(fd)
+		t.Fatal("not an IPv4 address")
+	}
+
+	return uint16(sockAddr4.Port) //nolint:gosec
 }
 
 type udpExchange struct {
