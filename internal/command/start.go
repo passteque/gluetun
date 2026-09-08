@@ -57,13 +57,14 @@ func start(cmd execCmd) (stdoutLines, stderrLines <-chan string,
 
 	waitErrorCh := make(chan error)
 	go func() {
-		err := cmd.Wait()
+		// Wait must be called after all the pipe reads are complete,
+		// since it closes the pipes, and the last output lines could
+		// otherwise be lost.
 		<-stdoutDone
 		close(stdoutLinesCh)
-		_ = stdout.Close()
 		<-stderrDone
 		close(stderrLinesCh)
-		_ = stderr.Close()
+		err := cmd.Wait()
 		waitErrorCh <- err
 	}()
 
