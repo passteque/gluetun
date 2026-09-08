@@ -25,7 +25,9 @@ func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObj
 	_, externalIPv4Address, err := client.ExternalAddress(ctx,
 		objects.Gateway)
 	if err != nil {
-		if strings.HasSuffix(err.Error(), "connection refused") {
+		// Use strings.Contains and not strings.HasSuffix, since the connection
+		// refused error is wrapped by the NAT-PMP client error message.
+		if strings.Contains(err.Error(), "connection refused") {
 			err = fmt.Errorf("%w - make sure you have +pmp at the end of your OpenVPN username", err)
 		}
 		return nil, fmt.Errorf("getting external IPv4 address: %w", err)

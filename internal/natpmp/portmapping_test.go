@@ -48,8 +48,8 @@ func Test_Client_AddPortMapping(t *testing.T) {
 			lifetime:                  1200 * time.Second,
 			initialConnectionDuration: time.Millisecond,
 			exchanges:                 []udpExchange{{close: true}},
-			err:                       ErrConnectionTimeout,
-			errMessage: "executing remote procedure call: connection timeout: failed attempts: " +
+			err:                       ErrConnectionFailed,
+			errMessage: "executing remote procedure call: connection failed: failed attempts: " +
 				"read udp 127.0.0.1:[1-9][0-9]{0,4}->127.0.0.1:[1-9][0-9]{0,4}: i/o timeout \\(try 1\\)",
 		},
 		"add_udp": {

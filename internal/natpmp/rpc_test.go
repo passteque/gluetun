@@ -18,7 +18,9 @@ func Test_Client_rpc(t *testing.T) {
 		request                   []byte
 		responseSize              uint
 		initialConnectionDuration time.Duration
+		maxRetries                uint
 		exchanges                 []udpExchange
+		closedPort                bool
 		expectedResponse          []byte
 		err                       error
 		errMessage                string
@@ -27,6 +29,7 @@ func Test_Client_rpc(t *testing.T) {
 			gateway:    netip.IPv6Unspecified(),
 			request:    []byte{0, 0},
 			err:        ErrGatewayIPUnspecified,
+			maxRetries: 1,
 			errMessage: "gateway IP is unspecified",
 		},
 		"request_too_small": {
@@ -34,13 +37,15 @@ func Test_Client_rpc(t *testing.T) {
 			request:                   []byte{0},
 			initialConnectionDuration: time.Nanosecond, // doesn't matter
 			err:                       ErrRequestSizeTooSmall,
+			maxRetries:                1,
 			errMessage: `checking request: message size is too small: ` +
 				`need at least 2 bytes and got 1 byte\(s\)`,
 		},
 		"write_error": {
-			ctx:     context.Background(),
-			gateway: netip.AddrFrom4([4]byte{127, 0, 0, 1}),
-			request: []byte{0, 0},
+			ctx:        context.Background(),
+			gateway:    netip.AddrFrom4([4]byte{127, 0, 0, 1}),
+			request:    []byte{0, 0},
+			maxRetries: 1,
 			errMessage: `writing to connection: write udp ` +
 				`127.0.0.1:[1-9][0-9]{0,4}->127.0.0.1:[1-9][0-9]{0,4}: ` +
 				`i/o timeout`,
@@ -49,19 +54,32 @@ func Test_Client_rpc(t *testing.T) {
 			ctx:                       context.Background(),
 			gateway:                   netip.AddrFrom4([4]byte{127, 0, 0, 1}),
 			request:                   []byte{0, 1},
-			initialConnectionDuration: time.Millisecond,
+			initialConnectionDuration: 100 * time.Millisecond, // enough margin for the server to read the request under load
+			maxRetries:                1,
 			exchanges: []udpExchange{
 				{request: []byte{0, 1}, close: true},
 			},
-			err: ErrConnectionTimeout,
-			errMessage: "connection timeout: failed attempts: " +
+			err: ErrConnectionFailed,
+			errMessage: "connection failed: failed attempts: " +
 				"read udp 127.0.0.1:[1-9][0-9]{0,4}->127.0.0.1:[1-9][0-9]{0,4}: i/o timeout \\(try 1\\)",
+		},
+		"read_connection_refused_retried": {
+			ctx:                       context.Background(),
+			gateway:                   netip.AddrFrom4([4]byte{127, 0, 0, 1}),
+			request:                   []byte{0, 1},
+			initialConnectionDuration: 50 * time.Millisecond,
+			maxRetries:                3,
+			closedPort:                true,
+			errMessage: "connection failed: failed attempts: " +
+				"read udp 127.0.0.1:[1-9][0-9]{0,4}->127.0.0.1:[1-9][0-9]{0,4}: " +
+				"recvfrom: connection refused \\(tries 1, 2, 3\\)",
 		},
 		"response_too_small": {
 			ctx:                       context.Background(),
 			gateway:                   netip.AddrFrom4([4]byte{127, 0, 0, 1}),
 			request:                   []byte{0, 0},
 			initialConnectionDuration: initialConnectionDuration,
+			maxRetries:                1,
 			exchanges: []udpExchange{{
 				request:  []byte{0, 0},
 				response: []byte{1},
@@ -76,6 +94,7 @@ func Test_Client_rpc(t *testing.T) {
 			request:                   []byte{0x0, 0x2, 0x0, 0x0, 0x0, 0x7b, 0x1, 0xc8, 0x0, 0x0, 0x4, 0xb0},
 			responseSize:              5,
 			initialConnectionDuration: initialConnectionDuration,
+			maxRetries:                1,
 			exchanges: []udpExchange{{
 				request:  []byte{0x0, 0x2, 0x0, 0x0, 0x0, 0x7b, 0x1, 0xc8, 0x0, 0x0, 0x4, 0xb0},
 				response: []byte{0, 1, 2, 3}, // size 4
@@ -90,6 +109,7 @@ func Test_Client_rpc(t *testing.T) {
 			request:                   []byte{0x0, 0x2, 0x0, 0x0, 0x0, 0x7b, 0x1, 0xc8, 0x0, 0x0, 0x4, 0xb0},
 			responseSize:              16,
 			initialConnectionDuration: initialConnectionDuration,
+			maxRetries:                1,
 			exchanges: []udpExchange{{
 				request:  []byte{0x0, 0x2, 0x0, 0x0, 0x0, 0x7b, 0x1, 0xc8, 0x0, 0x0, 0x4, 0xb0},
 				response: []byte{0x1, 0x82, 0x0, 0x0, 0x0, 0x14, 0x4, 0x96, 0x0, 0x7b, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
@@ -103,6 +123,7 @@ func Test_Client_rpc(t *testing.T) {
 			request:                   []byte{0x0, 0x2, 0x0, 0x0, 0x0, 0x7b, 0x1, 0xc8, 0x0, 0x0, 0x4, 0xb0},
 			responseSize:              16,
 			initialConnectionDuration: initialConnectionDuration,
+			maxRetries:                1,
 			exchanges: []udpExchange{{
 				request:  []byte{0x0, 0x2, 0x0, 0x0, 0x0, 0x7b, 0x1, 0xc8, 0x0, 0x0, 0x4, 0xb0},
 				response: []byte{0x0, 0x88, 0x0, 0x0, 0x0, 0x14, 0x4, 0x96, 0x0, 0x7b, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
@@ -116,6 +137,7 @@ func Test_Client_rpc(t *testing.T) {
 			request:                   []byte{0x0, 0x2, 0x0, 0x0, 0x0, 0x7b, 0x1, 0xc8, 0x0, 0x0, 0x4, 0xb0},
 			responseSize:              16,
 			initialConnectionDuration: initialConnectionDuration,
+			maxRetries:                1,
 			exchanges: []udpExchange{{
 				request:  []byte{0x0, 0x2, 0x0, 0x0, 0x0, 0x7b, 0x1, 0xc8, 0x0, 0x0, 0x4, 0xb0},
 				response: []byte{0x0, 0x82, 0x0, 0x11, 0x0, 0x14, 0x4, 0x96, 0x0, 0x7b, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
@@ -129,6 +151,7 @@ func Test_Client_rpc(t *testing.T) {
 			request:                   []byte{0x0, 0x2, 0x0, 0x0, 0x0, 0x7b, 0x1, 0xc8, 0x0, 0x0, 0x4, 0xb0},
 			responseSize:              16,
 			initialConnectionDuration: initialConnectionDuration,
+			maxRetries:                1,
 			exchanges: []udpExchange{{
 				request:  []byte{0x0, 0x2, 0x0, 0x0, 0x0, 0x7b, 0x1, 0xc8, 0x0, 0x0, 0x4, 0xb0},
 				response: []byte{0x0, 0x82, 0x0, 0x0, 0x0, 0x0, 0x4, 0x96, 0x0, 0x7b, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0},
@@ -141,12 +164,19 @@ func Test_Client_rpc(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			remoteAddress := launchUDPServer(t, testCase.exchanges)
+			var serverPort uint16
+			switch {
+			case testCase.closedPort:
+				serverPort = reserveClosedPort(t)
+			default:
+				remoteAddress := launchUDPServer(t, testCase.exchanges)
+				serverPort = uint16(remoteAddress.Port) //nolint:gosec
+			}
 
 			client := Client{
-				serverPort:                uint16(remoteAddress.Port), //nolint:gosec
+				serverPort:                serverPort,
 				initialConnectionDuration: testCase.initialConnectionDuration,
-				maxRetries:                1,
+				maxRetries:                testCase.maxRetries,
 			}
 
 			response, err := client.rpc(testCase.ctx, testCase.gateway,
