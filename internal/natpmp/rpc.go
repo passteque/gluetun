@@ -83,9 +83,9 @@ func (c *Client) rpc(ctx context.Context, gateway netip.Addr,
 
 		bytesRead, receivedRemoteAddress, err := connection.ReadFromUDP(response)
 		if err != nil {
-			if retryErr := retryAfterReadError(ctx, connectionDuration,
-				c.maxRetries, retryCount, err); retryErr != nil {
-				return nil, fmt.Errorf("reading from udp connection: %w", retryErr)
+			if fatalErr := handleReadError(ctx, connectionDuration,
+				c.maxRetries, retryCount, err); fatalErr != nil {
+				return nil, fmt.Errorf("reading from udp connection: %w", fatalErr)
 			}
 			connectionDuration *= 2
 			failedAttempts = append(failedAttempts, err.Error())
@@ -122,15 +122,15 @@ func (c *Client) rpc(ctx context.Context, gateway netip.Addr,
 	return response, nil
 }
 
-// retryAfterReadError returns an error when the request must not be retried
-// after a read error, waiting for the retry pacing when needed. A read error
-// is retryable when it is a timeout, meaning the gateway did not respond, or
-// a connection refused error, which is the OS translation of an ICMP port
+// handleReadError returns the error to return when the read error is not
+// retryable, waiting for the retry pacing when needed. A read error is
+// retryable when it is a timeout, meaning the gateway did not respond, or a
+// connection refused error, which is the OS translation of an ICMP port
 // unreachable message, meaning nothing was listening on the gateway port at
 // that instant. A timed out read already waited for the connection duration
 // to elapse, so only a refused read requires an explicit wait, to keep the
 // same retry pace.
-func retryAfterReadError(ctx context.Context, connectionDuration time.Duration,
+func handleReadError(ctx context.Context, connectionDuration time.Duration,
 	maxRetries, retryCount uint, readErr error,
 ) (err error) {
 	if ctx.Err() != nil {
