@@ -18,7 +18,9 @@ func Test_Client_rpc(t *testing.T) {
 		request                   []byte
 		responseSize              uint
 		initialConnectionDuration time.Duration
+		maxRetries                uint
 		exchanges                 []udpExchange
+		closedPort                bool
 		expectedResponse          []byte
 		errMessage                string
 	}{
@@ -50,8 +52,19 @@ func Test_Client_rpc(t *testing.T) {
 			exchanges: []udpExchange{
 				{request: []byte{0, 1}, close: true},
 			},
-			errMessage: "connection timeout: failed attempts: " +
+			errMessage: "connection failed: failed attempts: " +
 				"read udp 127.0.0.1:[1-9][0-9]{0,4}->127.0.0.1:[1-9][0-9]{0,4}: i/o timeout \\(try 1\\)",
+		},
+		"read_connection_refused_retried": {
+			ctx:                       context.Background(),
+			gateway:                   netip.AddrFrom4([4]byte{127, 0, 0, 1}),
+			request:                   []byte{0, 1},
+			initialConnectionDuration: 50 * time.Millisecond,
+			maxRetries:                3,
+			closedPort:                true,
+			errMessage: "connection failed: failed attempts: " +
+				"read udp 127.0.0.1:[1-9][0-9]{0,4}->127.0.0.1:[1-9][0-9]{0,4}: " +
+				"recvfrom: connection refused \\(tries 1, 2, 3\\)",
 		},
 		"response_too_small": {
 			ctx:                       context.Background(),
@@ -132,12 +145,24 @@ func Test_Client_rpc(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			remoteAddress := launchUDPServer(t, testCase.exchanges)
+			var serverPort uint16
+			switch {
+			case testCase.closedPort:
+				serverPort = allocateClosedUDPPort(t)
+			default:
+				remoteAddress := launchUDPServer(t, testCase.exchanges)
+				serverPort = uint16(remoteAddress.Port) //nolint:gosec
+			}
+
+			maxRetries := testCase.maxRetries
+			if maxRetries == 0 {
+				maxRetries = 1
+			}
 
 			client := Client{
-				serverPort:                uint16(remoteAddress.Port), //nolint:gosec
+				serverPort:                serverPort,
 				initialConnectionDuration: testCase.initialConnectionDuration,
-				maxRetries:                1,
+				maxRetries:                maxRetries,
 			}
 
 			response, err := client.rpc(testCase.ctx, testCase.gateway,

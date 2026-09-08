@@ -13,6 +13,26 @@ import (
 // enough for slow machines for local UDP server.
 const initialConnectionDuration = 3 * time.Second
 
+// allocateClosedUDPPort returns the port of a UDP socket which is
+// closed immediately, so that no process is listening on it.
+// The OS sends back an ICMP port unreachable message for datagrams
+// sent to that port, which surfaces on the sender as a connection
+// refused error on read.
+func allocateClosedUDPPort(t *testing.T) (port uint16) {
+	t.Helper()
+
+	conn, err := net.ListenUDP("udp", nil)
+	require.NoError(t, err)
+
+	localAddress, ok := conn.LocalAddr().(*net.UDPAddr)
+	require.True(t, ok, "listening address is not UDP")
+
+	err = conn.Close()
+	require.NoError(t, err)
+
+	return uint16(localAddress.Port) //nolint:gosec
+}
+
 type udpExchange struct {
 	request  []byte
 	response []byte
