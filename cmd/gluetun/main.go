@@ -32,6 +32,7 @@ import (
 	"github.com/qdm12/gluetun/internal/healthcheck"
 	"github.com/qdm12/gluetun/internal/httpproxy"
 	"github.com/qdm12/gluetun/internal/metrics"
+	"github.com/qdm12/gluetun/internal/metrics/tunstats"
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/qdm12/gluetun/internal/openvpn"
@@ -470,6 +471,11 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	vpnHandler, vpnCtx, vpnDone := goshutdown.NewGoRoutineHandler(
 		"vpn", goroutine.OptionTimeout(time.Second))
 	go vpnLooper.Run(vpnCtx, vpnDone)
+
+	err = tunstats.New(prometheusRegistry, vpnLooper)
+	if err != nil {
+		return fmt.Errorf("registering tun stats metrics: %w", err)
+	}
 
 	updaterLooper := updater.NewLoop(allSettings.Updater,
 		providers, storage, httpClient, updaterLogger)
