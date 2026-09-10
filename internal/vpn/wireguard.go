@@ -28,6 +28,13 @@ func setupWireguard(ctx context.Context, netlinker NetLinker,
 
 	wireguardSettings := buildWireguardSettings(connection, settings.Wireguard, ipv6SupportLevel.IsSupported())
 
+	if wgConfiger, ok := providerConf.(WireguardConfiger); ok {
+		wireguardSettings, err = wgConfiger.WireguardConfig(ctx, &connection, settings, wireguardSettings, fw)
+		if err != nil {
+			return nil, models.Connection{}, fmt.Errorf("configuring wireguard: %w", err)
+		}
+	}
+
 	logger.Debug("Wireguard server public key: " + wireguardSettings.PublicKey)
 	logger.Debug("Wireguard client private key: " + gosettings.ObfuscateKey(wireguardSettings.PrivateKey))
 	logger.Debug("Wireguard pre-shared key: " + gosettings.ObfuscateKey(wireguardSettings.PreSharedKey))

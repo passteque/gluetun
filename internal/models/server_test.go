@@ -123,3 +123,84 @@ func Test_Server_Equal(t *testing.T) {
 		})
 	}
 }
+
+func Test_Server_HasMinimumInformation(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		server Server
+		err    error
+	}{
+		"valid OpenVPN server": {
+			server: Server{
+				VPN: "openvpn",
+				UDP: true,
+				IPs: []netip.Addr{netip.AddrFrom4([4]byte{1, 2, 3, 4})},
+			},
+		},
+		"valid Wireguard server with static pubkey": {
+			server: Server{
+				VPN:      "wireguard",
+				WgPubKey: "pubkey123",
+				IPs:      []netip.Addr{netip.AddrFrom4([4]byte{1, 2, 3, 4})},
+			},
+		},
+		"valid Wireguard server with dynamic credentials": {
+			server: Server{
+				VPN:        "wireguard",
+				ServerName: "bahamas413",
+				IPs:        []netip.Addr{netip.AddrFrom4([4]byte{1, 2, 3, 4})},
+			},
+		},
+		"empty vpn field": {
+			server: Server{
+				IPs: []netip.Addr{netip.AddrFrom4([4]byte{1, 2, 3, 4})},
+			},
+			err: assert.AnError,
+		},
+		"empty ips field": {
+			server: Server{
+				VPN: "openvpn",
+				UDP: true,
+			},
+			err: assert.AnError,
+		},
+		"wireguard with network protocol": {
+			server: Server{
+				VPN:      "wireguard",
+				WgPubKey: "pubkey123",
+				UDP:      true,
+				IPs:      []netip.Addr{netip.AddrFrom4([4]byte{1, 2, 3, 4})},
+			},
+			err: assert.AnError,
+		},
+		"openvpn with no protocol": {
+			server: Server{
+				VPN: "openvpn",
+				IPs: []netip.Addr{netip.AddrFrom4([4]byte{1, 2, 3, 4})},
+			},
+			err: assert.AnError,
+		},
+		"wireguard with empty pubkey and empty server name": {
+			server: Server{
+				VPN: "wireguard",
+				IPs: []netip.Addr{netip.AddrFrom4([4]byte{1, 2, 3, 4})},
+			},
+			err: assert.AnError,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			err := testCase.server.HasMinimumInformation()
+
+			if testCase.err != nil {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+			}
+		})
+	}
+}
