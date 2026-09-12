@@ -7,7 +7,7 @@ import (
 )
 
 func (c *Cmder) RunAndLog(ctx context.Context, command string, logger Logger) (err error) {
-	args, err := split(command)
+	args, err := Split(command)
 	if err != nil {
 		return fmt.Errorf("parsing command: %w", err)
 	}

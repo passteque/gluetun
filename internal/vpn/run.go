@@ -38,6 +38,10 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 			vpnInterface = settings.AmneziaWg.Wireguard.Interface
 			vpnRunner, connection, err = setupAmneziaWg(ctx, l.netLinker, l.fw,
 				providerConf, settings, l.ipv6SupportLevel, subLogger)
+		case vpn.Custom:
+			vpnInterface = settings.CustomVPN.Interface
+			vpnRunner, connection, err = setupCustomVPN(ctx, l.fw,
+				l.netLinker, settings, l.cmder, subLogger)
 		case vpn.OpenVPN:
 			vpnInterface = settings.OpenVPN.Interface
 			vpnRunner, connection, err = setupOpenVPN(ctx, l.fw,

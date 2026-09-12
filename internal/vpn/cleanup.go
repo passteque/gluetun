@@ -49,6 +49,8 @@ func (l *Loop) cleanup() {
 
 func getVPNInterface(settings settings.VPN) string {
 	switch settings.Type {
+	case vpn.Custom:
+		return settings.CustomVPN.Interface
 	case vpn.OpenVPN:
 		return settings.OpenVPN.Interface
 	case vpn.Wireguard:
