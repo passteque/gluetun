@@ -44,7 +44,7 @@ func Test_readInterfaceStats(t *testing.T) {
 		"invalid_rx_content": {
 			rxFile:      "notanumber\n",
 			txFile:      "5678\n",
-			errContains: "parsing rx_bytes",
+			errContains: "reading rx_bytes",
 		},
 	}
 

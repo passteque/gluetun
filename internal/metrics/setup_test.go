@@ -4,22 +4,9 @@ import (
 	"testing"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
-	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/qdm12/log"
 	"github.com/stretchr/testify/assert"
 )
-
-type stubVPNLooper struct{}
-
-func (stubVPNLooper) GetSettings() (vpnSettings settings.VPN) {
-	return settings.VPN{}
-}
-
-type stubLinkLister struct{}
-
-func (stubLinkLister) LinkByName(string) (link netlink.Link, err error) {
-	return netlink.Link{}, nil
-}
 
 func Test_New(t *testing.T) {
 	t.Parallel()
@@ -50,7 +37,7 @@ func Test_New(t *testing.T) {
 			t.Parallel()
 
 			service, err := New(testCase.settings, log.New(),
-				stubVPNLooper{}, stubLinkLister{})
+				NewMockVPNLooper(nil), NewMockLinkLister(nil))
 			assert.NoError(t, err)
 			assert.Equal(t, testCase.expected, service.String())
 		})
@@ -62,6 +49,6 @@ func Test_New_UnknownTypePanics(t *testing.T) {
 
 	assert.PanicsWithValue(t, "unknown metrics type: unknown", func() {
 		_, _ = New(settings.Metrics{Type: "unknown"}, log.New(),
-			stubVPNLooper{}, stubLinkLister{})
+			NewMockVPNLooper(nil), NewMockLinkLister(nil))
 	})
 }

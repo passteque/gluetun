@@ -23,7 +23,9 @@ type ParentLogger interface {
 // metrics type in the settings. For the Prometheus type,
 // it creates the metrics gatherer, on which the metrics
 // collectors (such as the tunnel stats) are registered.
-func New(settings settings.Metrics, parentLogger ParentLogger, //nolint:ireturn
+//
+//nolint:ireturn
+func New(settings settings.Metrics, parentLogger ParentLogger,
 	vpnLooper tunstats.VPNLooper, linkLister tunstats.LinkLister,
 ) (service goservices.Service, err error) {
 	switch settings.Type {

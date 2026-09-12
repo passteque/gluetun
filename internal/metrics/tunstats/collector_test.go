@@ -2,8 +2,10 @@ package tunstats
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/prometheus/client_golang/prometheus"
@@ -13,33 +15,22 @@ import (
 	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	gomock "go.uber.org/mock/gomock"
 )
 
-type stubVPNLooper struct {
-	vpnSettings settings.VPN
+// warningMessageMatcher is a gomock matcher matching a warning message
+// containing the given substring.
+type warningMessageMatcher struct {
+	contains string
 }
 
-func (s stubVPNLooper) GetSettings() (vpnSettings settings.VPN) {
-	return s.vpnSettings
+func (m warningMessageMatcher) Matches(x any) bool {
+	message, ok := x.(string)
+	return ok && strings.Contains(message, m.contains)
 }
 
-type stubLinkLister struct {
-	exists bool
-}
-
-func (s stubLinkLister) LinkByName(string) (link netlink.Link, err error) {
-	if s.exists {
-		return netlink.Link{}, nil
-	}
-	return netlink.Link{}, errors.New("link not found")
-}
-
-type stubLogger struct {
-	warnings []string
-}
-
-func (s *stubLogger) Warn(message string) {
-	s.warnings = append(s.warnings, message)
+func (m warningMessageMatcher) String() string {
+	return fmt.Sprintf("warning message containing %q", m.contains)
 }
 
 func createInterfaceStats(t *testing.T, sysfsNetPath, interfaceName,
@@ -69,7 +60,8 @@ func Test_New(t *testing.T) {
 	t.Parallel()
 
 	registry := prometheus.NewRegistry()
-	err := New(registry, stubVPNLooper{}, stubLinkLister{exists: true}, &stubLogger{})
+	err := New(registry, NewMockVPNLooper(nil), NewMockLinkLister(nil),
+		NewMockLogger(nil))
 	assert.NoError(t, err)
 }
 
@@ -125,19 +117,24 @@ func Test_New_Gather(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
+			ctrl := gomock.NewController(t)
+			mockVPNLooper := NewMockVPNLooper(ctrl)
+			mockVPNLooper.EXPECT().GetSettings().Return(testCase.vpnSettings)
+			mockLinkLister := NewMockLinkLister(ctrl)
+			mockLinkLister.EXPECT().LinkByName(testCase.interfaceName).
+				Return(netlink.Link{}, nil)
+			mockLogger := NewMockLogger(ctrl)
+
 			sysfsNetPath := t.TempDir()
 			createInterfaceStats(t, sysfsNetPath, testCase.interfaceName,
 				testCase.rxBytes, testCase.txBytes)
 
 			registry := prometheus.NewRegistry()
-			logger := &stubLogger{}
-			require.NoError(t, newCollector(registry,
-				stubVPNLooper{vpnSettings: testCase.vpnSettings},
-				stubLinkLister{exists: true}, logger, sysfsNetPath))
+			require.NoError(t, newCollector(registry, mockVPNLooper,
+				mockLinkLister, mockLogger, sysfsNetPath))
 
 			metricFamilies, err := registry.Gather()
 			require.NoError(t, err)
-			assert.Empty(t, logger.warnings)
 
 			rxMetricFamily := findMetricFamily(metricFamilies, metricRxBytesName)
 			require.NotNil(t, rxMetricFamily)
@@ -154,22 +151,29 @@ func Test_New_Gather(t *testing.T) {
 func Test_New_Gather_Link_Absent(t *testing.T) {
 	t.Parallel()
 
+	const interfaceName = "tun0"
+
+	ctrl := gomock.NewController(t)
+	mockVPNLooper := NewMockVPNLooper(ctrl)
+	mockVPNLooper.EXPECT().GetSettings().Return(settings.VPN{
+		Type:    vpn.OpenVPN,
+		OpenVPN: settings.OpenVPN{Interface: interfaceName},
+	})
+	mockLinkLister := NewMockLinkLister(ctrl)
+	mockLinkLister.EXPECT().LinkByName(interfaceName).
+		Return(netlink.Link{}, errors.New("link not found"))
+	mockLogger := NewMockLogger(ctrl)
+
 	// The link does not exist, so 0 is written to the metrics
 	// without any warning, and the sysfs is not read.
 	sysfsNetPath := t.TempDir()
 
 	registry := prometheus.NewRegistry()
-	logger := &stubLogger{}
-	require.NoError(t, newCollector(registry,
-		stubVPNLooper{vpnSettings: settings.VPN{
-			Type:    vpn.OpenVPN,
-			OpenVPN: settings.OpenVPN{Interface: "tun0"},
-		}},
-		stubLinkLister{exists: false}, logger, sysfsNetPath))
+	require.NoError(t, newCollector(registry, mockVPNLooper, mockLinkLister,
+		mockLogger, sysfsNetPath))
 
 	metricFamilies, err := registry.Gather()
 	require.NoError(t, err)
-	assert.Empty(t, logger.warnings)
 
 	rxMetricFamily := findMetricFamily(metricFamilies, metricRxBytesName)
 	require.NotNil(t, rxMetricFamily)
@@ -183,23 +187,31 @@ func Test_New_Gather_Link_Absent(t *testing.T) {
 func Test_New_Gather_Read_Error(t *testing.T) {
 	t.Parallel()
 
+	const interfaceName = "tun0"
+
+	ctrl := gomock.NewController(t)
+	mockVPNLooper := NewMockVPNLooper(ctrl)
+	mockVPNLooper.EXPECT().GetSettings().Return(settings.VPN{
+		Type:    vpn.OpenVPN,
+		OpenVPN: settings.OpenVPN{Interface: interfaceName},
+	})
+	mockLinkLister := NewMockLinkLister(ctrl)
+	mockLinkLister.EXPECT().LinkByName(interfaceName).Return(netlink.Link{}, nil)
+	mockLogger := NewMockLogger(ctrl)
+	mockLogger.EXPECT().Warn(warningMessageMatcher{
+		contains: "reading interface statistics for " + interfaceName,
+	})
+
 	// The link exists, but the sysfs statistics are missing, so no
 	// metric is emitted and a warning is logged.
 	sysfsNetPath := t.TempDir()
 
 	registry := prometheus.NewRegistry()
-	logger := &stubLogger{}
-	require.NoError(t, newCollector(registry,
-		stubVPNLooper{vpnSettings: settings.VPN{
-			Type:    vpn.OpenVPN,
-			OpenVPN: settings.OpenVPN{Interface: "tun0"},
-		}},
-		stubLinkLister{exists: true}, logger, sysfsNetPath))
+	require.NoError(t, newCollector(registry, mockVPNLooper, mockLinkLister,
+		mockLogger, sysfsNetPath))
 
 	metricFamilies, err := registry.Gather()
 	require.NoError(t, err)
-	require.Len(t, logger.warnings, 1)
-	assert.Contains(t, logger.warnings[0], "reading interface statistics for tun0")
 
 	assert.Nil(t, findMetricFamily(metricFamilies, metricRxBytesName))
 	assert.Nil(t, findMetricFamily(metricFamilies, metricTxBytesName))
