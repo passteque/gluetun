@@ -8,8 +8,6 @@ import (
 	"strings"
 )
 
-const defaultSysfsNetPath = "/sys/class/net"
-
 const (
 	counterRxBytes = "rx_bytes"
 	counterTxBytes = "tx_bytes"

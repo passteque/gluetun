@@ -1,6 +1,7 @@
 package tunstats
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	dto "github.com/prometheus/client_model/go"
 	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/constants/vpn"
+	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,6 +21,25 @@ type stubVPNLooper struct {
 
 func (s stubVPNLooper) GetSettings() (vpnSettings settings.VPN) {
 	return s.vpnSettings
+}
+
+type stubLinkLister struct {
+	exists bool
+}
+
+func (s stubLinkLister) LinkByName(string) (link netlink.Link, err error) {
+	if s.exists {
+		return netlink.Link{}, nil
+	}
+	return netlink.Link{}, errors.New("link not found")
+}
+
+type stubLogger struct {
+	warnings []string
+}
+
+func (s *stubLogger) Warn(message string) {
+	s.warnings = append(s.warnings, message)
 }
 
 func createInterfaceStats(t *testing.T, sysfsNetPath, interfaceName,
@@ -48,7 +69,7 @@ func Test_New(t *testing.T) {
 	t.Parallel()
 
 	registry := prometheus.NewRegistry()
-	err := New(registry, stubVPNLooper{})
+	err := New(registry, stubVPNLooper{}, stubLinkLister{exists: true}, &stubLogger{})
 	assert.NoError(t, err)
 }
 
@@ -109,11 +130,14 @@ func Test_New_Gather(t *testing.T) {
 				testCase.rxBytes, testCase.txBytes)
 
 			registry := prometheus.NewRegistry()
+			logger := &stubLogger{}
 			require.NoError(t, newCollector(registry,
-				stubVPNLooper{vpnSettings: testCase.vpnSettings}, sysfsNetPath))
+				stubVPNLooper{vpnSettings: testCase.vpnSettings},
+				stubLinkLister{exists: true}, logger, sysfsNetPath))
 
 			metricFamilies, err := registry.Gather()
 			require.NoError(t, err)
+			assert.Empty(t, logger.warnings)
 
 			rxMetricFamily := findMetricFamily(metricFamilies, metricRxBytesName)
 			require.NotNil(t, rxMetricFamily)
@@ -127,39 +151,56 @@ func Test_New_Gather(t *testing.T) {
 	}
 }
 
-func Test_New_Gather_NoMetrics(t *testing.T) {
+func Test_New_Gather_Link_Absent(t *testing.T) {
 	t.Parallel()
 
-	testCases := map[string]struct {
-		vpnSettings settings.VPN
-	}{
-		"interface absent": {
-			vpnSettings: settings.VPN{
-				Type:    vpn.OpenVPN,
-				OpenVPN: settings.OpenVPN{Interface: "tun0"},
-			},
-		},
-		"unknown vpn type": {
-			vpnSettings: settings.VPN{Type: "unknown"},
-		},
-	}
+	// The link does not exist, so 0 is written to the metrics
+	// without any warning, and the sysfs is not read.
+	sysfsNetPath := t.TempDir()
 
-	for name, testCase := range testCases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
+	registry := prometheus.NewRegistry()
+	logger := &stubLogger{}
+	require.NoError(t, newCollector(registry,
+		stubVPNLooper{vpnSettings: settings.VPN{
+			Type:    vpn.OpenVPN,
+			OpenVPN: settings.OpenVPN{Interface: "tun0"},
+		}},
+		stubLinkLister{exists: false}, logger, sysfsNetPath))
 
-			// Empty sysfs: the interface is not present.
-			sysfsNetPath := t.TempDir()
+	metricFamilies, err := registry.Gather()
+	require.NoError(t, err)
+	assert.Empty(t, logger.warnings)
 
-			registry := prometheus.NewRegistry()
-			require.NoError(t, newCollector(registry,
-				stubVPNLooper{vpnSettings: testCase.vpnSettings}, sysfsNetPath))
+	rxMetricFamily := findMetricFamily(metricFamilies, metricRxBytesName)
+	require.NotNil(t, rxMetricFamily)
+	assert.Equal(t, float64(0), rxMetricFamily.Metric[0].Counter.GetValue())
 
-			metricFamilies, err := registry.Gather()
-			require.NoError(t, err)
+	txMetricFamily := findMetricFamily(metricFamilies, metricTxBytesName)
+	require.NotNil(t, txMetricFamily)
+	assert.Equal(t, float64(0), txMetricFamily.Metric[0].Counter.GetValue())
+}
 
-			assert.Nil(t, findMetricFamily(metricFamilies, metricRxBytesName))
-			assert.Nil(t, findMetricFamily(metricFamilies, metricTxBytesName))
-		})
-	}
+func Test_New_Gather_Read_Error(t *testing.T) {
+	t.Parallel()
+
+	// The link exists, but the sysfs statistics are missing, so no
+	// metric is emitted and a warning is logged.
+	sysfsNetPath := t.TempDir()
+
+	registry := prometheus.NewRegistry()
+	logger := &stubLogger{}
+	require.NoError(t, newCollector(registry,
+		stubVPNLooper{vpnSettings: settings.VPN{
+			Type:    vpn.OpenVPN,
+			OpenVPN: settings.OpenVPN{Interface: "tun0"},
+		}},
+		stubLinkLister{exists: true}, logger, sysfsNetPath))
+
+	metricFamilies, err := registry.Gather()
+	require.NoError(t, err)
+	require.Len(t, logger.warnings, 1)
+	assert.Contains(t, logger.warnings[0], "reading interface statistics for tun0")
+
+	assert.Nil(t, findMetricFamily(metricFamilies, metricRxBytesName))
+	assert.Nil(t, findMetricFamily(metricFamilies, metricTxBytesName))
 }

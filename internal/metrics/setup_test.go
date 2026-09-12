@@ -3,16 +3,22 @@ package metrics
 import (
 	"testing"
 
-	dto "github.com/prometheus/client_model/go"
 	"github.com/qdm12/gluetun/internal/configuration/settings"
+	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/qdm12/log"
 	"github.com/stretchr/testify/assert"
 )
 
-type stubGatherer struct{}
+type stubVPNLooper struct{}
 
-func (stubGatherer) Gather() ([]*dto.MetricFamily, error) {
-	return nil, nil
+func (stubVPNLooper) GetSettings() (vpnSettings settings.VPN) {
+	return settings.VPN{}
+}
+
+type stubLinkLister struct{}
+
+func (stubLinkLister) LinkByName(string) (link netlink.Link, err error) {
+	return netlink.Link{}, nil
 }
 
 func Test_New(t *testing.T) {
@@ -22,13 +28,13 @@ func Test_New(t *testing.T) {
 		settings settings.Metrics
 		expected string
 	}{
-		"noop type": {
+		"noop_type": {
 			settings: settings.Metrics{
 				Type: "noop",
 			},
 			expected: "noop metrics service",
 		},
-		"prometheus type": {
+		"prometheus_type": {
 			settings: settings.Metrics{
 				Type: "prometheus",
 				Prometheus: settings.Prometheus{
@@ -43,7 +49,8 @@ func Test_New(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			service, err := New(testCase.settings, log.New(), stubGatherer{})
+			service, err := New(testCase.settings, log.New(),
+				stubVPNLooper{}, stubLinkLister{})
 			assert.NoError(t, err)
 			assert.Equal(t, testCase.expected, service.String())
 		})
@@ -54,6 +61,7 @@ func Test_New_UnknownTypePanics(t *testing.T) {
 	t.Parallel()
 
 	assert.PanicsWithValue(t, "unknown metrics type: unknown", func() {
-		_, _ = New(settings.Metrics{Type: "unknown"}, log.New(), stubGatherer{})
+		_, _ = New(settings.Metrics{Type: "unknown"}, log.New(),
+			stubVPNLooper{}, stubLinkLister{})
 	})
 }

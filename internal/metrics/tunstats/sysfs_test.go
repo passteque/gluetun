@@ -25,26 +25,26 @@ func Test_readInterfaceStats(t *testing.T) {
 			expectedRx: 1234,
 			expectedTx: 5678,
 		},
-		"zero values": {
+		"zero_values": {
 			rxFile:     "0\n",
 			txFile:     "0\n",
 			expectedRx: 0,
 			expectedTx: 0,
 		},
-		"missing rx file": {
+		"missing_rx_file": {
 			rxFile:      "",
 			txFile:      "5678\n",
 			errContains: "reading rx_bytes",
 		},
-		"missing tx file": {
+		"missing_tx_file": {
 			rxFile:      "1234\n",
 			txFile:      "",
 			errContains: "reading tx_bytes",
 		},
-		"invalid rx content": {
+		"invalid_rx_content": {
 			rxFile:      "notanumber\n",
 			txFile:      "5678\n",
-			errContains: "parsing interface statistics",
+			errContains: "parsing rx_bytes",
 		},
 	}
 

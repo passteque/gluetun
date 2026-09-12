@@ -22,7 +22,7 @@ func Test_resolveInterfaceName(t *testing.T) {
 			},
 			expected: "tun0",
 		},
-		"openvpn custom interface": {
+		"openvpn_custom_interface": {
 			vpnSettings: settings.VPN{
 				Type:    vpn.OpenVPN,
 				OpenVPN: settings.OpenVPN{Interface: "tun1"},
@@ -45,11 +45,7 @@ func Test_resolveInterfaceName(t *testing.T) {
 			},
 			expected: "awg0",
 		},
-		"unknown type": {
-			vpnSettings: settings.VPN{Type: "unknown"},
-			expected:    "",
-		},
-		"openvpn empty interface": {
+		"openvpn_empty_interface": {
 			vpnSettings: settings.VPN{
 				Type:    vpn.OpenVPN,
 				OpenVPN: settings.OpenVPN{Interface: ""},
@@ -64,4 +60,12 @@ func Test_resolveInterfaceName(t *testing.T) {
 			assert.Equal(t, testCase.expected, resolveInterfaceName(testCase.vpnSettings))
 		})
 	}
+
+	t.Run("unknown_type", func(t *testing.T) {
+		t.Parallel()
+
+		assert.PanicsWithValue(t, "unknown VPN type: unknown", func() {
+			_ = resolveInterfaceName(settings.VPN{Type: "unknown"})
+		})
+	})
 }

@@ -2,10 +2,13 @@
 package metrics
 
 import (
-	dto "github.com/prometheus/client_model/go"
+	"fmt"
+
+	promclient "github.com/prometheus/client_golang/prometheus"
 	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/metrics/noop"
 	"github.com/qdm12/gluetun/internal/metrics/prometheus"
+	"github.com/qdm12/gluetun/internal/metrics/tunstats"
 	"github.com/qdm12/goservices"
 	"github.com/qdm12/log"
 )
@@ -16,24 +19,25 @@ type ParentLogger interface {
 	New(options ...log.Option) *log.Logger
 }
 
-// PromGatherer is the interface for gathering Prometheus metrics.
-type PromGatherer interface {
-	Gather() ([]*dto.MetricFamily, error)
-}
-
 // New creates a new metrics service based on the
-// metrics type in the settings. It panics if the
-// type is unknown, which should not happen if the
-// settings were validated.
+// metrics type in the settings. For the Prometheus type,
+// it creates the metrics gatherer, on which the metrics
+// collectors (such as the tunnel stats) are registered.
 func New(settings settings.Metrics, parentLogger ParentLogger, //nolint:ireturn
-	promGatherer PromGatherer,
+	vpnLooper tunstats.VPNLooper, linkLister tunstats.LinkLister,
 ) (service goservices.Service, err error) {
 	switch settings.Type {
 	case "noop":
 		return noop.New()
 	case "prometheus":
-		logger := parentLogger.New(log.SetComponent("prometheus server"))
-		return prometheus.New(settings.Prometheus, promGatherer, logger)
+		registry := promclient.NewRegistry()
+		tunLogger := parentLogger.New(log.SetComponent("tunnel stats"))
+		err = tunstats.New(registry, vpnLooper, linkLister, tunLogger)
+		if err != nil {
+			return nil, fmt.Errorf("registering tunnel stats collector: %w", err)
+		}
+		serverLogger := parentLogger.New(log.SetComponent("prometheus server"))
+		return prometheus.New(settings.Prometheus, registry, serverLogger)
 	default:
 		panic("unknown metrics type: " + settings.Type)
 	}
