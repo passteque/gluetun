@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/netip"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
@@ -20,12 +21,19 @@ type Loop struct {
 	ipData        models.PublicIP
 	ipDataMutex   sync.RWMutex
 	fetcher       *api.ResilientFetcher
+	// retryWanted is true when the last fetch failed and a retry
+	// is scheduled. It is set to false when the VPN tunnel goes down
+	// (see ClearData) so retries stop until the next tunnel up trigger.
+	retryWanted atomic.Bool
 	// Fixed injected objects
 	httpClient *http.Client
 	logger     Logger
 	// Fixed parameters
 	puid int
 	pgid int
+	// Retry backoff parameters, set as fields for test purposes.
+	retryInitialBackoff time.Duration
+	retryMaxBackoff     time.Duration
 	// Internal channels and locks
 	// runCtx is used to detect when the loop has exited
 	// when performing an update
@@ -40,6 +48,11 @@ type Loop struct {
 	timeNow func() time.Time
 }
 
+const (
+	defaultRetryInitialBackoff = 10 * time.Second
+	defaultRetryMaxBackoff     = 5 * time.Minute
+)
+
 func NewLoop(settings settings.PublicIP, puid, pgid int,
 	httpClient *http.Client, logger Logger,
 ) (loop *Loop, err error) {
@@ -49,13 +62,15 @@ func NewLoop(settings settings.PublicIP, puid, pgid int,
 	}
 
 	return &Loop{
-		settings:   settings,
-		httpClient: httpClient,
-		fetcher:    api.NewResilient(fetchers, logger),
-		logger:     logger,
-		puid:       puid,
-		pgid:       pgid,
-		timeNow:    time.Now,
+		settings:            settings,
+		httpClient:          httpClient,
+		fetcher:             api.NewResilient(fetchers, logger),
+		logger:              logger,
+		puid:                puid,
+		pgid:                pgid,
+		retryInitialBackoff: defaultRetryInitialBackoff,
+		retryMaxBackoff:     defaultRetryMaxBackoff,
+		timeNow:             time.Now,
 	}, nil
 }
 
@@ -98,51 +113,93 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 ) {
 	defer close(runDone)
 
+	retryBackoff := l.retryInitialBackoff
+	var retryTimer *time.Timer
+	var retryTimerC <-chan time.Time // nil when no retry is scheduled
+
+	scheduleRetry := func() {
+		l.retryWanted.Store(true)
+		if retryTimer == nil {
+			retryTimer = time.NewTimer(retryBackoff)
+		} else {
+			retryTimer.Reset(retryBackoff)
+		}
+		retryTimerC = retryTimer.C
+		l.logger.Info("retrying to fetch public IP information in " +
+			retryBackoff.String())
+		const backoffFactor = 2
+		retryBackoff *= backoffFactor
+		if retryBackoff > l.retryMaxBackoff {
+			retryBackoff = l.retryMaxBackoff
+		}
+	}
+	unscheduleRetry := func() {
+		if retryTimerC == nil {
+			return
+		}
+		if !retryTimer.Stop() {
+			<-retryTimer.C
+		}
+		retryTimerC = nil
+	}
+
 	for {
-		var singleRunCtx context.Context
-		var singleRunResult chan<- error
 		select {
 		case <-runCtx.Done():
 			return
-		case singleRunCtx = <-runTrigger:
+		case singleRunCtx := <-runTrigger:
 			// Note singleRunCtx is canceled if runCtx is canceled.
-			singleRunResult = runResult
+			// A new trigger supersedes any previously scheduled retry.
+			unscheduleRetry()
+			retryBackoff = l.retryInitialBackoff
+			if !*l.settings.Enabled {
+				runResult <- nil
+				continue
+			}
+			err := l.fetchAndStore(singleRunCtx)
+			if err != nil {
+				scheduleRetry()
+			}
+			runResult <- err
+		case <-retryTimerC:
+			retryTimerC = nil
+			if !l.retryWanted.Load() || !*l.settings.Enabled {
+				continue
+			}
+			err := l.fetchAndStore(runCtx)
+			if err != nil && l.retryWanted.Load() {
+				l.logger.Warn("fetching public IP information failed: " +
+					err.Error())
+				scheduleRetry()
+			}
 		case partialUpdate := <-updateTrigger:
-			var err error
-			err = l.update(partialUpdate)
-			updatedResult <- err
-			continue
+			updatedResult <- l.update(partialUpdate)
 		}
-
-		if !*l.settings.Enabled {
-			singleRunResult <- nil
-			continue
-		}
-
-		result, err := l.fetcher.FetchInfo(singleRunCtx, netip.Addr{})
-		if err != nil {
-			err = fmt.Errorf("fetching information: %w", err)
-			singleRunResult <- err
-			continue
-		}
-
-		message := "Public IP address is " + result.IP.String()
-		message += " (" + result.Country + ", " + result.Region + ", " + result.City +
-			" - source: " + l.fetcher.String() + ")"
-		l.logger.Info(message)
-
-		l.ipDataMutex.Lock()
-		l.ipData = result
-		l.ipDataMutex.Unlock()
-
-		filepath := *l.settings.IPFilepath
-		err = persistPublicIP(filepath, result.IP.String(), l.puid, l.pgid)
-		if err != nil {
-			err = fmt.Errorf("persisting public ip address: %w", err)
-		}
-
-		singleRunResult <- err
 	}
+}
+
+func (l *Loop) fetchAndStore(ctx context.Context) (err error) {
+	result, err := l.fetcher.FetchInfo(ctx, netip.Addr{})
+	if err != nil {
+		return fmt.Errorf("fetching information: %w", err)
+	}
+
+	message := "Public IP address is " + result.IP.String()
+	message += " (" + result.Country + ", " + result.Region + ", " + result.City +
+		" - source: " + l.fetcher.String() + ")"
+	l.logger.Info(message)
+
+	l.ipDataMutex.Lock()
+	l.ipData = result
+	l.ipDataMutex.Unlock()
+
+	filepath := *l.settings.IPFilepath
+	err = persistPublicIP(filepath, result.IP.String(), l.puid, l.pgid)
+	if err != nil {
+		return fmt.Errorf("persisting public ip address: %w", err)
+	}
+
+	return nil
 }
 
 func (l *Loop) RunOnce(ctx context.Context) (err error) {
