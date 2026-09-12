@@ -48,3 +48,15 @@ func newHTTPClient(serverName string) (client *http.Client, err error) {
 		Timeout: 30 * time.Second,
 	}, nil
 }
+
+func newPIACertificatePool(serverName string) (*x509.CertPool, error) {
+	client, err := newHTTPClient(serverName)
+	if err != nil {
+		return nil, err
+	}
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport.TLSClientConfig == nil || transport.TLSClientConfig.RootCAs == nil {
+		return nil, fmt.Errorf("PIA HTTP client TLS configuration has an unexpected type")
+	}
+	return transport.TLSClientConfig.RootCAs, nil
+}

@@ -4,6 +4,7 @@ import (
 	"net/netip"
 	"testing"
 
+	"github.com/qdm12/gluetun/internal/constants/vpn"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -122,4 +123,19 @@ func Test_Server_Equal(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_Server_HasMinimumInformation_dynamicWireguard(t *testing.T) {
+	t.Parallel()
+
+	server := Server{
+		VPN:              vpn.Wireguard,
+		ServerName:       "vancouver439",
+		WireguardDynamic: true,
+		IPs:              []netip.Addr{netip.MustParseAddr("198.51.100.2")},
+	}
+
+	err := server.HasMinimumInformation()
+
+	assert.NoError(t, err)
 }
