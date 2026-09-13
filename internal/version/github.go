@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 )
@@ -27,57 +28,39 @@ type githubCommit struct {
 
 var errHTTPStatusCode = errors.New("bad response HTTP status code")
 
-func getGithubReleases(ctx context.Context, client *http.Client) (releases []githubRelease, err error) {
+func getJSON(ctx context.Context, client *http.Client, url string, target any) (err error) {
 	// Define a timeout since the default client has a large timeout and we don't
 	// want to wait too long.
-	const timeout = 5 * time.Second
+	const timeout = 15 * time.Second
 	ctx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	const url = "https://api.github.com/repos/qdm12/gluetun/releases"
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return nil, err
+		return err
 	}
 
 	response, err := client.Do(request)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	defer response.Body.Close()
+
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return err
+	}
 
 	if response.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("%w: %d %s", errHTTPStatusCode,
-			response.StatusCode, response.Status)
+		return fmt.Errorf("%w: %d %s: %s", errHTTPStatusCode,
+			response.StatusCode, response.Status, string(data))
 	}
 
-	decoder := json.NewDecoder(response.Body)
-	if err := decoder.Decode(&releases); err != nil {
-		return nil, err
-	}
-	return releases, nil
-}
-
-func getGithubCommits(ctx context.Context, client *http.Client) (commits []githubCommit, err error) {
-	// Define a timeout since the default client has a large timeout and we don't
-	// want to wait too long.
-	const timeout = 5 * time.Second
-	ctx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
-
-	const url = "https://api.github.com/repos/qdm12/gluetun/commits"
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	err = json.Unmarshal(data, target)
 	if err != nil {
-		return nil, err
+		return fmt.Errorf("failed JSON decoding: %w: response body is: %s",
+			err, string(data))
 	}
-	response, err := client.Do(request)
-	if err != nil {
-		return nil, err
-	}
-	defer response.Body.Close()
-	decoder := json.NewDecoder(response.Body)
-	if err := decoder.Decode(&commits); err != nil {
-		return nil, err
-	}
-	return commits, nil
+
+	return nil
 }
