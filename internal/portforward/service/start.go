@@ -20,9 +20,12 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 
 	s.logger.Info("starting")
 
-	gateway, err := s.routing.VPNLocalGatewayIP(s.settings.Interface)
-	if err != nil {
-		return nil, fmt.Errorf("getting VPN local gateway IP: %w", err)
+	gateway := s.settings.Gateway
+	if !gateway.IsValid() {
+		gateway, err = s.routing.VPNLocalGatewayIP(s.settings.Interface)
+		if err != nil {
+			return nil, fmt.Errorf("getting VPN local gateway IP: %w", err)
+		}
 	}
 
 	family := netlink.FamilyV4

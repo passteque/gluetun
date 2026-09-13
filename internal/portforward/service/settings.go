@@ -3,6 +3,7 @@ package service
 import (
 	"errors"
 	"fmt"
+	"net/netip"
 	"slices"
 
 	"github.com/qdm12/gluetun/internal/constants/providers"
@@ -16,6 +17,7 @@ type Settings struct {
 	UpCommand      string
 	DownCommand    string
 	Interface      string // needed for PIA, PrivateVPN and ProtonVPN, tun0 for example
+	Gateway        netip.Addr
 	ServerName     string // needed for PIA
 	CanPortForward bool   // needed for PIA
 	ListeningPorts []uint16
@@ -31,6 +33,7 @@ func (s Settings) Copy() (copied Settings) {
 	copied.UpCommand = s.UpCommand
 	copied.DownCommand = s.DownCommand
 	copied.Interface = s.Interface
+	copied.Gateway = s.Gateway
 	copied.ServerName = s.ServerName
 	copied.CanPortForward = s.CanPortForward
 	copied.ListeningPorts = gosettings.CopySlice(s.ListeningPorts)
@@ -47,8 +50,11 @@ func (s *Settings) OverrideWith(update Settings) {
 	s.UpCommand = gosettings.OverrideWithComparable(s.UpCommand, update.UpCommand)
 	s.DownCommand = gosettings.OverrideWithComparable(s.DownCommand, update.DownCommand)
 	s.Interface = gosettings.OverrideWithComparable(s.Interface, update.Interface)
-	s.ServerName = gosettings.OverrideWithComparable(s.ServerName, update.ServerName)
-	s.CanPortForward = gosettings.OverrideWithComparable(s.CanPortForward, update.CanPortForward)
+	// These are runtime connection states, so zero values deliberately clear
+	// values from a previous connection.
+	s.Gateway = update.Gateway
+	s.ServerName = update.ServerName
+	s.CanPortForward = update.CanPortForward
 	s.ListeningPorts = gosettings.OverrideWithSlice(s.ListeningPorts, update.ListeningPorts)
 	s.PortsCount = gosettings.OverrideWithComparable(s.PortsCount, update.PortsCount)
 	s.Username = gosettings.OverrideWithComparable(s.Username, update.Username)

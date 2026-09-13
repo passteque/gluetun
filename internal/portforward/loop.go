@@ -97,7 +97,7 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			// Stop call takes care of stopping the service
 			return
 		case partialUpdate := <-updateTrigger:
-			updatedSettings, err := l.settings.updateWith(partialUpdate, *l.settings.VPNIsUp)
+			updatedSettings, err := l.settings.updateWith(partialUpdate)
 			if err != nil {
 				updateResult <- err
 				continue

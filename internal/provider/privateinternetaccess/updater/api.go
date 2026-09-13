@@ -15,6 +15,7 @@ type apiData struct {
 }
 
 type regionData struct {
+	ID          string `json:"id"`
 	Name        string `json:"name"`
 	DNS         string `json:"dns"`
 	PortForward bool   `json:"port_forward"`
@@ -22,6 +23,7 @@ type regionData struct {
 	Servers     struct {
 		UDP []serverData `json:"ovpnudp"`
 		TCP []serverData `json:"ovpntcp"`
+		WG  []serverData `json:"wg"`
 	} `json:"servers"`
 }
 
@@ -34,7 +36,19 @@ func fetchAPI(ctx context.Context, client *http.Client) (
 	data apiData, err error,
 ) {
 	const url = "https://serverlist.piaservers.net/vpninfo/servers/v7"
+	return fetchAPIFromURL(ctx, client, url)
+}
 
+func fetchWireguardAPI(ctx context.Context, client *http.Client) (
+	data apiData, err error,
+) {
+	const url = "https://serverlist.piaservers.net/vpninfo/servers/v6"
+	return fetchAPIFromURL(ctx, client, url)
+}
+
+func fetchAPIFromURL(ctx context.Context, client *http.Client, url string) (
+	data apiData, err error,
+) {
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return data, err
@@ -60,9 +74,8 @@ func fetchAPI(ctx context.Context, client *http.Client) (
 		return data, err
 	}
 
-	// remove key/signature at the bottom
-	i := bytes.IndexRune(b, '\n')
-	b = b[:i]
+	// Remove the key/signature after the JSON first line.
+	b, _, _ = bytes.Cut(b, []byte{'\n'})
 
 	if err := json.Unmarshal(b, &data); err != nil {
 		return data, err
