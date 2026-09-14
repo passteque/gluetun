@@ -11,12 +11,13 @@ import (
 )
 
 type VPN struct {
-	// Type is the VPN type and can only be
-	// 'openvpn' or 'wireguard'. It cannot be the
-	// empty string in the internal state.
+	// Type is the VPN type and can only be 'openvpn',
+	// 'wireguard', 'amneziawg' or 'custom'. It cannot
+	// be the empty string in the internal state.
 	Type      string    `json:"type"`
 	Provider  Provider  `json:"provider"`
 	AmneziaWg AmneziaWg `json:"amneziawg"`
+	CustomVPN CustomVPN `json:"custom_vpn"`
 	OpenVPN   OpenVPN   `json:"openvpn"`
 	Wireguard Wireguard `json:"wireguard"`
 	PMTUD     PMTUD     `json:"pmtud"`
@@ -35,7 +36,7 @@ type VPN struct {
 // TODO v4 remove pointer for receiver (because of Surfshark).
 func (v *VPN) Validate(filterChoicesGetter FilterChoicesGetter, ipv6Supported bool, warner Warner) (err error) {
 	// Validate Type
-	validVPNTypes := []string{vpn.AmneziaWg, vpn.OpenVPN, vpn.Wireguard}
+	validVPNTypes := []string{vpn.AmneziaWg, vpn.Custom, vpn.OpenVPN, vpn.Wireguard}
 	if err = validate.IsOneOf(v.Type, validVPNTypes...); err != nil {
 		return fmt.Errorf("VPN type is not valid: %w", err)
 	}
@@ -50,6 +51,11 @@ func (v *VPN) Validate(filterChoicesGetter FilterChoicesGetter, ipv6Supported bo
 		err = v.AmneziaWg.validate(v.Provider.Name, ipv6Supported)
 		if err != nil {
 			return fmt.Errorf("AmneziaWG settings: %w", err)
+		}
+	case vpn.Custom:
+		err = v.CustomVPN.validate()
+		if err != nil {
+			return fmt.Errorf("custom VPN settings: %w", err)
 		}
 	case vpn.OpenVPN:
 		err := v.OpenVPN.validate(v.Provider.Name)
@@ -77,6 +83,7 @@ func (v *VPN) Copy() (copied VPN) {
 		Type:        v.Type,
 		Provider:    v.Provider.copy(),
 		AmneziaWg:   v.AmneziaWg.copy(),
+		CustomVPN:   v.CustomVPN.copy(),
 		OpenVPN:     v.OpenVPN.copy(),
 		Wireguard:   v.Wireguard.copy(),
 		PMTUD:       v.PMTUD.copy(),
@@ -89,6 +96,7 @@ func (v *VPN) OverrideWith(other VPN) {
 	v.Type = gosettings.OverrideWithComparable(v.Type, other.Type)
 	v.Provider.overrideWith(other.Provider)
 	v.AmneziaWg.overrideWith(other.AmneziaWg)
+	v.CustomVPN.overrideWith(other.CustomVPN)
 	v.OpenVPN.overrideWith(other.OpenVPN)
 	v.Wireguard.overrideWith(other.Wireguard)
 	v.PMTUD.overrideWith(other.PMTUD)
@@ -100,6 +108,7 @@ func (v *VPN) setDefaults() {
 	v.Type = gosettings.DefaultComparable(v.Type, vpn.OpenVPN)
 	v.Provider.setDefaults()
 	v.AmneziaWg.setDefaults(v.Provider.Name)
+	v.CustomVPN.setDefaults()
 	v.OpenVPN.setDefaults(v.Provider.Name)
 	v.Wireguard.setDefaults(v.Provider.Name)
 	v.PMTUD.setDefaults()
@@ -119,6 +128,8 @@ func (v VPN) toLinesNode() (node *gotree.Node) {
 	switch v.Type {
 	case vpn.AmneziaWg:
 		node.AppendNode(v.AmneziaWg.toLinesNode())
+	case vpn.Custom:
+		node.AppendNode(v.CustomVPN.toLinesNode())
 	case vpn.OpenVPN:
 		node.AppendNode(v.OpenVPN.toLinesNode())
 	case vpn.Wireguard:
@@ -147,6 +158,11 @@ func (v *VPN) read(r *reader.Reader) (err error) {
 	err = v.AmneziaWg.read(r)
 	if err != nil {
 		return fmt.Errorf("AmneziaWG: %w", err)
+	}
+
+	err = v.CustomVPN.read(r)
+	if err != nil {
+		return fmt.Errorf("custom VPN: %w", err)
 	}
 
 	err = v.OpenVPN.read(r)

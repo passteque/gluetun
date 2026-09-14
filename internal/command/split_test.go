@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func Test_split(t *testing.T) {
+func Test_Split(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {
@@ -92,7 +92,7 @@ func Test_split(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			words, err := split(testCase.command)
+			words, err := Split(testCase.command)
 
 			assert.Equal(t, testCase.words, words)
 			if testCase.errMessage != "" {
