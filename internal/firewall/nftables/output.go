@@ -17,6 +17,27 @@ import (
 // could never match any packet.
 var errAddressFamiliesMismatch = errors.New("source and destination address families do not match")
 
+// errPublicTrafficNotSupported is returned by the public output traffic
+// methods, which are only used as a fallback to kill the existing connections
+// when the conntrack tables cannot be flushed, and are not supported by the
+// nftables backend.
+var errPublicTrafficNotSupported = errors.New("the nftables firewall does not support public output traffic rules")
+
+// AcceptOutputPublicOnlyNewTraffic, RejectOutputPublicTraffic and
+// DropOutputPublicTraffic are not supported by the nftables backend;
+// see [errPublicTrafficNotSupported].
+func (f *Firewall) AcceptOutputPublicOnlyNewTraffic(_ context.Context, _ []netip.Prefix) error {
+	return fmt.Errorf("%w", errPublicTrafficNotSupported)
+}
+
+func (f *Firewall) RejectOutputPublicTraffic(_ context.Context, _ []netip.Prefix, _ bool) error {
+	return fmt.Errorf("%w", errPublicTrafficNotSupported)
+}
+
+func (f *Firewall) DropOutputPublicTraffic(_ context.Context, _ []netip.Prefix, _ bool) error {
+	return fmt.Errorf("%w", errPublicTrafficNotSupported)
+}
+
 // AcceptIpv6MulticastOutput accepts outgoing traffic to the IPv6 multicast
 // address ff02::1:ff00:0/104, which is used for NDP (Neighbor Discovery
 // Protocol) to resolve the neighboring nodes, on the interface intf. If intf

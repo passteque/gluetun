@@ -214,6 +214,49 @@ func Test_AcceptInputToSubnet(t *testing.T) {
 	}
 }
 
+func Test_AcceptIpv6MulticastInput(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		intf string
+	}{
+		"named_interface": {intf: "eth0"},
+		"empty_interface": {intf: ""},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			mockConn := NewMockConn(ctrl)
+			f := &Firewall{dialFunc: func() (conn, error) { return mockConn, nil }}
+
+			expectNewGluetunTable(mockConn)
+
+			var addedRule *nftables.Rule
+			mockConn.EXPECT().AddRule(gomock.Any()).DoAndReturn(func(rule *nftables.Rule) *nftables.Rule {
+				addedRule = rule
+				return rule
+			})
+			mockConn.EXPECT().Flush().Return(nil)
+
+			err := f.AcceptIpv6MulticastInput(t.Context(), testCase.intf)
+
+			assert.NoError(t, err)
+			assert.NotNil(t, addedRule)
+			assert.Equal(t, inputChainName, addedRule.Chain.Name)
+
+			const ipv6MulticastPrefix = "ff02::1:ff00:0/104"
+			prefix := netip.MustParsePrefix(ipv6MulticastPrefix)
+			expected := append(inputInterfaceExprs(testCase.intf), destinationSubnetExprs(prefix)...)
+			expected = append(expected, &expr.Verdict{Kind: expr.VerdictAccept})
+			assert.Equal(t, expected, addedRule.Exprs)
+			assert.Len(t, f.rules, 1)
+		})
+	}
+}
+
 // withInterface prepends the given interface's input expressions to exprs, if
 // the interface is not empty or "*".
 func withInterface(exprs []expr.Any, intf string) []expr.Any {

@@ -69,7 +69,9 @@ func PathMTUDiscover(ctx context.Context, icmpAddrs []netip.Addr, tcpAddrs []net
 	}
 	mtu, err = tcp.PathMTUDiscover(ctx, tcpAddrs, minMTU, maxPossibleMTU, tryTimeout, fw, logger)
 	if err != nil {
-		if errors.Is(err, iptables.ErrMarkMatchModuleMissing) {
+		missingMarkModule := errors.Is(err, iptables.ErrKernelModuleMissing) ||
+			errors.Is(err, iptables.ErrMarkMatchModuleMissing)
+		if missingMarkModule {
 			logger.Debugf("aborting TCP path MTU discovery: %s", err)
 			if icmpSuccess {
 				return maxPossibleMTU, nil // only rely on ICMP PMTUD results

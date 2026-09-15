@@ -14,18 +14,27 @@ type CmdRunner interface {
 
 type Logger interface {
 	Debug(s string)
+	Debugf(format string, args ...any)
 	Info(s string)
 	Warn(s string)
 	Warnf(format string, args ...any)
 	Error(s string)
 }
 
+type Netlinker interface {
+	FlushConntrack() error
+}
+
 type firewallImpl interface { //nolint:interfacebloat
 	SaveAndRestore(ctx context.Context) (restore func(context.Context), err error)
-	AcceptEstablishedRelatedTraffic(ctx context.Context) error
+	AcceptOutputPublicOnlyNewTraffic(ctx context.Context, localPrefixes []netip.Prefix) error
+	RejectOutputPublicTraffic(ctx context.Context, localPrefixes []netip.Prefix, remove bool) error
+	DropOutputPublicTraffic(ctx context.Context, localPrefixes []netip.Prefix, remove bool) error
 	AcceptInputThroughInterface(ctx context.Context, intf string) error
+	AcceptEstablishedRelatedTraffic(ctx context.Context) error
 	AcceptInputToPort(ctx context.Context, intf string, port uint16, remove bool) error
 	AcceptInputToSubnet(ctx context.Context, intf string, subnet netip.Prefix) error
+	AcceptIpv6MulticastInput(ctx context.Context, intf string) error
 	AcceptIpv6MulticastOutput(ctx context.Context, intf string) error
 	AcceptOutput(ctx context.Context, protocol, intf string,
 		ip netip.Addr, port uint16, remove bool) error

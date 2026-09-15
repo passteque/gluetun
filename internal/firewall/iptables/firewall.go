@@ -2,8 +2,11 @@ package iptables
 
 import (
 	"context"
+	"errors"
 	"sync"
 )
+
+var ErrKernelModuleMissing = errors.New("kernel module is missing for this operation")
 
 type Config struct {
 	runner        CmdRunner

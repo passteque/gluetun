@@ -14,6 +14,7 @@ import (
 
 type Config struct {
 	runner        CmdRunner
+	netlinker     Netlinker
 	logger        Logger
 	defaultRoutes []routing.DefaultRoute
 	localNetworks []routing.LocalNetwork
@@ -36,7 +37,7 @@ type Config struct {
 // NewConfig creates a new Config instance and returns an error
 // if no firewall implementation is available.
 func NewConfig(ctx context.Context, implementation string,
-	logger, iptablesLogger Logger, runner CmdRunner,
+	logger, iptablesLogger Logger, runner CmdRunner, netlinker Netlinker,
 	defaultRoutes []routing.DefaultRoute, localNetworks []routing.LocalNetwork,
 ) (config *Config, err error) {
 	var impl firewallImpl
@@ -58,6 +59,7 @@ func NewConfig(ctx context.Context, implementation string,
 
 	return &Config{
 		runner:            runner,
+		netlinker:         netlinker,
 		logger:            logger,
 		allowedInputPorts: make(map[uint16]map[string]struct{}),
 		// Obtained from routing

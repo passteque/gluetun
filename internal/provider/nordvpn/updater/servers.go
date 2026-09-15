@@ -72,7 +72,7 @@ func extractServers(jsonServer serverData, groups map[uint32]groupData,
 	region := jsonServer.region(groups)
 	if region == "" {
 		warning := fmt.Sprintf("no region found for server %s", jsonServer.Name)
-		return nil, []string{warning}
+		warnings = append(warnings, warning)
 	}
 
 	server := models.Server{
@@ -91,7 +91,8 @@ func extractServers(jsonServer serverData, groups map[uint32]groupData,
 		warnings = append(warnings, warning)
 	case err != nil:
 		warning := fmt.Sprintf("failed parsing server name: %s", err)
-		return nil, []string{warning}
+		warnings = append(warnings, warning)
+		return nil, warnings
 	default: // no error
 		server.Number = number
 	}

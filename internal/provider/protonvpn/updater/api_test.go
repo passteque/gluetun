@@ -407,18 +407,24 @@ func (m warningContaining) String() string {
 
 func TestAuth(t *testing.T) {
 	t.Parallel()
-	// A TOTP code valid for the test secret at the current time, and one
-	// valid for the other secret (hence invalid for the test account).
-	validTOTPCode, err := totp.GenerateCode(testTOTPSecret, time.Now())
-	require.NoError(t, err)
-	require.True(t, totp.Validate(validTOTPCode, testTOTPSecret))
+	// A TOTP code valid for the other secret, hence invalid for the test
+	// account regardless of when it is validated.
 	invalidTOTPCode, err := totp.GenerateCode(testTOTPSecretOther, time.Now())
 	require.NoError(t, err)
 
 	testCases := map[string]struct {
-		twoFAMask             uint
-		totpSecret            string
-		totpCode              string
+		twoFAMask uint
+		// totpSecret is the secret the client generates the TOTP code from.
+		totpSecret string
+		// totpCode is the user-provided 6-digit temporary code.
+		totpCode string
+		// useValidTOTPCode makes the subtest generate a fresh TOTP code for
+		// the test account as late as possible before the authentication
+		// request: a TOTP code is only valid during its 30-second period
+		// plus one period of skew, so a code generated at the start of the
+		// test would be stale by the time a subtest running late on a loaded
+		// machine submits it to the two-factor endpoint.
+		useValidTOTPCode      bool
 		hasVPNScope           bool
 		challengeAuthRequests int
 		twoFARejectWith200    bool
@@ -499,10 +505,10 @@ func TestAuth(t *testing.T) {
 			expectedErr: "please set the TOTP secret or provide the 6-digit TOTP code",
 		},
 		"2FA_TOTP_enabled_temporary_code_provided": {
-			twoFAMask:     1,
-			totpCode:      validTOTPCode,
-			hasVPNScope:   true,
-			expectedToken: testFinalToken,
+			twoFAMask:        1,
+			useValidTOTPCode: true,
+			hasVPNScope:      true,
+			expectedToken:    testFinalToken,
 		},
 		"2FA_TOTP_enabled_temporary_code_and_secret_secret_takes_precedence": {
 			twoFAMask:     1,
@@ -593,8 +599,16 @@ func TestAuth(t *testing.T) {
 				sessionID: testSessionID,
 			}
 
+			totpCode := testCase.totpCode
+			if testCase.useValidTOTPCode {
+				var err error
+				totpCode, err = totp.GenerateCode(testTOTPSecret, time.Now())
+				require.NoError(t, err)
+				require.True(t, totp.Validate(totpCode, testTOTPSecret))
+			}
+
 			authCookie, err := client.auth(context.Background(), unauthCookie,
-				testUsername, testSRPSession, testCase.totpSecret, testCase.totpCode, proofs)
+				testUsername, testSRPSession, testCase.totpSecret, totpCode, proofs)
 
 			if testCase.expectedErr != "" {
 				assert.ErrorContains(t, err, testCase.expectedErr)

@@ -34,9 +34,9 @@ func Test_PathMTUDiscover(t *testing.T) {
 
 	cmder := command.New()
 	const implementation = "auto"
-	fw, err := firewall.NewConfig(t.Context(), implementation, logger, logger, cmder, nil, nil)
+	fw, err := firewall.NewConfig(t.Context(), implementation, logger, logger, cmder, nil, nil, nil)
 	if errors.Is(err, iptables.ErrNotSupported) {
-		t.Skip("iptables not installed, skipping TCP PMTUD tests")
+		t.Skipf("iptables not supported: %s", err)
 	}
 	require.NoError(t, err, "creating firewall config")
 

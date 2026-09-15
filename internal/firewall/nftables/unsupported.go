@@ -30,6 +30,18 @@ func (f *Firewall) AcceptEstablishedRelatedTraffic(_ context.Context) error {
 	return fmt.Errorf("%w", errNotImplemented)
 }
 
+func (f *Firewall) AcceptOutputPublicOnlyNewTraffic(_ context.Context, _ []netip.Prefix) error {
+	return fmt.Errorf("%w", errNotImplemented)
+}
+
+func (f *Firewall) RejectOutputPublicTraffic(_ context.Context, _ []netip.Prefix, _ bool) error {
+	return fmt.Errorf("%w", errNotImplemented)
+}
+
+func (f *Firewall) DropOutputPublicTraffic(_ context.Context, _ []netip.Prefix, _ bool) error {
+	return fmt.Errorf("%w", errNotImplemented)
+}
+
 func (f *Firewall) AcceptInputThroughInterface(_ context.Context, _ string) error {
 	return fmt.Errorf("%w", errNotImplemented)
 }
@@ -39,6 +51,10 @@ func (f *Firewall) AcceptInputToPort(_ context.Context, _ string, _ uint16, _ bo
 }
 
 func (f *Firewall) AcceptInputToSubnet(_ context.Context, _ string, _ netip.Prefix) error {
+	return fmt.Errorf("%w", errNotImplemented)
+}
+
+func (f *Firewall) AcceptIpv6MulticastInput(_ context.Context, _ string) error {
 	return fmt.Errorf("%w", errNotImplemented)
 }
 

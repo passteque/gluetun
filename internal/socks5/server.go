@@ -5,15 +5,17 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"sync"
 	"sync/atomic"
 )
 
 type server struct {
-	username string
-	password string
-	address  string
-	logger   Logger
+	username     string
+	password     string
+	address      string
+	allowedCIDRs []netip.Prefix
+	logger       Logger
 
 	// internal fields
 	tcpListener     net.Listener
@@ -27,10 +29,11 @@ type server struct {
 
 func newServer(settings Settings) *server {
 	return &server{
-		username: settings.Username,
-		password: settings.Password,
-		address:  settings.Address,
-		logger:   settings.Logger,
+		username:     settings.Username,
+		password:     settings.Password,
+		address:      settings.Address,
+		allowedCIDRs: settings.AllowedCIDRs,
+		logger:       settings.Logger,
 	}
 }
 
@@ -46,7 +49,7 @@ func (s *server) Start(ctx context.Context) (runErr <-chan error, err error) {
 		return nil, fmt.Errorf("TCP listening on %s: %w", s.address, err)
 	}
 
-	s.udpRouter, err = newUDPRouter(ctx, s.address, s.logger)
+	s.udpRouter, err = newUDPRouter(ctx, s.address, s.allowedCIDRs, s.logger)
 	if err != nil {
 		_ = s.tcpListener.Close()
 		return nil, fmt.Errorf("creating UDP router: %w", err)
@@ -95,6 +98,9 @@ func (s *server) runServer(ready chan<- struct{},
 				s.socksConnCancel() // stop ongoing TCP socks connections - no impact on UDP
 				tcpErrCh <- fmt.Errorf("accepting connection: %w", err)
 				return
+			}
+			if !s.isClientAllowed(connection) {
+				continue
 			}
 			wg.Go(func() {
 				connection := connection // capture loop variable
@@ -147,6 +153,23 @@ func (s *server) runServer(ready chan<- struct{},
 		<-udpErrCh              // wait for UDP router to stop
 		runErrCh <- fmt.Errorf("running TCP server: %w", err)
 	}
+}
+
+// isClientAllowed checks that the connection comes from an allowed client IP
+// and closes the connection, returning false, if it does not.
+func (s *server) isClientAllowed(connection net.Conn) bool {
+	clientAddrPort, err := netAddrToNetipAddrPort(connection.RemoteAddr())
+	if err != nil {
+		s.logger.Warnf("parsing client address %s: %s", connection.RemoteAddr(), err)
+		_ = connection.Close()
+		return false
+	}
+	if !ipAllowed(s.allowedCIDRs, clientAddrPort.Addr()) {
+		s.logger.Infof("rejecting connection from %s: IP is not allowed", clientAddrPort.Addr())
+		_ = connection.Close()
+		return false
+	}
+	return true
 }
 
 func (s *server) Stop() (err error) {

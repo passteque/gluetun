@@ -12,17 +12,34 @@ func (s *Service) Stop() (err error) {
 	defer s.startStopMutex.Unlock()
 
 	s.portMutex.RLock()
-	serviceNotRunning := len(s.ports) == 0
+	portsEmpty := len(s.ports) == 0
 	s.portMutex.RUnlock()
-	if serviceNotRunning {
+
+	keepPortRunning := s.keepPortCancel != nil
+	if keepPortRunning {
+		// The keep port goroutine may have already exited after a crash.
+		select {
+		case <-s.keepPortDoneCh:
+			keepPortRunning = false
+		default:
+		}
+	}
+
+	if portsEmpty && !keepPortRunning {
 		// TODO replace with goservices.ErrAlreadyStopped
 		return nil
 	}
 
 	s.logger.Info("stopping")
 
-	s.keepPortCancel()
-	<-s.keepPortDoneCh
+	// The keep port goroutine may not be running if ports were set
+	// at runtime by [Service.SetPortsForwarded] while port forwarding is
+	// disabled, such as with providers without internal port
+	// forwarding code support.
+	if s.keepPortCancel != nil {
+		s.keepPortCancel()
+		<-s.keepPortDoneCh
+	}
 
 	return s.cleanup()
 }

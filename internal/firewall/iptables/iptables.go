@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 
 	"github.com/qdm12/gluetun/internal/models"
@@ -74,6 +75,9 @@ func (c *Config) runIptablesInstructionNoSave(ctx context.Context, instruction s
 	cmd := exec.CommandContext(ctx, c.ipTables, flags...) // #nosec G204
 	c.logger.Debug(cmd.String())
 	if output, err := c.runner.Run(cmd); err != nil {
+		if strings.Contains(output, "missing kernel module") {
+			err = ErrKernelModuleMissing
+		}
 		return fmt.Errorf("command failed: \"%s %s\": %s: %w",
 			c.ipTables, instruction, output, err)
 	}
@@ -128,6 +132,177 @@ func (c *Config) AcceptEstablishedRelatedTraffic(ctx context.Context) error {
 		"--append OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT",
 		"--append INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT",
 	})
+}
+
+// publicOnlyChainName is the name of the custom iptables chain created by the
+// public output traffic fallbacks. It is prefixed with GLUETUN to avoid
+// clashing with a chain of the same name that a user or another application
+// may have created.
+const publicOnlyChainName = "GLUETUN_PUBLIC_ONLY"
+
+// AcceptOutputPublicOnlyNewTraffic adds rules to mark new output connections, and to accept
+// established or related packets with this mark only. This effectively forces
+// previously established or related traffic to be blocked, which is used as a fallback
+// to kill the existing connections when the conntrack tables cannot be flushed.
+// The localPrefixes are added to the exceptions, so that existing connections to
+// the local networks are not blocked.
+func (c *Config) AcceptOutputPublicOnlyNewTraffic(ctx context.Context,
+	localPrefixes []netip.Prefix,
+) error {
+	ipv4Instructions, ipv6Instructions := makeCreatePublicIPChainInstructions(localPrefixes)
+	appendToBoth := func(instruction string) {
+		ipv4Instructions = append(ipv4Instructions, instruction)
+		ipv6Instructions = append(ipv6Instructions, instruction)
+	}
+
+	// Mark new connections with mark 0x567
+	appendToBoth(fmt.Sprintf("-A %s -m conntrack --ctstate NEW -j CONNMARK --set-mark 0x567",
+		publicOnlyChainName))
+	// Drop related/established connections that made it through; marked connections would
+	// be directly accepted by the first rule in the OUTPUT chain (see below)
+	appendToBoth(fmt.Sprintf("-A %s -m conntrack --ctstate RELATED,ESTABLISHED -j DROP",
+		publicOnlyChainName))
+	// Set the chain as the second rule in the OUTPUT chain, so that it is evaluated
+	// after the accept rule below, for performance reasons.
+	appendToBoth("-I OUTPUT -j " + publicOnlyChainName)
+	appendToBoth("-I OUTPUT -m conntrack --ctstate RELATED,ESTABLISHED -m connmark --mark 0x567 -j ACCEPT")
+
+	c.iptablesMutex.Lock()
+	defer c.iptablesMutex.Unlock()
+
+	restore, err := c.saveAndRestore(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = c.runIptablesInstructionsNoSave(ctx, ipv4Instructions)
+	if err != nil {
+		restore(ctx)
+		return err
+	}
+	err = c.runIP6tablesInstructionsNoSave(ctx, ipv6Instructions)
+	if err != nil {
+		restore(ctx)
+		return err
+	}
+
+	return nil
+}
+
+func (c *Config) RejectOutputPublicTraffic(ctx context.Context,
+	localPrefixes []netip.Prefix, remove bool,
+) error {
+	return c.targetOutputPublicTraffic(ctx, "REJECT", localPrefixes, remove)
+}
+
+func (c *Config) DropOutputPublicTraffic(ctx context.Context,
+	localPrefixes []netip.Prefix, remove bool,
+) error {
+	return c.targetOutputPublicTraffic(ctx, "DROP", localPrefixes, remove)
+}
+
+func (c *Config) targetOutputPublicTraffic(ctx context.Context,
+	target string, localPrefixes []netip.Prefix, remove bool,
+) error {
+	removeInstructions := []string{
+		"-D OUTPUT -j " + publicOnlyChainName,
+		"-F " + publicOnlyChainName,
+		"-X " + publicOnlyChainName,
+	}
+	if remove {
+		return c.runMixedIptablesInstructions(ctx, removeInstructions)
+	}
+
+	ipv4Instructions, ipv6Instructions := makeCreatePublicIPChainInstructions(localPrefixes)
+	appendToBoth := func(instruction string) {
+		ipv4Instructions = append(ipv4Instructions, instruction)
+		ipv6Instructions = append(ipv6Instructions, instruction)
+	}
+
+	if target == "REJECT" {
+		// Block TCP by sending back TCP RST packets.
+		appendToBoth(fmt.Sprintf("-A %s -p tcp -m conntrack --ctstate RELATED,ESTABLISHED "+
+			"-j REJECT --reject-with tcp-reset", publicOnlyChainName))
+		// Block UDP and ICMP, sending back ICMP port unreachable.
+		appendToBoth(fmt.Sprintf("-A %s -m conntrack --ctstate RELATED,ESTABLISHED -j REJECT",
+			publicOnlyChainName))
+	} else {
+		appendToBoth(fmt.Sprintf("-A %s -m conntrack --ctstate RELATED,ESTABLISHED -j %s",
+			publicOnlyChainName, target))
+	}
+	appendToBoth("-I OUTPUT -j " + publicOnlyChainName)
+
+	c.iptablesMutex.Lock()
+	defer c.iptablesMutex.Unlock()
+
+	restore, err := c.saveAndRestore(ctx)
+	if err != nil {
+		return err
+	}
+
+	err = c.runIptablesInstructionsNoSave(ctx, ipv4Instructions)
+	if err != nil {
+		restore(ctx)
+		if strings.Contains(err.Error(), " support") {
+			return fmt.Errorf("%w: %w", ErrKernelModuleMissing, err)
+		}
+		return err
+	}
+
+	err = c.runIP6tablesInstructionsNoSave(ctx, ipv6Instructions)
+	if err != nil {
+		_ = c.runIptablesInstructionsNoSave(ctx, removeInstructions)
+		restore(ctx)
+		if strings.Contains(err.Error(), " support") {
+			return fmt.Errorf("%w: %w", ErrKernelModuleMissing, err)
+		}
+		return err
+	}
+
+	return nil
+}
+
+func makeCreatePublicIPChainInstructions(localPrefixes []netip.Prefix) (
+	ipv4Instructions, ipv6Instructions []string,
+) {
+	ipv4PrivatePrefixes := []netip.Prefix{
+		netip.MustParsePrefix("10.0.0.0/8"),
+		netip.MustParsePrefix("172.16.0.0/12"),
+		netip.MustParsePrefix("192.168.0.0/16"),
+		netip.MustParsePrefix("127.0.0.0/8"),
+	}
+	ipv6PrivatePrefixes := []netip.Prefix{
+		netip.MustParsePrefix("fc00::/7"),
+		netip.MustParsePrefix("fe80::/10"),
+		netip.MustParsePrefix("::1/128"),
+	}
+
+	// Add the configured local network prefixes to the exceptions, since
+	// they can be globally routed (notably IPv6 local networks), and we
+	// do not want to block the existing connections to them.
+	for _, prefix := range localPrefixes {
+		switch {
+		case prefix.Addr().Is4() && !slices.Contains(ipv4PrivatePrefixes, prefix):
+			ipv4PrivatePrefixes = append(ipv4PrivatePrefixes, prefix)
+		case prefix.Addr().Is6() && !slices.Contains(ipv6PrivatePrefixes, prefix):
+			ipv6PrivatePrefixes = append(ipv6PrivatePrefixes, prefix)
+		}
+	}
+
+	ipv4Instructions = append(ipv4Instructions, "-N "+publicOnlyChainName)
+	ipv6Instructions = append(ipv6Instructions, "-N "+publicOnlyChainName)
+
+	for _, prefix := range ipv4PrivatePrefixes {
+		ipv4Instructions = append(ipv4Instructions, fmt.Sprintf(
+			"-A %s -d %s -j RETURN", publicOnlyChainName, prefix))
+	}
+
+	for _, prefix := range ipv6PrivatePrefixes {
+		ipv6Instructions = append(ipv6Instructions, fmt.Sprintf(
+			"-A %s -d %s -j RETURN", publicOnlyChainName, prefix))
+	}
+
+	return ipv4Instructions, ipv6Instructions
 }
 
 func (c *Config) AcceptOutputTrafficToVPN(ctx context.Context,
@@ -221,6 +396,20 @@ func (c *Config) AcceptIpv6MulticastOutput(ctx context.Context, intf string) err
 		interfaceFlag = ""
 	}
 	instruction := fmt.Sprintf("--append OUTPUT %s -d ff02::1:ff00:0/104 -j ACCEPT", interfaceFlag)
+	return c.runIP6tablesInstruction(ctx, instruction)
+}
+
+// AcceptIpv6MulticastInput accepts incoming traffic from the IPv6 multicast address
+// ff02::1:ff00:0/104, which is used for NDP (Neighbor Discovery Protocol) to resolve
+// IPv6 addresses to MAC addresses. This notably allows the neighbor solicitation packets
+// sent by other nodes to reach Gluetun, so that they can resolve its MAC address and
+// reach it. If intf is empty, it is set to "*" which means all interfaces.
+func (c *Config) AcceptIpv6MulticastInput(ctx context.Context, intf string) error {
+	interfaceFlag := "-i " + intf
+	if intf == "*" { // all interfaces
+		interfaceFlag = ""
+	}
+	instruction := fmt.Sprintf("--append INPUT %s -d ff02::1:ff00:0/104 -j ACCEPT", interfaceFlag)
 	return c.runIP6tablesInstruction(ctx, instruction)
 }
 

@@ -36,7 +36,7 @@ func Test_udpRouter_ResolveGithubFromCloudflareDNS(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	logger := NewMockLogger(ctrl)
 
-	router, err := newUDPRouter(ctx, "127.0.0.1:0", logger)
+	router, err := newUDPRouter(ctx, "127.0.0.1:0", nil, logger)
 	require.NoError(t, err)
 
 	routerRunErrCh := make(chan error)
