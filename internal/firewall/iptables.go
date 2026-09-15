@@ -194,6 +194,23 @@ func (c *Config) acceptIpv6MulticastOutput(ctx context.Context,
 	return c.runIP6tablesInstruction(ctx, instruction)
 }
 
+// acceptIpv6MulticastInput accepts incoming traffic from the IPv6 multicast address
+// ff02::1:ff00:0/104, which is used for NDP (Neighbor Discovery Protocol) to resolve
+// IPv6 addresses to MAC addresses. This notably allows the neighbor solicitation packets
+// sent by other nodes to reach Gluetun, so that they can resolve its MAC address and
+// reach it. If intf is empty, it is set to "*" which means all interfaces.
+func (c *Config) acceptIpv6MulticastInput(ctx context.Context,
+	intf string, remove bool,
+) error {
+	interfaceFlag := "-i " + intf
+	if intf == "*" { // all interfaces
+		interfaceFlag = ""
+	}
+	instruction := fmt.Sprintf("%s INPUT %s -d ff02::1:ff00:0/104 -j ACCEPT",
+		appendOrDelete(remove), interfaceFlag)
+	return c.runIP6tablesInstruction(ctx, instruction)
+}
+
 // Used for port forwarding, with intf set to tun.
 func (c *Config) acceptInputToPort(ctx context.Context, intf string, port uint16, remove bool) error {
 	interfaceFlag := "-i " + intf

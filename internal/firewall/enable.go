@@ -121,6 +121,10 @@ func (c *Config) enable(ctx context.Context) (err error) {
 		if err != nil {
 			return fmt.Errorf("accepting IPv6 multicast output: %w", err)
 		}
+		err = c.acceptIpv6MulticastInput(ctx, network.InterfaceName, remove)
+		if err != nil {
+			return fmt.Errorf("accepting IPv6 multicast input: %w", err)
+		}
 	}
 
 	if err = c.allowOutboundSubnets(ctx); err != nil {
