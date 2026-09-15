@@ -3,19 +3,19 @@ package updater
 import (
 	"net/netip"
 
-	"github.com/qdm12/gluetun/internal/constants/vpn"
 	"github.com/qdm12/gluetun/internal/models"
 )
 
 type nameToServer map[string]models.Server
 
-func (nts nameToServer) add(name, hostname, region string,
+func (nts nameToServer) add(name, hostname, region, vpnType string,
 	tcp, udp, portForward bool, ip netip.Addr,
 ) (change bool) {
-	server, ok := nts[name]
+	key := vpnType + "-" + name
+	server, ok := nts[key]
 	if !ok {
 		change = true
-		server.VPN = vpn.OpenVPN
+		server.VPN = vpnType
 		server.ServerName = name
 		server.Hostname = hostname
 		server.Region = region
@@ -44,7 +44,7 @@ func (nts nameToServer) add(name, hostname, region string,
 		server.IPs = append(server.IPs, ip)
 	}
 
-	nts[name] = server
+	nts[key] = server
 
 	return change
 }

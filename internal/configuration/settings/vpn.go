@@ -1,8 +1,10 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
 
+	"github.com/qdm12/gluetun/internal/constants/providers"
 	"github.com/qdm12/gluetun/internal/constants/vpn"
 	"github.com/qdm12/gosettings"
 	"github.com/qdm12/gosettings/reader"
@@ -61,6 +63,14 @@ func (v *VPN) Validate(filterChoicesGetter FilterChoicesGetter, ipv6Supported bo
 		err := v.Wireguard.validate(v.Provider.Name, ipv6Supported, amneziawg)
 		if err != nil {
 			return fmt.Errorf("Wireguard settings: %w", err)
+		}
+		if v.Provider.Name == providers.PrivateInternetAccess {
+			switch {
+			case *v.OpenVPN.User == "":
+				return errors.New("user is empty")
+			case *v.OpenVPN.Password == "":
+				return errors.New("password is empty")
+			}
 		}
 	}
 
