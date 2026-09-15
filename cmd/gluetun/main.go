@@ -292,12 +292,12 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		logger.Warn(warning)
 	}
 
-	const permission = fs.FileMode(0o644)
-	err = os.MkdirAll("/tmp/gluetun", permission)
+	const dirPermission = fs.FileMode(0o755)
+	err = os.MkdirAll("/tmp/gluetun", dirPermission)
 	if err != nil {
 		return err
 	}
-	err = os.MkdirAll("/gluetun", permission)
+	err = os.MkdirAll("/gluetun", dirPermission)
 	if err != nil {
 		return err
 	}
