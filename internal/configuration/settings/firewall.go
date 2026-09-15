@@ -7,6 +7,7 @@ import (
 
 	"github.com/qdm12/gosettings"
 	"github.com/qdm12/gosettings/reader"
+	"github.com/qdm12/gosettings/validate"
 	"github.com/qdm12/gotree"
 )
 
@@ -16,6 +17,7 @@ type Firewall struct {
 	InputPorts      []uint16
 	OutboundSubnets []netip.Prefix
 	Enabled         *bool
+	Implementation  string
 	Iptables        Iptables
 }
 
@@ -32,6 +34,11 @@ func (f Firewall) validate() (err error) {
 		if subnet.Addr().IsUnspecified() {
 			return fmt.Errorf("outbound subnet has an unspecified address: %s", subnet)
 		}
+	}
+
+	err = validate.IsOneOf(f.Implementation, "auto", "iptables", "nftables")
+	if err != nil {
+		return fmt.Errorf("firewall implementation: %w", err)
 	}
 
 	err = f.Iptables.validate()
@@ -57,6 +64,7 @@ func (f *Firewall) copy() (copied Firewall) {
 		InputPorts:      gosettings.CopySlice(f.InputPorts),
 		OutboundSubnets: gosettings.CopySlice(f.OutboundSubnets),
 		Enabled:         gosettings.CopyPointer(f.Enabled),
+		Implementation:  f.Implementation,
 		Iptables:        f.Iptables.copy(),
 	}
 }
@@ -69,11 +77,13 @@ func (f *Firewall) overrideWith(other Firewall) {
 	f.InputPorts = gosettings.OverrideWithSlice(f.InputPorts, other.InputPorts)
 	f.OutboundSubnets = gosettings.OverrideWithSlice(f.OutboundSubnets, other.OutboundSubnets)
 	f.Enabled = gosettings.OverrideWithPointer(f.Enabled, other.Enabled)
+	f.Implementation = gosettings.OverrideWithComparable(f.Implementation, other.Implementation)
 	f.Iptables.overrideWith(other.Iptables)
 }
 
 func (f *Firewall) setDefaults(globalLogLevel string) {
 	f.Enabled = gosettings.DefaultPointer(f.Enabled, true)
+	f.Implementation = gosettings.DefaultComparable(f.Implementation, "auto")
 	f.Iptables.setDefaults(globalLogLevel)
 }
 
@@ -89,6 +99,7 @@ func (f Firewall) toLinesNode() (node *gotree.Node) {
 		return node
 	}
 
+	node.Appendf("Implementation: %s", f.Implementation)
 	node.AppendNode(f.Iptables.toLinesNode())
 
 	if len(f.VPNInputPorts) > 0 {
@@ -141,6 +152,8 @@ func (f *Firewall) read(r *reader.Reader) (err error) {
 	if err != nil {
 		return fmt.Errorf("reading iptables settings: %w", err)
 	}
+
+	f.Implementation = r.String("FIREWALL_IMPLEMENTATION")
 
 	return nil
 }

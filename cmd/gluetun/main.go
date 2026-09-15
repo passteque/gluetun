@@ -223,8 +223,8 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	iptablesLogger := logger.New(log.SetComponent("iptables"), log.SetLevel(iptablesLogLevel))
 
 	firewallLogger := logger.New(log.SetComponent("firewall"))
-	firewallConf, err := firewall.NewConfig(ctx, firewallLogger, iptablesLogger, cmder,
-		netLinker, defaultRoutes, localNetworks)
+	firewallConf, err := firewall.NewConfig(ctx, allSettings.Firewall.Implementation,
+		firewallLogger, iptablesLogger, cmder, netLinker, defaultRoutes, localNetworks)
 	if err != nil {
 		return err
 	}

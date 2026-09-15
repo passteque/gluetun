@@ -63,6 +63,7 @@ func Test_Settings_String(t *testing.T) {
 |       └── Block ads: no
 ├── Firewall settings:
 |   ├── Enabled: yes
+|   ├── Implementation: auto
 |   └── Iptables settings:
 |       └── Log level: INFO
 ├── Log settings:
