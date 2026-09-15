@@ -295,4 +295,5 @@ RUN apk add --no-cache --update -l wget && \
     rm -rf /var/cache/apk/* /etc/openvpn/*.sh /usr/lib/openvpn/plugins/openvpn-plugin-down-root.so && \
     deluser openvpn && \
     mkdir /gluetun
+COPY extras/scripts/qbittorrent-port-update.sh /scripts/qbittorrent-port-update.sh
 COPY --from=build /tmp/gobuild/entrypoint /gluetun-entrypoint
