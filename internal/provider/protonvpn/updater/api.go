@@ -520,10 +520,17 @@ func (c *apiClient) authInfo(ctx context.Context, email string, unauthCookie coo
 		return "", "", "", "", "", 0, errors.New("salt is empty in response")
 	case info.SRPSession == "":
 		return "", "", "", "", "", 0, errors.New("SRP session is empty in response")
-	case info.Username == "":
-		return "", "", "", "", "", 0, errors.New("username is empty in response")
 	case info.Version == nil:
 		return "", "", "", "", "", 0, errors.New("version is missing in response")
+	// Accounts whose login is an external address (for example a Gmail one) have
+	// no Proton username, so Proton returns an empty Username together with
+	// perfectly valid SRP parameters. The username is only used to build the
+	// password hash, and HashPassword ignores it for auth versions 3 and 4
+	// (see github.com/ProtonMail/go-srp: versions 3 and 4 hash password+salt+modulus
+	// only); the subsequent /core/v4/auth call sends the email, not this field.
+	// Only the legacy versions 0 to 2 actually need it.
+	case info.Username == "" && *info.Version < 3:
+		return "", "", "", "", "", 0, errors.New("username is empty in response")
 	}
 
 	version = int(*info.Version) //nolint:gosec
