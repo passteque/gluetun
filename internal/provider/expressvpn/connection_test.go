@@ -2,6 +2,7 @@ package expressvpn
 
 import (
 	"errors"
+	"net/http"
 	"net/netip"
 	"testing"
 
@@ -83,7 +84,7 @@ func Test_Provider_GetConnection(t *testing.T) {
 			unzipper := (common.Unzipper)(nil)
 			warner := (common.Warner)(nil)
 			parallelResolver := (common.ParallelResolver)(nil)
-			provider := New(storage, unzipper, warner, parallelResolver)
+			provider := New(storage, &http.Client{}, unzipper, warner, parallelResolver)
 
 			if testCase.panicMessage != "" {
 				assert.PanicsWithValue(t, testCase.panicMessage, func() {

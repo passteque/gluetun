@@ -16,7 +16,7 @@ func parallelResolverSettings(hosts []string) (settings resolver.ParallelSetting
 		Hosts:        hosts,
 		MaxFailRatio: maxFailRatio,
 		Repeat: resolver.RepeatSettings{
-			MaxDuration: time.Second,
+			MaxDuration: 5 * time.Second,
 			MaxNoNew:    maxNoNew,
 			MaxFails:    maxFails,
 			SortIPs:     true,
