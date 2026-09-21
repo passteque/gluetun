@@ -16,7 +16,7 @@ require (
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.20.5
-	github.com/prometheus/client_model v0.6.1
+	github.com/prometheus/client_model v0.6.3
 	github.com/qdm12/dns/v2 v2.0.0-rc9.0.20260909224732-d83961363ca2
 	github.com/qdm12/gluetun-servers v0.2.0
 	github.com/qdm12/goservices v0.1.1-0.20251104135713-6bee97bd4978
@@ -36,7 +36,7 @@ require (
 	golang.org/x/text v0.38.0
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20230429144221-925a1e7659e6
-	google.golang.org/protobuf v1.35.1
+	google.golang.org/protobuf v1.36.12
 	gopkg.in/ini.v1 v1.67.3
 )
 
