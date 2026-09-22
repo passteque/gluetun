@@ -71,7 +71,7 @@ Lightweight swiss-army-knife-like VPN client to multiple VPN service providers
 - DNS over TLS baked in with service provider(s) of your choice
 - DNS fine blocking of malicious/ads hostnames and IP addresses, with live update every 24 hours
 - Choose the vpn network protocol, `udp` or `tcp`
-- Built in firewall kill switch to allow traffic only with needed the VPN servers and LAN devices
+- Built in firewall kill switch that only allows traffic through the VPN, to the VPN server, and to allowed LAN devices
 - Built in Shadowsocks proxy server (protocol based on SOCKS5 with an encryption layer, tunnels TCP+UDP)
 - Built in Socks5 proxy server (tunnels TCP+UDP) - partial credits to @angelakis and @adjscent
 - Built in HTTP proxy (tunnels HTTP and HTTPS through TCP)
