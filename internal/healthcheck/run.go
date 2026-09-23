@@ -19,7 +19,7 @@ func (s *Server) Run(ctx context.Context, done chan<- struct{}) {
 		ReadTimeout:       readTimeout,
 	}
 	serverDone := make(chan struct{})
-	go func() {
+	go func() { //nolint:gosec
 		defer close(serverDone)
 		<-ctx.Done()
 		const shutdownGraceDuration = 2 * time.Second

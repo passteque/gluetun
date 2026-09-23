@@ -67,7 +67,7 @@ func initModule(path string) (err error) {
 	default:
 		const moduleParams = ""
 		const flags = 0
-		err = unix.FinitModule(int(file.Fd()), moduleParams, flags)
+		err = unix.FinitModule(int(file.Fd()), moduleParams, flags) //nolint:gosec
 		switch {
 		case err == nil, err == unix.EEXIST: //nolint:err113
 			return nil

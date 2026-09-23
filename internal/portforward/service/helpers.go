@@ -49,3 +49,24 @@ func portPairToString(internal, external uint16) string {
 	}
 	return fmt.Sprintf("%d (internal port %d)", external, internal)
 }
+
+type loggerWithPrefix struct {
+	prefix string
+	logger Logger
+}
+
+func (l *loggerWithPrefix) Debug(msg string) {
+	l.logger.Debug(l.prefix + msg)
+}
+
+func (l *loggerWithPrefix) Info(msg string) {
+	l.logger.Info(l.prefix + msg)
+}
+
+func (l *loggerWithPrefix) Warn(msg string) {
+	l.logger.Warn(l.prefix + msg)
+}
+
+func (l *loggerWithPrefix) Error(msg string) {
+	l.logger.Error(l.prefix + msg)
+}

@@ -20,7 +20,6 @@ import (
 	"github.com/qdm12/gluetun/internal/provider/ivpn"
 	"github.com/qdm12/gluetun/internal/provider/mullvad"
 	"github.com/qdm12/gluetun/internal/provider/nordvpn"
-	"github.com/qdm12/gluetun/internal/provider/perfectprivacy"
 	"github.com/qdm12/gluetun/internal/provider/privado"
 	"github.com/qdm12/gluetun/internal/provider/privateinternetaccess"
 	"github.com/qdm12/gluetun/internal/provider/privatevpn"
@@ -51,10 +50,9 @@ type Extractor interface {
 
 func NewProviders(storage Storage, timeNow func() time.Time,
 	updaterWarner common.Warner, client *http.Client, unzipper common.Unzipper,
-	parallelResolver common.ParallelResolver, extractor custom.Extractor,
-	credentials settings.Updater,
+	parallelResolver common.ParallelResolver,
+	extractor custom.Extractor, credentials settings.Updater,
 ) *Providers {
-	//nolint:lll
 	providerNameToProvider := map[string]Provider{
 		providers.Airvpn:                airvpn.New(storage, client),
 		providers.Custom:                custom.New(extractor),
@@ -67,11 +65,10 @@ func NewProviders(storage Storage, timeNow func() time.Time,
 		providers.Ivpn:                  ivpn.New(storage, client, updaterWarner, parallelResolver),
 		providers.Mullvad:               mullvad.New(storage, client),
 		providers.Nordvpn:               nordvpn.New(storage, client, updaterWarner),
-		providers.Perfectprivacy:        perfectprivacy.New(storage, unzipper, updaterWarner),
 		providers.Privado:               privado.New(storage, client, updaterWarner),
 		providers.PrivateInternetAccess: privateinternetaccess.New(storage, timeNow, client),
-		providers.Privatevpn:            privatevpn.New(storage, unzipper, updaterWarner, parallelResolver),
-		providers.Protonvpn:             protonvpn.New(storage, client, updaterWarner, *credentials.ProtonEmail, *credentials.ProtonPassword),
+		providers.Privatevpn:            privatevpn.New(storage, client, updaterWarner, parallelResolver),
+		providers.Protonvpn:             protonvpn.New(storage, client, updaterWarner, *credentials.ProtonEmail, *credentials.ProtonPassword, *credentials.ProtonTOTPSecret, *credentials.ProtonTOTPCode), //nolint:lll
 		providers.Purevpn:               purevpn.New(storage, client, unzipper, updaterWarner, parallelResolver),
 		providers.SlickVPN:              slickvpn.New(storage, client, updaterWarner, parallelResolver),
 		providers.Surfshark:             surfshark.New(storage, client, unzipper, updaterWarner, parallelResolver),

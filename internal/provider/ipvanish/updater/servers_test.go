@@ -7,13 +7,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/qdm12/gluetun/internal/constants/vpn"
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
 	"github.com/qdm12/gluetun/internal/updater/resolver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func Test_Updater_GetServers(t *testing.T) {
@@ -195,12 +195,13 @@ func Test_Updater_GetServers(t *testing.T) {
 
 			unzipper := common.NewMockUnzipper(ctrl)
 			const zipURL = "https://configs.ipvanish.com/openvpn/v2.6.0-0/configs.zip"
-			unzipper.EXPECT().FetchAndExtract(ctx, zipURL).
+			// Context is wrapped with User-Agent for ipvanish, so use Any() for the ctx arg
+			unzipper.EXPECT().FetchAndExtract(gomock.Any(), zipURL).
 				Return(testCase.unzipContents, testCase.unzipErr)
 
 			parallelResolver := common.NewMockParallelResolver(ctrl)
 			if testCase.expectResolve {
-				parallelResolver.EXPECT().Resolve(ctx, testCase.resolverSettings).
+				parallelResolver.EXPECT().Resolve(gomock.Any(), testCase.resolverSettings).
 					Return(testCase.hostToIPs, testCase.resolveWarnings, testCase.resolveErr)
 			}
 

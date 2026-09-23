@@ -62,7 +62,7 @@ func parseTCPFlag(s string) (tcpFlag, error) {
 	return 0, fmt.Errorf("unknown TCP flag: %s", s)
 }
 
-var ErrMarkMatchModuleMissing = errors.New("kernel is missing the mark module libxt_mark.so")
+var ErrMarkMatchModuleMissing = errors.New("libxt_mark.so module is missing")
 
 // TempDropOutputTCPRST temporarily drops outgoing TCP RST packets to the specified address and port,
 // for any TCP packets not marked with the excludeMark given.

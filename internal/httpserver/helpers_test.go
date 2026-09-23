@@ -3,7 +3,7 @@ package httpserver
 import (
 	"regexp"
 
-	gomock "github.com/golang/mock/gomock"
+	gomock "go.uber.org/mock/gomock"
 )
 
 var _ Logger = (*testLogger)(nil)

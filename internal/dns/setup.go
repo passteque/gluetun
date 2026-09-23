@@ -14,9 +14,10 @@ import (
 func (l *Loop) setupServer(ctx context.Context, settings settings.DNS) (runError <-chan error, err error) {
 	var updateSettings update.Settings
 	updateSettings.SetRebindingProtectionExempt(settings.Blacklist.RebindingProtectionExemptHostnames)
-	err = l.filter.Update(updateSettings)
+	updateSettings.SetPublicFQDNsAsLocal(settings.PublicNamesAsLocal)
+	err = l.filter.Update(updateSettings) // note: this error is always nil for now
 	if err != nil {
-		return nil, fmt.Errorf("updating filter for rebinding protection: %w", err)
+		return nil, fmt.Errorf("updating filter: %w", err)
 	}
 
 	serverSettings, err := buildServerSettings(settings, l.filter, l.localResolvers, l.localSubnets, l.logger)

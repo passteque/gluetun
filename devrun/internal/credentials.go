@@ -33,7 +33,7 @@ type openvpnCredentials struct {
 
 type wireguardCredentials struct {
 	PrivateKey   string
-	Address      string
+	Addresses    string
 	PresharedKey string
 }
 
@@ -95,10 +95,11 @@ func validateWireguardCredentials(provider string, creds *wireguardCredentials) 
 		return fmt.Errorf("provider %q wireguard credentials have an invalid private key: %w", provider, err)
 	}
 
-	if creds.Address != "" {
-		_, err := netip.ParsePrefix(creds.Address)
-		if err != nil {
-			return fmt.Errorf("provider %q wireguard credentials have an invalid address %q: %w", provider, creds.Address, err)
+	if creds.Addresses != "" {
+		for addr := range strings.SplitSeq(creds.Addresses, ",") {
+			if _, err := netip.ParsePrefix(addr); err != nil {
+				return fmt.Errorf("provider %q wireguard credentials have an invalid address %q: %w", provider, addr, err)
+			}
 		}
 	}
 
@@ -138,8 +139,8 @@ func buildWireGuardEnv(creds *wireguardCredentials) []string {
 	envVars := []string{
 		"WIREGUARD_PRIVATE_KEY=" + creds.PrivateKey,
 	}
-	if creds.Address != "" {
-		envVars = append(envVars, "WIREGUARD_ADDRESSES="+creds.Address)
+	if creds.Addresses != "" {
+		envVars = append(envVars, "WIREGUARD_ADDRESSES="+creds.Addresses)
 	}
 	if creds.PresharedKey != "" {
 		envVars = append(envVars, "WIREGUARD_PRESHARED_KEY="+creds.PresharedKey)
@@ -239,7 +240,7 @@ func formatCredentialForDump(provider, vpnType string,
 		builder.WriteString(providerCredentials.WireGuard.PrivateKey)
 		builder.WriteString("\n")
 		builder.WriteString("address: ")
-		builder.WriteString(providerCredentials.WireGuard.Address)
+		builder.WriteString(providerCredentials.WireGuard.Addresses)
 		builder.WriteString("\n")
 		builder.WriteString("preshared_key: ")
 		builder.WriteString(providerCredentials.WireGuard.PresharedKey)

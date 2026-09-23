@@ -21,7 +21,7 @@ func (s *Server) Run(ctx context.Context, ready chan<- struct{}, done chan<- str
 	crashed := make(chan struct{})
 	shutdownDone := make(chan struct{})
 	listenCtx, listenCancel := context.WithCancel(ctx)
-	go func() {
+	go func() { //nolint:gosec
 		defer close(shutdownDone)
 		defer listenCancel()
 		select {

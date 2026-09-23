@@ -11,7 +11,6 @@ import (
 	gtun "github.com/qdm12/gluetun/internal/tun"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/tun"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
@@ -62,7 +61,8 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 		linkIndex uint32, waitAndCleanup func() error, err error,
 	) {
 		return setupFunction(ctx,
-			w.settings.InterfaceName, w.netlink, w.settings.MTU, cleanups, w.logger)
+			w.settings.InterfaceName, w.netlink, w.settings.MTU,
+			*w.settings.GSO, cleanups, w.logger)
 	}
 
 	Run(ctx, waitError, ready, setup, w.settings, w.netlink, w.logger)
@@ -147,7 +147,7 @@ func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 
 func setupKernelSpace(ctx context.Context,
 	interfaceName string, netLinker NetLinker, mtu uint32,
-	cleanups *cleanup.Cleanups, logger Logger) (
+	_ bool, cleanups *cleanup.Cleanups, logger Logger) (
 	linkIndex uint32, waitAndCleanup func() error, err error,
 ) {
 	links, err := netLinker.LinkList()
@@ -191,10 +191,10 @@ func setupKernelSpace(ctx context.Context,
 
 func setupUserSpace(ctx context.Context,
 	interfaceName string, netLinker NetLinker, mtu uint32,
-	cleanups *cleanup.Cleanups, logger Logger) (
+	gso bool, cleanups *cleanup.Cleanups, logger Logger) (
 	linkIndex uint32, waitAndCleanup func() error, err error,
 ) {
-	tun, err := tun.CreateTUN(interfaceName, int(mtu))
+	tun, err := createTUN(interfaceName, int(mtu), gso)
 	if err != nil {
 		return 0, nil, fmt.Errorf("creating TUN device: %w", err)
 	}
@@ -220,7 +220,7 @@ func setupUserSpace(ctx context.Context,
 
 	cleanups.Add("closing bind", 7, bind.Close)
 
-	deviceLogger := makeDeviceLogger(logger)
+	deviceLogger := makeDeviceLogger(logger, gso)
 	device := device.NewDevice(tun, bind, deviceLogger)
 
 	cleanups.Add("closing Wireguard device", 6, func() error {

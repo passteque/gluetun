@@ -3,7 +3,7 @@ package pprof
 import (
 	"regexp"
 
-	gomock "github.com/golang/mock/gomock"
+	gomock "go.uber.org/mock/gomock"
 )
 
 func boolPtr(b bool) *bool { return &b }

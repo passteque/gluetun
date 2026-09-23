@@ -16,9 +16,9 @@ func (c *Config) SaveAndRestore(ctx context.Context) (restore func(context.Conte
 	return c.saveAndRestore(ctx)
 }
 
-// callers MUST always lock both the [Config] iptablesMutex and the ip6tablesMutex
+// Callers of saveAndRestore MUST always lock the [Config] iptablesMutex
 // before calling this function. Note the restore function does not interact with mutexes
-// so the caller must make sure the mutexes are locked when calling the restore function.
+// so the caller must make sure the mutex is locked when calling the restore function.
 func (c *Config) saveAndRestore(ctx context.Context) (restore func(context.Context), err error) {
 	restoreIPv4, err := c.saveAndRestoreIPv4(ctx)
 	if err != nil {
@@ -57,7 +57,7 @@ func (c *Config) saveAndRestoreIPv4(ctx context.Context) (restore func(context.C
 	return restore, nil
 }
 
-// Callers of saveAndRestoreIPv6 MUST always lock the [Config] ip6tablesMutex
+// Callers of saveAndRestoreIPv6 MUST always lock the [Config] iptablesMutex
 // before calling this function.
 func (c *Config) saveAndRestoreIPv6(ctx context.Context) (restore func(context.Context), err error) {
 	if c.ip6Tables == "" {
@@ -107,8 +107,13 @@ func filterData(cmdOutput []byte) (filtered string, err error) {
 		case strings.HasPrefix(line, ":DOCKER_OUTPUT"),
 			strings.HasPrefix(line, ":DOCKER_POSTROUTING"),
 			strings.HasPrefix(line, "-A DOCKER_OUTPUT"),
-			strings.HasPrefix(line, "-A DOCKER_POSTROUTING"):
-			// Do not touch (aka save and restore) NAT rules added by Docker
+			strings.HasPrefix(line, "-A DOCKER_POSTROUTING"),
+			strings.HasSuffix(line, "-j DOCKER_OUTPUT"),
+			strings.HasSuffix(line, "-j DOCKER_POSTROUTING"):
+			// Do not touch (aka save and restore) NAT rules added by Docker,
+			// nor the rules jumping to them, otherwise iptables-restore fails
+			// with 'Couldn't load target' since the jump target chain would
+			// be undefined in the filtered ruleset.
 			continue
 		case strings.Contains(line, "[unsupported revision]"):
 			return "", fmt.Errorf("mismatch container iptables-save and kernel: %s", line)

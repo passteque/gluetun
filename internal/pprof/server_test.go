@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/qdm12/gluetun/internal/httpserver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 //go:generate mockgen -destination=logger_mock_test.go -package $GOPACKAGE github.com/qdm12/gluetun/internal/httpserver Logger
@@ -82,7 +82,7 @@ func Test_Server(t *testing.T) {
 		require.NoError(t, err)
 
 		go func(client *http.Client, request *http.Request, results chan<- httpResult) {
-			response, err := client.Do(request) //nolint:bodyclose
+			response, err := client.Do(request) //nolint:bodyclose,gosec // test code accessing local pprof server
 			results <- httpResult{
 				url:      request.URL.String(),
 				response: response,

@@ -112,7 +112,7 @@ func (h *openvpnHandler) getSettings(w http.ResponseWriter) {
 	vpnSettings := h.looper.GetSettings()
 	settings := vpnSettings.OpenVPN
 	encoder := json.NewEncoder(w)
-	if err := encoder.Encode(settings); err != nil {
+	if err := encoder.Encode(settings); err != nil { //nolint:gosec
 		h.warner.Warn(err.Error())
 		w.WriteHeader(http.StatusInternalServerError)
 		return

@@ -46,6 +46,13 @@ type Wireguard struct {
 	// It defaults to "auto" and cannot be the empty string
 	// in the internal state.
 	Implementation string `json:"implementation"`
+	// GSO enables wireguard-go's GRO/GSO batched TUN I/O by creating
+	// the WireGuard TUN device with IFF_VNET_HDR. It should be disabled
+	// on kernels (e.g. certain NAS devices) that claim IFF_VNET_HDR
+	// support but return EINVAL when wireguard-go writes GRO-coalesced
+	// packets with virtio_net_hdr structs under load.
+	// It defaults to true and cannot be nil in the internal state.
+	GSO *bool `json:"gso"`
 }
 
 var regexpInterfaceName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
@@ -85,14 +92,19 @@ func (w Wireguard) validate(vpnProvider string, ipv6Supported, amneziawg bool) (
 	if len(w.Addresses) == 0 {
 		return errors.New("interface address is not set")
 	}
-	for i, ipNet := range w.Addresses {
-		if !ipNet.IsValid() {
-			return fmt.Errorf("interface address is not set: for address at index %d", i)
-		}
 
-		if !ipv6Supported && ipNet.Addr().Is6() {
-			return fmt.Errorf("interface address is IPv6 but IPv6 is not supported: address %s", ipNet.String())
+	hasIPv4 := false
+	for i, ipNet := range w.Addresses {
+		switch {
+		case !ipNet.IsValid():
+			return fmt.Errorf("interface address is not set: for address at index %d", i)
+		case ipNet.Addr().Is4():
+			hasIPv4 = true
 		}
+	}
+	if !hasIPv4 && !ipv6Supported {
+		return fmt.Errorf("no IPv4 interface addresses in %v but IPv6 is not supported",
+			w.Addresses)
 	}
 
 	// Validate AllowedIPs
@@ -136,6 +148,7 @@ func (w *Wireguard) copy() (copied Wireguard) {
 		Interface:                   w.Interface,
 		MTU:                         w.MTU,
 		Implementation:              w.Implementation,
+		GSO:                         gosettings.CopyPointer(w.GSO),
 	}
 }
 
@@ -149,6 +162,7 @@ func (w *Wireguard) overrideWith(other Wireguard) {
 	w.Interface = gosettings.OverrideWithComparable(w.Interface, other.Interface)
 	w.MTU = gosettings.OverrideWithComparable(w.MTU, other.MTU)
 	w.Implementation = gosettings.OverrideWithComparable(w.Implementation, other.Implementation)
+	w.GSO = gosettings.OverrideWithPointer(w.GSO, other.GSO)
 }
 
 func (w *Wireguard) setDefaults(vpnProvider string) {
@@ -160,9 +174,14 @@ func (w *Wireguard) setDefaults(vpnProvider string) {
 		defaultNordVPNPrefix := netip.PrefixFrom(defaultNordVPNAddress, defaultNordVPNAddress.BitLen())
 		w.Addresses = gosettings.DefaultSlice(w.Addresses, []netip.Prefix{defaultNordVPNPrefix})
 	case providers.Protonvpn:
-		defaultAddress := netip.AddrFrom4([4]byte{10, 2, 0, 2})
-		defaultPrefix := netip.PrefixFrom(defaultAddress, defaultAddress.BitLen())
-		w.Addresses = gosettings.DefaultSlice(w.Addresses, []netip.Prefix{defaultPrefix})
+		defaultAddresses := []netip.Prefix{
+			netip.PrefixFrom(netip.AddrFrom4([4]byte{10, 2, 0, 2}), netip.IPv4Unspecified().BitLen()),
+			// 2a07:b944::2:2/128
+			netip.PrefixFrom(
+				netip.AddrFrom16([16]byte{0x2a, 0x07, 0xb9, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00}), //nolint:lll
+				netip.IPv6LinkLocalAllNodes().BitLen()),
+		}
+		w.Addresses = gosettings.DefaultSlice(w.Addresses, defaultAddresses)
 	}
 	defaultAllowedIPs := []netip.Prefix{
 		netip.PrefixFrom(netip.IPv4Unspecified(), 0),
@@ -173,6 +192,7 @@ func (w *Wireguard) setDefaults(vpnProvider string) {
 	w.Interface = gosettings.DefaultComparable(w.Interface, "wg0")
 	w.MTU = gosettings.DefaultPointer(w.MTU, 0)
 	w.Implementation = gosettings.DefaultComparable(w.Implementation, "auto")
+	w.GSO = gosettings.DefaultPointer(w.GSO, true)
 }
 
 func (w Wireguard) String() string {
@@ -215,6 +235,10 @@ func (w Wireguard) toLinesNode() (node *gotree.Node) {
 
 	if w.Implementation != "auto" {
 		node.Appendf("Implementation: %s", w.Implementation)
+	}
+
+	if !*w.GSO {
+		node.Append("GSO disabled")
 	}
 
 	return node
@@ -265,5 +289,11 @@ func (w *Wireguard) read(r *reader.Reader, amneziaWG bool) (err error) {
 	if err != nil {
 		return err
 	}
+
+	w.GSO, err = r.BoolPtr("WIREGUARD_GSO")
+	if err != nil {
+		return err
+	}
+
 	return nil
 }

@@ -124,7 +124,7 @@ func (h *vpnHandler) patchSettings(w http.ResponseWriter, r *http.Request) {
 	}
 
 	outcome := h.looper.SetSettings(h.ctx, updatedSettings)
-	_, err = w.Write([]byte(outcome))
+	_, err = w.Write([]byte(outcome)) //nolint:gosec // internal API writes status outcome, not HTML rendered in browser
 	if err != nil {
 		h.warner.Warn("writing response: " + err.Error())
 	}

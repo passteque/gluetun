@@ -6,9 +6,9 @@ import (
 	"context"
 	"testing"
 
-	gomock "github.com/golang/mock/gomock"
 	"github.com/qdm12/gluetun/internal/command"
 	"github.com/stretchr/testify/require"
+	gomock "go.uber.org/mock/gomock"
 )
 
 func Test_Service_runCommand(t *testing.T) {

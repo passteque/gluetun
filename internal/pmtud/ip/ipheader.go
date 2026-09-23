@@ -52,7 +52,7 @@ func ipChecksum(header []byte) uint16 {
 	for (sum >> 16) > 0 {
 		sum = (sum & 0xFFFF) + (sum >> 16)
 	}
-	return ^uint16(sum) //nolint:gosec
+	return ^uint16(sum)
 }
 
 // HeaderV6 makes an IPv6 header.

@@ -42,7 +42,7 @@ func (c cipherDESCBC) Encrypt(key, iv, plaintext []byte) ([]byte, error) {
 	ciphertext := make([]byte, len(plaintext)+paddingLen)
 	copy(ciphertext, plaintext)
 	copy(ciphertext[len(plaintext):],
-		bytes.Repeat([]byte{byte(paddingLen)}, paddingLen))
+		bytes.Repeat([]byte{byte(paddingLen)}, paddingLen)) //nolint:gosec
 	blockEncrypter.CryptBlocks(ciphertext, ciphertext)
 	return ciphertext, nil
 }

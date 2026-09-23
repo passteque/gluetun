@@ -76,6 +76,9 @@ func (c *Config) runIP6tablesInstructionNoSave(ctx context.Context, instruction 
 	cmd := exec.CommandContext(ctx, c.ip6Tables, flags...) // #nosec G204
 	c.logger.Debug(cmd.String())
 	if output, err := c.runner.Run(cmd); err != nil {
+		if strings.Contains(output, "missing kernel module") {
+			err = ErrKernelModuleMissing
+		}
 		return fmt.Errorf("command failed: \"%s %s\": %s: %w",
 			c.ip6Tables, instruction, output, err)
 	}

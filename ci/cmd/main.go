@@ -33,6 +33,10 @@ func main() {
 		err = internal.AirVPNWireguardTest(ctx, logger)
 	case "airvpn-openvpn":
 		err = internal.AirVPNOpenVPNTest(ctx, logger)
+	case "windscribe-wireguard":
+		err = internal.WindscribeWireguardTest(ctx, logger)
+	case "windscribe-openvpn":
+		err = internal.WindscribeOpenVPNTest(ctx, logger)
 	default:
 		err = fmt.Errorf("unknown command: %s", os.Args[1])
 	}

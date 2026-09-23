@@ -50,6 +50,7 @@ Guidance for coding agents working in this repository.
 - Prefer splitting a code line only when it triggers the `lll` linter, do not split a command or arguments list for each element
 - Use `netip` types instead of `net` types whenever possible
 - Use constants instead of variables whenever possible, especially function-local inline constants.
+- Prefer using pure functions over methods when possible. Especially if the method does not need any fields from the receiving struct, it should be a pure function.
 - Do not use `time.Sleep`, prefer using a `time.Timer` with a `select` statement also listening on a context cancelation
 - `panic`:
   - should only be used when a programming error is encountered and you should NOT return errors for programming errors (such as passing nil objects)
@@ -115,6 +116,7 @@ Mocking works with the `go.uber.org/mock` library, and the `mockgen` tool.
   - **Never** use `.AnyTimes()` on mocks. Always define the number of times a certain mock call should be called, with `.Times(3)` for example.
   - **Always** set the `.Return(...)` on the mock if the function returns something.
   - Avoid using **mock helpers** functions, prefer a bit of repetition than tight coupling and dependency
+  - Always define the gomock controller `ctrl` in the subtest and not in the parent test, or a subtest mock failing will crash all the other subtests.
 
 ### main.go
 
@@ -127,6 +129,7 @@ The Go formatter used is gofumpt.
 ### Errors
 
 - Always prefer wrapping errors with some context with `fmt.Errorf("doing this: %w", err)`
+- Use `errors.New("error message")` when creating a 'bottom' constant string error without additional context, instead of `fmt.Errorf`
 - In rare cases, you can just use `return err` notably:
   - If the function is called **recursively**, since we don't wrap the wrapping multiple times for each recursion
   - If the current function only statement is the call to another function, for example:
@@ -179,6 +182,8 @@ The Go formatter used is gofumpt.
 
 - Do not use `http.DefaultClient`, use a custom `*http.Client` with a fixed timeout and share with dependency injections.
 - Do not check for injected dependencies being `nil`, prefer to just panic on a nil pointer. By default it's fine to panic if a developer injects a dependency `nil`. `nil` does not mean use a default.
+- Prefer using a `switch { case ...}` statement over multiple consecutive `if` statements to have shorter code.
+- Prefer using `[...]T` instead of `[]T` when the length is fixed and known at compile time, to avoid unnecessary allocations.
 
 ## Validation checklist
 

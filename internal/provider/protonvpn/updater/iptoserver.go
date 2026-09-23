@@ -17,10 +17,21 @@ type features struct {
 }
 
 func (its ipToServers) add(country, region, city, name, hostname, wgPubKey string,
-	free bool, entryIP netip.Addr, features features,
+	free bool, ipv4, ipv6 netip.Addr, features features,
 ) {
-	key := entryIP.String()
-
+	var key string
+	const ipFamilies = 2
+	ips := make([]netip.Addr, 0, ipFamilies)
+	if ipv4.IsValid() {
+		ips = append(ips, ipv4)
+		key = ipv4.String()
+	}
+	if ipv6.IsValid() {
+		ips = append(ips, ipv6)
+		if key == "" {
+			key = ipv6.String()
+		}
+	}
 	servers, ok := its[key]
 	if ok {
 		return
@@ -37,7 +48,7 @@ func (its ipToServers) add(country, region, city, name, hostname, wgPubKey strin
 		Tor:         features.tor,
 		PortForward: features.p2p,
 		Stream:      features.stream,
-		IPs:         []netip.Addr{entryIP},
+		IPs:         ips,
 	}
 	openvpnServer := baseServer
 	openvpnServer.VPN = vpn.OpenVPN

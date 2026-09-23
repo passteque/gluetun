@@ -8,7 +8,6 @@ import (
 
 	amneziaconn "github.com/amnezia-vpn/amneziawg-go/conn"
 	amneziadevice "github.com/amnezia-vpn/amneziawg-go/device"
-	amneziatun "github.com/amnezia-vpn/amneziawg-go/tun"
 	"github.com/qdm12/gluetun/internal/cleanup"
 	"github.com/qdm12/gluetun/internal/wireguard"
 )
@@ -36,7 +35,7 @@ func setupUserspace(ctx context.Context,
 ) (
 	linkIndex uint32, waitAndCleanup func() error, err error,
 ) {
-	tun, err := amneziatun.CreateTUN(interfaceName, int(mtu))
+	tun, err := createTUN(interfaceName, int(mtu), *settings.Wireguard.GSO)
 	if err != nil {
 		return 0, nil, fmt.Errorf("creating TUN device: %w", err)
 	}

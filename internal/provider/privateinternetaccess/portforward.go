@@ -167,7 +167,7 @@ func findAPIIP(ctx context.Context, client *http.Client, gateway netip.Addr) (
 	oldAPIIP := netip.AddrFrom4(gatewayBytes)
 	gatewayBytes[2] = 0 // x.y.0.1 - new API IP reported by some users
 	newAPIIP := netip.AddrFrom4(gatewayBytes)
-	possibleIPs := []netip.Addr{oldAPIIP, newAPIIP}
+	possibleIPs := []netip.Addr{gateway, oldAPIIP, newAPIIP}
 
 	errs := make([]error, 0, len(possibleIPs))
 	for _, ip := range possibleIPs {

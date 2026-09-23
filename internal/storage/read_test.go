@@ -4,11 +4,11 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/qdm12/gluetun/internal/constants/providers"
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func populateProviderToVersion(providerToVersion map[string]uint16) map[string]uint16 {
@@ -22,6 +22,24 @@ func populateProviderToVersion(providerToVersion map[string]uint16) map[string]u
 		providerToVersion[provider] = 0
 	}
 	return providerToVersion
+}
+
+func Test_readServersFromFilepath_notFound(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	logger := NewMockLogger(ctrl)
+	logger.EXPECT().Warn("servers file /nonexistent/protonvpn.json for provider protonvpn " +
+		"referenced by the manifest does not exist, using hardcoded servers")
+
+	s := &Storage{logger: logger}
+
+	servers, versionsMatch, err := s.readServersFromFilepath(
+		providers.Protonvpn, "/nonexistent/protonvpn.json", 4)
+
+	assert.NoError(t, err)
+	assert.False(t, versionsMatch)
+	assert.Empty(t, servers.Servers)
 }
 
 func Test_extractServersFromBytes(t *testing.T) {

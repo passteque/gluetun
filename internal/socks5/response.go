@@ -82,7 +82,7 @@ func encodeBindData(addrType addrType, address string, port uint16) (
 		if len(address) > maxDomainNameLength {
 			return nil, fmt.Errorf("%w: %s", ErrDomainNameTooLong, address)
 		}
-		data = append(data, byte(len(address)))
+		data = append(data, byte(len(address))) //nolint:gosec
 		data = append(data, []byte(address)...)
 	default:
 		panic(fmt.Sprintf("unsupported address type %d", addrType))

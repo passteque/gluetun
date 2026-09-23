@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strings"
 	"sync"
 )
 
@@ -60,7 +61,8 @@ func (s *Service) SetPortsForwarded(ctx context.Context, ports []uint16) (err er
 	s.portMutex.Lock()
 	defer s.portMutex.Unlock()
 
-	if s.settings.PortForwarder != nil {
+	hasPortForwardingCodeRunning := !strings.HasSuffix(s.settings.PortForwarder.Name(), "[not supported]")
+	if hasPortForwardingCodeRunning {
 		return errors.New("setting port forwarded at runtime is not supported with internally running port forwarding code")
 	}
 

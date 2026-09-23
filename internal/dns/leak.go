@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"math/rand/v2"
 	"net/http"
@@ -79,21 +80,30 @@ func triggerDNSQuery(ctx context.Context, client *http.Client, session string) (
 	}
 	defer response.Body.Close()
 
+	data, err := io.ReadAll(response.Body)
+	if err != nil {
+		return nil, err
+	}
+
+	if response.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("%d %s: %s",
+			response.StatusCode, response.Status, string(data))
+	}
+
 	type ipLeakData struct {
 		Session string          `json:"session"`
 		IP      map[string]uint `json:"ip"`
 	}
 
-	decoder := json.NewDecoder(response.Body)
-	var data ipLeakData
-	err = decoder.Decode(&data)
+	var parsed ipLeakData
+	err = json.Unmarshal(data, &parsed)
 	if err != nil {
 		return nil, fmt.Errorf("decoding response: %w", err)
-	} else if data.Session != session {
-		return nil, fmt.Errorf("ipleak.net session mismatch: expected %s, got %s", session, data.Session)
+	} else if parsed.Session != session {
+		return nil, fmt.Errorf("ipleak.net session mismatch: expected %s, got %s", session, parsed.Session)
 	}
 
-	return data.IP, nil
+	return parsed.IP, nil
 }
 
 func formatPercentages(data map[string]uint) string {

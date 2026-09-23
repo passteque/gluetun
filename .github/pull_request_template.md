@@ -1,11 +1,21 @@
+<!-- ⚠️ Respect this format or your PR will be closed automatically -->
+
+# Type
+
+Please tick which one the following applies to your pull request:
+
+- [ ] it is AI generated 🤖 and I did review it 👨👩
+- [ ] it is humanly written like the good old days 👨‍🎨👩‍🎨
+- [ ] it is AI generated 🤖 I did not review it 💤
+
 # Description
 
 <!-- Please describe the reason for the changes being proposed. -->
 
-# Issue
+# Issue (optional)
 
-<!-- Please link to the issue(s) this change relates to. -->
+<!-- Optionally link to the issue(s) this change relates to. -->
 
-# Assertions
+# Gluetun wiki associated pull request (optional)
 
-* [ ] I am aware that any changes to settings should be reflected in the [wiki](https://github.com/qdm12/gluetun-wiki/)
+<!-- Optionally link to the pull request for the Gluetun wiki -->

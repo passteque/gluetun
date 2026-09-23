@@ -13,6 +13,7 @@ import (
 
 type Config struct {
 	runner        CmdRunner
+	netlinker     Netlinker
 	logger        Logger
 	defaultRoutes []routing.DefaultRoute
 	localNetworks []routing.LocalNetwork
@@ -35,8 +36,8 @@ type Config struct {
 // NewConfig creates a new Config instance and returns an error
 // if no iptables implementation is available.
 func NewConfig(ctx context.Context, logger, iptablesLogger Logger,
-	runner CmdRunner, defaultRoutes []routing.DefaultRoute,
-	localNetworks []routing.LocalNetwork,
+	runner CmdRunner, netlinker Netlinker,
+	defaultRoutes []routing.DefaultRoute, localNetworks []routing.LocalNetwork,
 ) (config *Config, err error) {
 	impl, err := iptables.New(ctx, runner, iptablesLogger)
 	if err != nil {
@@ -45,6 +46,7 @@ func NewConfig(ctx context.Context, logger, iptablesLogger Logger,
 
 	return &Config{
 		runner:            runner,
+		netlinker:         netlinker,
 		logger:            logger,
 		allowedInputPorts: make(map[uint16]map[string]struct{}),
 		// Obtained from routing

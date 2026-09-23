@@ -17,12 +17,12 @@ type Provider struct {
 }
 
 func New(storage common.Storage, client *http.Client, updaterWarner common.Warner,
-	email, password string,
+	email, password, totpSecret, totpCode string,
 ) *Provider {
 	return &Provider{
 		storage:    storage,
 		connPicker: utils.NewConnectionPicker(),
-		Fetcher:    updater.New(client, updaterWarner, email, password),
+		Fetcher:    updater.New(client, updaterWarner, email, password, totpSecret, totpCode),
 	}
 }
 

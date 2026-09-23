@@ -38,7 +38,7 @@ func (s *Server) Run(ctx context.Context, errorCh chan<- error) {
 		ReadHeaderTimeout: s.readHeaderTimeout,
 		ReadTimeout:       s.readTimeout,
 	}
-	go func() {
+	go func() { //nolint:gosec
 		<-ctx.Done()
 		const shutdownGraceDuration = 100 * time.Millisecond
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGraceDuration)

@@ -30,6 +30,7 @@ import (
 	"github.com/qdm12/gluetun/internal/firewall"
 	"github.com/qdm12/gluetun/internal/healthcheck"
 	"github.com/qdm12/gluetun/internal/httpproxy"
+	"github.com/qdm12/gluetun/internal/metrics"
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/qdm12/gluetun/internal/openvpn"
@@ -223,7 +224,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 
 	firewallLogger := logger.New(log.SetComponent("firewall"))
 	firewallConf, err := firewall.NewConfig(ctx, firewallLogger, iptablesLogger, cmder,
-		defaultRoutes, localNetworks)
+		netLinker, defaultRoutes, localNetworks)
 	if err != nil {
 		return err
 	}
@@ -232,10 +233,6 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		err = firewallConf.SetEnabled(ctx, true)
 		if err != nil {
 			return err
-		}
-		err = netLinker.FlushConntrack()
-		if err != nil {
-			logger.Warnf("flushing conntrack failed: %s", err)
 		}
 	}
 
@@ -413,11 +410,12 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	}
 
 	socks5Loop := socks5.NewLoop(socks5.Settings{
-		Enabled:  *allSettings.Socks5.Enabled,
-		Username: *allSettings.Socks5.Username,
-		Password: *allSettings.Socks5.Password,
-		Address:  allSettings.Socks5.ListeningAddress,
-		Logger:   logger.New(log.SetComponent("socks5")),
+		Enabled:      *allSettings.Socks5.Enabled,
+		Username:     *allSettings.Socks5.Username,
+		Password:     *allSettings.Socks5.Password,
+		Address:      allSettings.Socks5.ListeningAddress,
+		AllowedCIDRs: stringsToIPPrefixes(allSettings.Socks5.AllowedCIDRs),
+		Logger:       logger.New(log.SetComponent("socks5")),
 	})
 	socks5RunError, err := socks5Loop.Start(ctx)
 	if err != nil {
@@ -458,6 +456,15 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	vpnHandler, vpnCtx, vpnDone := goshutdown.NewGoRoutineHandler(
 		"vpn", goroutine.OptionTimeout(time.Second))
 	go vpnLooper.Run(vpnCtx, vpnDone)
+
+	metricsServer, err := metrics.New(allSettings.Metrics, logger, vpnLooper, netLinker)
+	if err != nil {
+		return fmt.Errorf("creating metrics server: %w", err)
+	}
+	metricsRunError, err := metricsServer.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("starting metrics server: %w", err)
+	}
 
 	updaterLooper := updater.NewLoop(allSettings.Updater,
 		providers, storage, httpClient, updaterLogger)
@@ -518,7 +525,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 			String() string
 			Stop() error
 		}{
-			portForwardLooper, publicIPLooper, socks5Loop,
+			portForwardLooper, publicIPLooper, socks5Loop, metricsServer,
 		}
 		for _, stopper := range stoppers {
 			err := stopper.Stop()
@@ -532,6 +539,8 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		logger.Errorf("public IP loop crashed: %s", err)
 	case err := <-socks5RunError:
 		logger.Errorf("SOCKS5 server loop crashed: %s", err)
+	case err := <-metricsRunError:
+		logger.Errorf("metrics server crashed: %s", err)
 	}
 
 	return orderHandler.Shutdown(context.Background())
@@ -568,6 +577,14 @@ func localNetworksToPrefixes(localNetworks []routing.LocalNetwork) (prefixes []n
 	prefixes = make([]netip.Prefix, len(localNetworks))
 	for i, localNetwork := range localNetworks {
 		prefixes[i] = localNetwork.IPNet
+	}
+	return prefixes
+}
+
+func stringsToIPPrefixes(strings []string) (prefixes []netip.Prefix) {
+	prefixes = make([]netip.Prefix, len(strings))
+	for i, s := range strings {
+		prefixes[i] = netip.MustParsePrefix(s)
 	}
 	return prefixes
 }

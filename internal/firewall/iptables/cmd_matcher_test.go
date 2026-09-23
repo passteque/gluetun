@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"regexp"
 
-	"github.com/golang/mock/gomock"
+	"go.uber.org/mock/gomock"
 )
 
 var _ gomock.Matcher = (*cmdMatcher)(nil)

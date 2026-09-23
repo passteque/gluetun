@@ -7,9 +7,9 @@ import (
 	"strings"
 	"testing"
 
-	gomock "github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	gomock "go.uber.org/mock/gomock"
 )
 
 func linesToReadCloser(lines []string) io.ReadCloser {

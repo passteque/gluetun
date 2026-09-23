@@ -95,7 +95,7 @@ func (c *ControlServer) setDefaults() {
 		var role auth.Role
 		_ = json.Unmarshal([]byte(c.AuthDefaultRole), &role)
 		role.Name = "default"
-		roleBytes, _ := json.Marshal(role) //nolint:errchkjson
+		roleBytes, _ := json.Marshal(role) //nolint:errchkjson,gosec
 		c.AuthDefaultRole = string(roleBytes)
 	}
 }

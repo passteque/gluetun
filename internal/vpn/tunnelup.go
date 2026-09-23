@@ -41,8 +41,6 @@ type tunnelUpPMTUDData struct {
 	// network is used to find the network level header overhead.
 	// It can be [constants.UDP] or [constants.TCP].
 	network string
-	// ipv6 is true if the VPN connection supports IPv6.
-	ipv6 bool
 	// icmpAddrs is the list of addresses to use for ICMP path MTU discovery.
 	// Each address should handle ICMP packets for PMTUD to work.
 	icmpAddrs []netip.Addr
@@ -52,7 +50,8 @@ type tunnelUpPMTUDData struct {
 }
 
 func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
-	switch vpnType := l.GetSettings().Type; vpnType {
+	vpnSettings := l.GetSettings()
+	switch vpnType := vpnSettings.Type; vpnType {
 	case vpn.Wireguard, vpn.AmneziaWg:
 		l.logger.Infof("%s setup is complete. "+
 			"Note %s is a silent protocol and it may or may not work, without giving any error message. "+
@@ -71,8 +70,9 @@ func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
 
 	if data.pmtud.enabled {
 		mtuLogger := l.logger.New(log.SetComponent("MTU discovery"))
+		ipv6 := l.isIPv6Used(vpnSettings)
 		err := updateToMaxMTU(ctx, data.vpnIntf, data.pmtud.vpnType,
-			data.pmtud.network, data.pmtud.ipv6, data.pmtud.icmpAddrs, data.pmtud.tcpAddrs,
+			data.pmtud.network, ipv6, data.pmtud.icmpAddrs, data.pmtud.tcpAddrs,
 			l.netLinker, l.routing, l.fw, mtuLogger)
 		if err != nil {
 			mtuLogger.Error(err.Error())
@@ -81,6 +81,7 @@ func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
 
 	_, _ = l.dnsLooper.ApplyStatus(ctx, constants.Running)
 
+	<-l.healthDone // make sure the health checker is stopped before restarting it
 	icmpTargetIPs := l.healthSettings.ICMPTargetIPs
 	if len(icmpTargetIPs) == 1 && icmpTargetIPs[0].IsUnspecified() {
 		icmpTargetIPs = []netip.Addr{data.serverIP}
@@ -104,7 +105,12 @@ func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
 	// Start collecting health errors asynchronously, since
 	// we should not wait for the code below to complete
 	// to start monitoring health and auto-healing.
-	go l.collectHealthErrors(ctx, loopCtx, healthErrCh)
+	// We keep track of when this goroutine is done with the healthDone
+	// channel to avoid a race condition where the health checker is stopped
+	// after being reconfigured and restarted, instead of before.
+	healthDone := make(chan struct{})
+	l.healthDone = healthDone
+	go l.collectHealthErrors(ctx, loopCtx, healthDone, healthErrCh)
 
 	err = l.publicip.RunOnce(ctx)
 	if err != nil {
@@ -140,7 +146,10 @@ func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
 	}
 }
 
-func (l *Loop) collectHealthErrors(ctx, loopCtx context.Context, healthErrCh <-chan error) {
+func (l *Loop) collectHealthErrors(ctx, loopCtx context.Context,
+	done chan<- struct{}, healthErrCh <-chan error,
+) {
+	defer close(done)
 	var previousHealthErr error
 	for {
 		select {

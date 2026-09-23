@@ -133,7 +133,11 @@ func (s *Service) onNewPorts(ctx context.Context, internalToExternalPorts map[ui
 	copy(s.ports, externalPorts)
 
 	if s.settings.UpCommand != "" {
-		err = runCommand(ctx, s.cmder, s.logger, s.settings.UpCommand, externalPorts, s.settings.Interface)
+		logger := &loggerWithPrefix{
+			prefix: "up command: ",
+			logger: s.logger,
+		}
+		err = runCommand(ctx, s.cmder, logger, s.settings.UpCommand, externalPorts, s.settings.Interface)
 		if err != nil {
 			err = fmt.Errorf("running up command: %w", err)
 			s.logger.Error(err.Error())

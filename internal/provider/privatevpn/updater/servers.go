@@ -3,85 +3,33 @@ package updater
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"sort"
-	"strings"
 
-	"github.com/qdm12/gluetun/internal/constants"
-	"github.com/qdm12/gluetun/internal/constants/vpn"
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
-	"github.com/qdm12/gluetun/internal/updater/openvpn"
 )
 
 func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	servers []models.Server, err error,
 ) {
-	const url = "https://privatevpn.com/client/PrivateVPN-TUN.zip"
-	contents, err := u.unzipper.FetchAndExtract(ctx, url)
+	servers, warnings, err := fetchServersFromWebsite(ctx, u.client)
 	if err != nil {
 		return nil, err
-	} else if len(contents) < minServers {
+	}
+	for _, warning := range warnings {
+		u.warner.Warn(warning)
+	}
+
+	if len(servers) < minServers {
 		return nil, fmt.Errorf("%w: %d and expected at least %d",
-			common.ErrNotEnoughServers, len(contents), minServers)
+			common.ErrNotEnoughServers, len(servers), minServers)
 	}
 
-	countryCodes := constants.CountryCodes()
-
-	hts := make(hostToServer)
-	noHostnameServers := make([]models.Server, 0, 1) // there is only one for now
-
-	for fileName, content := range contents {
-		if !strings.HasSuffix(fileName, ".ovpn") {
-			continue // not an OpenVPN file
-		}
-
-		countryCode, city, err := parseFilename(fileName)
-		if err != nil {
-			// treat error as warning and go to next file
-			u.warner.Warn(err.Error() + " in " + fileName)
-			continue
-		}
-
-		country, warning := codeToCountry(countryCode, countryCodes)
-		if warning != "" {
-			u.warner.Warn(warning)
-		}
-
-		host, warning, err := openvpn.ExtractHost(content)
-		if warning != "" {
-			u.warner.Warn(warning)
-		}
-		if err == nil { // found host
-			hts.add(host, country, city)
-			continue
-		}
-
-		ips, extractIPErr := openvpn.ExtractIPs(content)
-		if warning != "" {
-			u.warner.Warn(warning)
-		}
-		if extractIPErr != nil {
-			// treat extract host error as warning and go to next file
-			u.warner.Warn(extractIPErr.Error() + " in " + fileName)
-			continue
-		}
-		server := models.Server{
-			VPN:     vpn.OpenVPN,
-			Country: country,
-			City:    city,
-			IPs:     ips,
-			UDP:     true,
-			TCP:     true,
-		}
-		noHostnameServers = append(noHostnameServers, server)
+	hosts := make([]string, len(servers))
+	for i := range servers {
+		hosts[i] = servers[i].Hostname
 	}
-
-	if len(noHostnameServers)+len(hts) < minServers {
-		return nil, fmt.Errorf("%w: %d and expected at least %d",
-			common.ErrNotEnoughServers, len(servers)+len(hts), minServers)
-	}
-
-	hosts := hts.toHostsSlice()
 
 	resolveSettings := parallelResolverSettings(hosts)
 	hostToIPs, warnings, err := u.parallelResolver.Resolve(ctx, resolveSettings)
@@ -92,17 +40,33 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 		return nil, err
 	}
 
-	if len(noHostnameServers)+len(hostToIPs) < minServers {
+	servers = applyIPsToServers(servers, hostToIPs)
+
+	if len(servers) < minServers {
 		return nil, fmt.Errorf("%w: %d and expected at least %d",
 			common.ErrNotEnoughServers, len(servers), minServers)
 	}
 
-	hts.adaptWithIPs(hostToIPs)
-
-	servers = hts.toServersSlice()
-	servers = append(servers, noHostnameServers...)
-
 	sort.Sort(models.SortableServers(servers))
 
 	return servers, nil
+}
+
+func applyIPsToServers(servers []models.Server, hostToIPs map[string][]netip.Addr) (
+	result []models.Server,
+) {
+	result = make([]models.Server, 0, len(servers))
+	for _, server := range servers {
+		if len(server.Hostname) > 0 {
+			if ips, ok := hostToIPs[server.Hostname]; ok {
+				server.IPs = ips
+				result = append(result, server)
+			}
+			// Servers with unresolved hostnames are dropped silently
+		} else {
+			// Servers without hostnames (shouldn't happen with the new approach)
+			result = append(result, server)
+		}
+	}
+	return result
 }

@@ -15,7 +15,6 @@ const (
 	Ivpn                  = "ivpn"
 	Mullvad               = "mullvad"
 	Nordvpn               = "nordvpn"
-	Perfectprivacy        = "perfect privacy"
 	Privado               = "privado"
 	PrivateInternetAccess = "private internet access"
 	Privatevpn            = "privatevpn"
@@ -43,7 +42,6 @@ func All() []string {
 		Ivpn,
 		Mullvad,
 		Nordvpn,
-		Perfectprivacy,
 		Privado,
 		PrivateInternetAccess,
 		Privatevpn,

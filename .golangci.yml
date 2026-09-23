@@ -46,6 +46,7 @@ linters:
           - dupl
           - err113
           - maintidx
+          - prealloc
         path: _test\.go
       - linters:
           - dupl

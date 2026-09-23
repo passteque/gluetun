@@ -1,6 +1,6 @@
 package settings
 
-import gomock "github.com/golang/mock/gomock"
+import gomock "go.uber.org/mock/gomock"
 
 type sourceKeyValue struct {
 	key   string

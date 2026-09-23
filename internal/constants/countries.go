@@ -249,6 +249,7 @@ func CountryCodes() map[string]string {
 		"vn":  "Vietnam",
 		"wf":  "Wallis and Futuna",
 		"eh":  "Western Sahara",
+		"xk":  "Kosovo",
 		"ye":  "Yemen",
 		"zm":  "Zambia",
 		"zw":  "Zimbabwe",

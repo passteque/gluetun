@@ -27,7 +27,7 @@ func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObj
 	_, externalIPv4Address, err := client.ExternalAddress(ctx, objects.Gateway)
 	if err != nil {
 		switch {
-		case strings.HasSuffix(err.Error(), "connection refused"):
+		case strings.Contains(err.Error(), "connection refused"):
 			err = fmt.Errorf("%w - make sure you have +pmp at the end of your OpenVPN username "+
 				"or that your Wireguard key is set to work with PMP", err)
 		case strings.Contains(err.Error(), "i/o timeout"):

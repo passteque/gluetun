@@ -5,7 +5,6 @@ import (
 	"net/netip"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/constants"
 	"github.com/qdm12/gluetun/internal/constants/providers"
@@ -13,6 +12,7 @@ import (
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
 
 func Test_Provider_GetConnection(t *testing.T) {
