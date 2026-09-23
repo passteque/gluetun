@@ -92,6 +92,9 @@ func (l *Loop) onTunnelUp(ctx, loopCtx context.Context, data tunnelUpData) {
 	healthErrCh, err := l.healthChecker.Start(ctx)
 	l.healthServer.SetError(err)
 	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
 		if *l.healthSettings.RestartVPN {
 			// Note this restart call must be done in a separate goroutine
 			// from the VPN loop goroutine.
