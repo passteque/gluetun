@@ -50,7 +50,7 @@ type Extractor interface {
 
 func NewProviders(storage Storage, timeNow func() time.Time,
 	updaterWarner common.Warner, client *http.Client, unzipper common.Unzipper,
-	parallelResolver common.ParallelResolver, ipFetcher common.IPFetcher,
+	parallelResolver common.ParallelResolver,
 	extractor custom.Extractor, credentials settings.Updater,
 ) *Providers {
 	providerNameToProvider := map[string]Provider{
@@ -69,7 +69,7 @@ func NewProviders(storage Storage, timeNow func() time.Time,
 		providers.PrivateInternetAccess: privateinternetaccess.New(storage, timeNow, client),
 		providers.Privatevpn:            privatevpn.New(storage, client, updaterWarner, parallelResolver),
 		providers.Protonvpn:             protonvpn.New(storage, client, updaterWarner, *credentials.ProtonEmail, *credentials.ProtonPassword, *credentials.ProtonTOTPSecret, *credentials.ProtonTOTPCode), //nolint:lll
-		providers.Purevpn:               purevpn.New(storage, ipFetcher, unzipper, updaterWarner, parallelResolver),
+		providers.Purevpn:               purevpn.New(storage, client, unzipper, updaterWarner, parallelResolver),
 		providers.SlickVPN:              slickvpn.New(storage, client, updaterWarner, parallelResolver),
 		providers.Surfshark:             surfshark.New(storage, client, unzipper, updaterWarner, parallelResolver),
 		providers.Torguard:              torguard.New(storage, unzipper, updaterWarner, parallelResolver),
