@@ -33,7 +33,8 @@ func Test_PathMTUDiscover(t *testing.T) {
 	logger := log.New(log.SetLevel(log.LevelDebug))
 
 	cmder := command.New()
-	fw, err := firewall.NewConfig(t.Context(), logger, logger, cmder, nil, nil, nil)
+	const implementation = "auto"
+	fw, err := firewall.NewConfig(t.Context(), implementation, logger, logger, cmder, nil, nil, nil)
 	if errors.Is(err, iptables.ErrNotSupported) {
 		t.Skipf("iptables not supported: %s", err)
 	}
