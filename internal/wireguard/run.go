@@ -65,12 +65,13 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 			*w.settings.GSO, cleanups, w.logger)
 	}
 
-	Run(ctx, waitError, ready, setup, w.settings, w.netlink, w.logger)
+	Run(ctx, waitError, ready, setup, ConfigureDevice, w.settings, w.netlink, w.logger)
 }
 
 func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 	setup func(ctx context.Context, cleanups *cleanup.Cleanups) (
 		linkIndex uint32, waitAndCleanup func() error, err error),
+	configure func(client *wgctrl.Client, settings Settings) error,
 	settings Settings, netlinker NetLinker, logger Logger,
 ) {
 	client, err := wgctrl.New()
@@ -97,7 +98,7 @@ func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 	}
 
 	logger.Info("Connecting to " + settings.Endpoint.String())
-	err = ConfigureDevice(client, settings)
+	err = configure(client, settings)
 	if err != nil {
 		waitError <- fmt.Errorf("configuring interface: %w", err)
 		return

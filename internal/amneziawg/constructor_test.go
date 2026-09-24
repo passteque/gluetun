@@ -47,6 +47,13 @@ func Test_New(t *testing.T) {
 				logger:  logger,
 				netlink: netLinker,
 				settings: Settings{
+					ContentPaddingAddition:      "0",
+					RekeyAfterTime:              "0",
+					RekeyTimeout:                "0",
+					RejectAfterTime:             "0",
+					KeepaliveTimeout:            "0",
+					MaxHandshakeAttempts:        "0",
+					PersistentKeepaliveInterval: "0",
 					Wireguard: wireguard.Settings{
 						InterfaceName: "wg0",
 						PrivateKey:    validKeyString,

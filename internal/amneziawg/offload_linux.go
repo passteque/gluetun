@@ -3,7 +3,7 @@ package amneziawg
 import (
 	"fmt"
 
-	amneziatun "github.com/amnezia-vpn/amneziawg-go/tun"
+	amneziatun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
 	"github.com/qdm12/gluetun/internal/wireguard"
 )
 
