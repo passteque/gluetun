@@ -3,7 +3,7 @@
 package amneziawg
 
 import (
-	amneziatun "github.com/amnezia-vpn/amneziawg-go/tun"
+	amneziatun "github.com/amnezia-vpn/amneziawg-go/v3/tun"
 )
 
 func createTUN(name string, mtu int, _ bool) (amneziatun.Device, error) { //nolint:ireturn

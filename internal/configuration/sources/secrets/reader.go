@@ -159,6 +159,34 @@ func (s *Source) getAmneziaWg(key string) (value string, isSet, matched bool) {
 	case "amneziawg_i5":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().I5)
 	default:
+		return s.getAmneziaWg3(key)
+	}
+	return value, isSet, true
+}
+
+func (s *Source) getAmneziaWg3(key string) (value string, isSet, matched bool) {
+	switch key {
+	case "amneziawg_header_protection_key":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().HeaderProtectionKey)
+	case "amneziawg_content_padding_addition":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().ContentPaddingAddition)
+	case "amneziawg_rekey_after_time":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().RekeyAfterTime)
+	case "amneziawg_rekey_timeout":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().RekeyTimeout)
+	case "amneziawg_reject_after_time":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().RejectAfterTime)
+	case "amneziawg_keepalive_timeout":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().KeepaliveTimeout)
+	case "amneziawg_max_handshake_attempts":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().MaxHandshakeAttempts)
+	case "amneziawg_random_trailers":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().RandomTrailers)
+	case "amneziawg_disable_cookies":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().DisableCookies)
+	case "amneziawg_persistent_keepalive_interval":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().PersistentKeepalive)
+	default:
 		return "", false, false
 	}
 	return value, isSet, true

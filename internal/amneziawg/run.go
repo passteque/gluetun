@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"net"
 
-	amneziaconn "github.com/amnezia-vpn/amneziawg-go/conn"
-	amneziadevice "github.com/amnezia-vpn/amneziawg-go/device"
+	amneziaconn "github.com/amnezia-vpn/amneziawg-go/v3/conn"
+	amneziadevice "github.com/amnezia-vpn/amneziawg-go/v3/device"
 	"github.com/qdm12/gluetun/internal/cleanup"
 	"github.com/qdm12/gluetun/internal/wireguard"
+	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
 // Run runs the amneziawg interface and waits until the context is done, then it cleans up the
@@ -18,14 +19,31 @@ import (
 // is done. It sends a signal to ready when the setup is complete and the interface is ready to use.
 // See https://github.com/amnezia-vpn/amneziawg-go/blob/master/main.go
 func (a *Amneziawg) Run(ctx context.Context, waitError chan<- error, ready chan<- struct{}) {
+	var device *amneziadevice.Device
 	setup := func(ctx context.Context, cleanups *cleanup.Cleanups) (
 		linkIndex uint32, waitAndCleanup func() error, err error,
 	) {
-		return setupUserspace(ctx, a.settings.Wireguard.InterfaceName,
+		linkIndex, device, waitAndCleanup, err = setupUserspace(ctx, a.settings.Wireguard.InterfaceName,
 			a.netlink, a.settings.Wireguard.MTU, cleanups, a.logger, a.settings)
+		return linkIndex, waitAndCleanup, err
+	}
+	configure := func(client *wgctrl.Client, settings wireguard.Settings) error {
+		err := wireguard.ConfigureDevice(client, settings)
+		if err != nil {
+			return err
+		}
+		uapiConfig, err := a.settings.uapiConfig()
+		if err != nil {
+			return fmt.Errorf("making amneziawg uapi config: %w", err)
+		}
+		err = device.IpcSet(uapiConfig)
+		if err != nil {
+			return fmt.Errorf("setting amneziawg uapi config: %w", err)
+		}
+		return nil
 	}
 
-	wireguard.Run(ctx, waitError, ready, setup, a.settings.Wireguard, a.netlink, a.logger)
+	wireguard.Run(ctx, waitError, ready, setup, configure, a.settings.Wireguard, a.netlink, a.logger)
 }
 
 func setupUserspace(ctx context.Context,
@@ -33,25 +51,25 @@ func setupUserspace(ctx context.Context,
 	cleanups *cleanup.Cleanups, logger Logger,
 	settings Settings,
 ) (
-	linkIndex uint32, waitAndCleanup func() error, err error,
+	linkIndex uint32, device *amneziadevice.Device, waitAndCleanup func() error, err error,
 ) {
 	tun, err := createTUN(interfaceName, int(mtu), *settings.Wireguard.GSO)
 	if err != nil {
-		return 0, nil, fmt.Errorf("creating TUN device: %w", err)
+		return 0, nil, nil, fmt.Errorf("creating TUN device: %w", err)
 	}
 
 	cleanups.Add("closing TUN device", 7, tun.Close)
 
 	tunName, err := tun.Name()
 	if err != nil {
-		return 0, nil, fmt.Errorf("getting created TUN device name: %w", err)
+		return 0, nil, nil, fmt.Errorf("getting created TUN device name: %w", err)
 	} else if tunName != interfaceName {
-		return 0, nil, fmt.Errorf("TUN device name is mismatching: expected %q and got %q", interfaceName, tunName)
+		return 0, nil, nil, fmt.Errorf("TUN device name is mismatching: expected %q and got %q", interfaceName, tunName)
 	}
 
 	link, err := netLinker.LinkByName(interfaceName)
 	if err != nil {
-		return 0, nil, fmt.Errorf("finding link %s: %w", interfaceName, err)
+		return 0, nil, nil, fmt.Errorf("finding link %s: %w", interfaceName, err)
 	}
 	cleanups.Add("deleting link", 5, func() error {
 		return netLinker.LinkDel(link.Index)
@@ -64,7 +82,7 @@ func setupUserspace(ctx context.Context,
 		Verbosef: logger.Debugf,
 		Errorf:   logger.Errorf,
 	}
-	device := amneziadevice.NewDevice(tun, bind, &deviceLogger)
+	device = amneziadevice.NewDevice(tun, bind, &deviceLogger)
 
 	cleanups.Add("closing Wireguard device", 6, func() error {
 		device.Close()
@@ -73,21 +91,15 @@ func setupUserspace(ctx context.Context,
 
 	uapiFile, err := wireguard.UAPIOpen(interfaceName)
 	if err != nil {
-		return 0, nil, fmt.Errorf("opening UAPI socket: %w", err)
+		return 0, nil, nil, fmt.Errorf("opening UAPI socket: %w", err)
 	}
 	cleanups.Add("closing UAPI file", 3, uapiFile.Close)
 
 	uapiListener, err := wireguard.UAPIListen(interfaceName, uapiFile)
 	if err != nil {
-		return 0, nil, fmt.Errorf("listening on UAPI socket: %w", err)
+		return 0, nil, nil, fmt.Errorf("listening on UAPI socket: %w", err)
 	}
 	cleanups.Add("closing UAPI listener", 2, uapiListener.Close)
-
-	uapiConfig := settings.uapiConfig()
-	err = device.IpcSet(uapiConfig)
-	if err != nil {
-		return 0, nil, fmt.Errorf("setting amneziawg uapi config: %w", err)
-	}
 
 	// acceptAndHandle exits when uapiListener is closed
 	uapiAcceptErrorCh := make(chan error)
@@ -109,7 +121,7 @@ func setupUserspace(ctx context.Context,
 		return err
 	}
 
-	return link.Index, waitAndCleanup, nil
+	return link.Index, device, waitAndCleanup, nil
 }
 
 func acceptAndHandle(uapi net.Listener, device *amneziadevice.Device,

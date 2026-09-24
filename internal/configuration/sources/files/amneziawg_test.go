@@ -43,9 +43,19 @@ DNS = 193.138.218.74
 Jc = 4
 H1 = 721391205
 I1 = <b 0x1234>
+HeaderProtectionKey = oMNSf/zJ0pt1ciy+qIRk8Rlyfs9accwuRLnKd85Yl1Q=
+ContentPaddingAddition = 16-32
+RekeyAfterTime = 120-180
+RekeyTimeout = 5-10
+RejectAfterTime = 180-240
+KeepaliveTimeout = 10-20
+MaxHandshakeAttempts = 5-10
+RandomTrailers = on
+DisableCookies = off
 
 [Peer]
 PresharedKey = YJ680VN+dGrdsWNjSFqZ6vvwuiNhbq502ZL3G7Q3o3g=
+PersistentKeepalive = 22-30
 `,
 			amneziawg: AmneziawgConfig{
 				Wireguard: WireguardConfig{
@@ -53,9 +63,19 @@ PresharedKey = YJ680VN+dGrdsWNjSFqZ6vvwuiNhbq502ZL3G7Q3o3g=
 					PreSharedKey: ptrTo("YJ680VN+dGrdsWNjSFqZ6vvwuiNhbq502ZL3G7Q3o3g="),
 					Addresses:    ptrTo("10.38.22.35/32"),
 				},
-				Jc: ptrTo("4"),
-				H1: ptrTo("721391205"),
-				I1: ptrTo("<b 0x1234>"),
+				Jc:                     ptrTo("4"),
+				H1:                     ptrTo("721391205"),
+				I1:                     ptrTo("<b 0x1234>"),
+				HeaderProtectionKey:    ptrTo("oMNSf/zJ0pt1ciy+qIRk8Rlyfs9accwuRLnKd85Yl1Q="),
+				ContentPaddingAddition: ptrTo("16-32"),
+				RekeyAfterTime:         ptrTo("120-180"),
+				RekeyTimeout:           ptrTo("5-10"),
+				RejectAfterTime:        ptrTo("180-240"),
+				KeepaliveTimeout:       ptrTo("10-20"),
+				MaxHandshakeAttempts:   ptrTo("5-10"),
+				RandomTrailers:         ptrTo("on"),
+				DisableCookies:         ptrTo("off"),
+				PersistentKeepalive:    ptrTo("22-30"),
 			},
 		},
 	}

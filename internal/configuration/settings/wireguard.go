@@ -280,9 +280,11 @@ func (w *Wireguard) read(r *reader.Reader, amneziaWG bool) (err error) {
 		return err // already wrapped
 	}
 
-	w.PersistentKeepaliveInterval, err = r.DurationPtr(prefix + "_PERSISTENT_KEEPALIVE_INTERVAL")
-	if err != nil {
-		return err
+	if !amneziaWG {
+		w.PersistentKeepaliveInterval, err = r.DurationPtr(prefix + "_PERSISTENT_KEEPALIVE_INTERVAL")
+		if err != nil {
+			return err
+		}
 	}
 
 	w.MTU, err = r.Uint32Ptr(prefix + "_MTU")
