@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -290,14 +291,9 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		logger.Warn(warning)
 	}
 
-	const permission = fs.FileMode(0o644)
-	err = os.MkdirAll("/tmp/gluetun", permission)
+	err = createDirectories()
 	if err != nil {
-		return err
-	}
-	err = os.MkdirAll("/gluetun", permission)
-	if err != nil {
-		return err
+		return fmt.Errorf("creating directories: %w", err)
 	}
 
 	const defaultUsername = "nonrootuser"
@@ -552,6 +548,38 @@ type printVersionElement struct {
 
 type infoer interface {
 	Info(s string)
+}
+
+func createDirectories() error {
+	// create /tmp/gluetun if it does not exist with correct
+	// permissions for sharing with nonrootuser
+	_, err := os.Stat("/tmp/gluetun")
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		// TODO v4: remove world permission (0770 or 2770)
+		// TODO v4: chown root:PGID for sharing with nonrootuser
+		const tmpPermission = fs.FileMode(0o774)
+		err = os.MkdirAll("/tmp/gluetun", tmpPermission)
+		if err != nil {
+			return fmt.Errorf("creating /tmp/gluetun: %w", err)
+		}
+		// chmod explicitly since MkdirAll is subject to the umask
+		err = os.Chmod("/tmp/gluetun", tmpPermission)
+		if err != nil {
+			return fmt.Errorf("setting /tmp/gluetun permissions: %w", err)
+		}
+	case err != nil:
+		return fmt.Errorf("checking /tmp/gluetun: %w", err)
+	}
+
+	// /gluetun is not shared with nonrootuser
+	const gluetunPermission = fs.FileMode(0o755)
+	err = os.MkdirAll("/gluetun", gluetunPermission)
+	if err != nil {
+		return fmt.Errorf("creating /gluetun: %w", err)
+	}
+
+	return nil
 }
 
 func printVersions(ctx context.Context, logger infoer,
