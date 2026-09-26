@@ -18,23 +18,10 @@ func (l *Loop) isIPv6Used(settings settings.VPN) bool {
 			}
 		}
 		return false
+	case vpn.Custom:
+		return l.linkHasPublicIPv6(settings.CustomVPN.Interface)
 	case vpn.OpenVPN:
-		link, err := l.netLinker.LinkByName(settings.OpenVPN.Interface)
-		if err != nil {
-			l.logger.Warnf("assuming IPv6 is not supported, cannot get OpenVPN link by name: %v", err)
-			return false
-		}
-		ipv6Prefixes, err := l.netLinker.AddrList(link.Index, netlink.FamilyV6)
-		if err != nil {
-			l.logger.Warnf("assuming IPv6 is not supported, cannot list OpenVPN link addresses: %v", err)
-			return false
-		}
-		for _, prefix := range ipv6Prefixes {
-			if prefix.Addr().IsGlobalUnicast() && !prefix.Addr().IsPrivate() {
-				return true
-			}
-		}
-		return false
+		return l.linkHasPublicIPv6(settings.OpenVPN.Interface)
 	case vpn.Wireguard:
 		for _, prefix := range settings.Wireguard.Addresses {
 			if prefix.Addr().Is6() {
@@ -45,4 +32,23 @@ func (l *Loop) isIPv6Used(settings settings.VPN) bool {
 	default:
 		panic("vpn type not implemented: " + settings.Type)
 	}
+}
+
+func (l *Loop) linkHasPublicIPv6(vpnInterface string) bool {
+	link, err := l.netLinker.LinkByName(vpnInterface)
+	if err != nil {
+		l.logger.Warnf("assuming IPv6 is not supported, cannot get VPN link by name: %v", err)
+		return false
+	}
+	ipv6Prefixes, err := l.netLinker.AddrList(link.Index, netlink.FamilyV6)
+	if err != nil {
+		l.logger.Warnf("assuming IPv6 is not supported, cannot list VPN link addresses: %v", err)
+		return false
+	}
+	for _, prefix := range ipv6Prefixes {
+		if prefix.Addr().IsGlobalUnicast() && !prefix.Addr().IsPrivate() {
+			return true
+		}
+	}
+	return false
 }
