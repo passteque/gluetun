@@ -1,10 +1,29 @@
 package settings
 
 import (
+	"net/netip"
 	"testing"
 
+	constvpn "github.com/qdm12/gluetun/internal/constants/vpn"
+	"github.com/qdm12/gosettings/reader"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+type mapSource map[string]string
+
+func (s mapSource) String() string { return "test map" }
+
+func (s mapSource) Get(key string) (value string, isSet bool) {
+	value, isSet = s[key]
+	return value, isSet
+}
+
+func (s mapSource) KeyTransform(key string) string { return key }
+
+type noopWarner struct{}
+
+func (noopWarner) Warn(string) {}
 
 func Test_Settings_String(t *testing.T) {
 	t.Parallel()
@@ -119,4 +138,154 @@ func Test_Settings_String(t *testing.T) {
 			assert.Equal(t, testCase.s, s)
 		})
 	}
+}
+
+func Test_Settings_applyVPNDNS(t *testing.T) {
+	t.Parallel()
+
+	const vpnDNS = "10.0.0.1:53"
+	testCases := map[string]struct {
+		settings Settings
+		dns      DNS
+	}{
+		"amneziawg_config_dns": {
+			settings: Settings{
+				VPN: VPN{
+					Type: constvpn.AmneziaWg,
+					AmneziaWg: AmneziaWg{
+						DNSServers: []netip.AddrPort{netip.MustParseAddrPort(vpnDNS)},
+					},
+				},
+			},
+			dns: DNS{
+				UpstreamType:           DNSUpstreamTypePlain,
+				UpstreamPlainAddresses: []netip.AddrPort{netip.MustParseAddrPort(vpnDNS)},
+			},
+		},
+		"explicit_plain_uses_config_addresses": {
+			settings: Settings{
+				VPN: VPN{Type: constvpn.AmneziaWg, AmneziaWg: AmneziaWg{
+					DNSServers: []netip.AddrPort{netip.MustParseAddrPort(vpnDNS)},
+				}},
+				DNS: DNS{UpstreamType: DNSUpstreamTypePlain},
+			},
+			dns: DNS{
+				UpstreamType:           DNSUpstreamTypePlain,
+				UpstreamPlainAddresses: []netip.AddrPort{netip.MustParseAddrPort(vpnDNS)},
+			},
+		},
+		"explicit_dns_takes_precedence": {
+			settings: Settings{
+				VPN: VPN{
+					Type: constvpn.AmneziaWg,
+					AmneziaWg: AmneziaWg{
+						DNSServers: []netip.AddrPort{netip.MustParseAddrPort(vpnDNS)},
+					},
+				},
+				DNS: DNS{
+					UpstreamType: DNSUpstreamTypeDoh,
+					UpstreamPlainAddresses: []netip.AddrPort{
+						netip.MustParseAddrPort("1.1.1.1:53"),
+					},
+				},
+			},
+			dns: DNS{
+				UpstreamType: DNSUpstreamTypeDoh,
+				UpstreamPlainAddresses: []netip.AddrPort{
+					netip.MustParseAddrPort("1.1.1.1:53"),
+				},
+			},
+		},
+		"explicit_doh_takes_precedence": {
+			settings: Settings{
+				VPN: VPN{
+					Type: constvpn.AmneziaWg,
+					AmneziaWg: AmneziaWg{
+						DNSServers: []netip.AddrPort{netip.MustParseAddrPort(vpnDNS)},
+					},
+				},
+				DNS: DNS{UpstreamType: DNSUpstreamTypeDoh},
+			},
+			dns: DNS{UpstreamType: DNSUpstreamTypeDoh},
+		},
+		"explicit_dot_takes_precedence": {
+			settings: Settings{
+				VPN: VPN{
+					Type: constvpn.AmneziaWg,
+					AmneziaWg: AmneziaWg{
+						DNSServers: []netip.AddrPort{netip.MustParseAddrPort(vpnDNS)},
+					},
+				},
+				DNS: DNS{UpstreamType: DNSUpstreamTypeDot},
+			},
+			dns: DNS{UpstreamType: DNSUpstreamTypeDot},
+		},
+		"explicit_resolvers_take_precedence": {
+			settings: Settings{
+				VPN: VPN{
+					Type: constvpn.AmneziaWg,
+					AmneziaWg: AmneziaWg{
+						DNSServers: []netip.AddrPort{netip.MustParseAddrPort(vpnDNS)},
+					},
+				},
+				DNS: DNS{Providers: []string{"cloudflare"}},
+			},
+			dns: DNS{Providers: []string{"cloudflare"}},
+		},
+		"other_vpn_type_ignores_amneziawg_dns": {
+			settings: Settings{
+				VPN: VPN{
+					Type: constvpn.Wireguard,
+					AmneziaWg: AmneziaWg{
+						DNSServers: []netip.AddrPort{netip.MustParseAddrPort(vpnDNS)},
+					},
+				},
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			settings := testCase.settings
+			settings.applyVPNDNS()
+
+			assert.Equal(t, testCase.dns, settings.DNS)
+		})
+	}
+}
+
+func Test_Settings_Read_amneziaWGConfigFields(t *testing.T) {
+	t.Parallel()
+
+	settingsReader := reader.New(reader.Settings{
+		Sources: []reader.Source{mapSource{
+			"VPN_TYPE":              constvpn.AmneziaWg,
+			"AMNEZIAWG_ALLOWED_IPS": "0.0.0.0/0,::/0",
+			"AMNEZIAWG_PERSISTENT_KEEPALIVE_INTERVAL": "25-35",
+			"AMNEZIAWG_RANDOM_TRAILERS":               "on",
+			"AMNEZIAWG_DISABLE_COOKIES":               "on",
+			"AMNEZIAWG_DNS":                           "1.1.1.1,8.8.8.8",
+		}},
+	})
+	settings := Settings{}
+
+	err := settings.Read(settingsReader, noopWarner{})
+	require.NoError(t, err)
+	settings.SetDefaults()
+
+	assert.Equal(t, []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/0"),
+		netip.MustParsePrefix("::/0"),
+	}, settings.VPN.AmneziaWg.Wireguard.AllowedIPs)
+	assert.Equal(t, [2]uint32{25, 35}, *settings.VPN.AmneziaWg.PersistentKeepaliveInterval)
+	assert.Zero(t, *settings.VPN.AmneziaWg.Wireguard.PersistentKeepaliveInterval)
+	assert.True(t, *settings.VPN.AmneziaWg.RandomTrailers)
+	assert.True(t, *settings.VPN.AmneziaWg.DisableCookies)
+	assert.Equal(t, DNSUpstreamTypePlain, settings.DNS.UpstreamType)
+	assert.Equal(t, []netip.AddrPort{
+		netip.MustParseAddrPort("1.1.1.1:53"),
+		netip.MustParseAddrPort("8.8.8.8:53"),
+	}, settings.DNS.UpstreamPlainAddresses)
 }

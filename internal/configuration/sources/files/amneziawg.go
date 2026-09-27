@@ -48,6 +48,8 @@ type AmneziawgConfig struct {
 	RejectAfterTime        *string
 	KeepaliveTimeout       *string
 	MaxHandshakeAttempts   *string
+	RandomTrailers         *string
+	DisableCookies         *string
 }
 
 func ParseAmneziawgConf(path string) (config AmneziawgConfig, err error) {
@@ -93,6 +95,57 @@ func ParseAmneziawgConf(path string) (config AmneziawgConfig, err error) {
 	config.RejectAfterTime = getINIKeyFromSection(interfaceSection, "RejectAfterTime")
 	config.KeepaliveTimeout = getINIKeyFromSection(interfaceSection, "KeepaliveTimeout")
 	config.MaxHandshakeAttempts = getINIKeyFromSection(interfaceSection, "MaxHandshakeAttempts")
+	config.RandomTrailers = getINIKeyFromSection(interfaceSection, "RandomTrailers")
+	config.DisableCookies = getINIKeyFromSection(interfaceSection, "DisableCookies")
 
 	return config, nil
+}
+
+// Get returns the configuration value for an AmneziaWG settings source key.
+func (c AmneziawgConfig) Get(key string) (value string, isSet bool) {
+	fields := [...]struct {
+		key   string
+		value *string
+	}{
+		{"amneziawg_private_key", c.Wireguard.PrivateKey},
+		{"amneziawg_preshared_key", c.Wireguard.PreSharedKey},
+		{"amneziawg_addresses", c.Wireguard.Addresses},
+		{"amneziawg_public_key", c.Wireguard.PublicKey},
+		{"amneziawg_endpoint_ip", c.Wireguard.EndpointIP},
+		{"amneziawg_endpoint_port", c.Wireguard.EndpointPort},
+		{"amneziawg_allowed_ips", c.Wireguard.AllowedIPs},
+		{"amneziawg_persistent_keepalive_interval", c.Wireguard.PersistentKeepalive},
+		{"amneziawg_dns", c.Wireguard.DNS},
+		{"amneziawg_jc", c.Jc},
+		{"amneziawg_jmin", c.Jmin},
+		{"amneziawg_jmax", c.Jmax},
+		{"amneziawg_s1", c.S1},
+		{"amneziawg_s2", c.S2},
+		{"amneziawg_s3", c.S3},
+		{"amneziawg_s4", c.S4},
+		{"amneziawg_h1", c.H1},
+		{"amneziawg_h2", c.H2},
+		{"amneziawg_h3", c.H3},
+		{"amneziawg_h4", c.H4},
+		{"amneziawg_i1", c.I1},
+		{"amneziawg_i2", c.I2},
+		{"amneziawg_i3", c.I3},
+		{"amneziawg_i4", c.I4},
+		{"amneziawg_i5", c.I5},
+		{"amneziawg_header_protection_key", c.HeaderProtectionKey},
+		{"amneziawg_content_padding_addition", c.ContentPaddingAddition},
+		{"amneziawg_rekey_after_time", c.RekeyAfterTime},
+		{"amneziawg_rekey_timeout", c.RekeyTimeout},
+		{"amneziawg_reject_after_time", c.RejectAfterTime},
+		{"amneziawg_keepalive_timeout", c.KeepaliveTimeout},
+		{"amneziawg_max_handshake_attempts", c.MaxHandshakeAttempts},
+		{"amneziawg_random_trailers", c.RandomTrailers},
+		{"amneziawg_disable_cookies", c.DisableCookies},
+	}
+	for _, field := range fields {
+		if field.key == key {
+			return strPtrToStringIsSet(field.value)
+		}
+	}
+	return "", false
 }

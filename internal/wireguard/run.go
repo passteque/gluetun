@@ -58,11 +58,12 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 	}
 
 	setup := func(ctx context.Context, cleanups *cleanup.Cleanups) (
-		linkIndex uint32, waitAndCleanup func() error, err error,
+		linkIndex uint32, waitAndCleanup, postConfigure func() error, err error,
 	) {
-		return setupFunction(ctx,
+		linkIndex, waitAndCleanup, err = setupFunction(ctx,
 			w.settings.InterfaceName, w.netlink, w.settings.MTU,
 			*w.settings.GSO, cleanups, w.logger)
+		return linkIndex, waitAndCleanup, nil, err
 	}
 
 	Run(ctx, waitError, ready, setup, w.settings, w.netlink, w.logger)
@@ -70,7 +71,7 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 
 func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 	setup func(ctx context.Context, cleanups *cleanup.Cleanups) (
-		linkIndex uint32, waitAndCleanup func() error, err error),
+		linkIndex uint32, waitAndCleanup, postConfigure func() error, err error),
 	settings Settings, netlinker NetLinker, logger Logger,
 ) {
 	client, err := wgctrl.New()
@@ -84,7 +85,7 @@ func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 
 	defer cleanups.Cleanup(logger)
 
-	linkIndex, waitAndCleanup, err := setup(ctx, &cleanups)
+	linkIndex, waitAndCleanup, postConfigure, err := setup(ctx, &cleanups)
 	if err != nil {
 		waitError <- err
 		return
@@ -101,6 +102,13 @@ func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 	if err != nil {
 		waitError <- fmt.Errorf("configuring interface: %w", err)
 		return
+	}
+	if postConfigure != nil {
+		err = postConfigure()
+		if err != nil {
+			waitError <- fmt.Errorf("applying post-configuration: %w", err)
+			return
+		}
 	}
 
 	err = netlinker.LinkSetUp(linkIndex)

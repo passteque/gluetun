@@ -59,15 +59,20 @@ PresharedKey = YJ680VN+dGrdsWNjSFqZ6vvwuiNhbq502ZL3G7Q3o3g=
 [Interface]
 PrivateKey = QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8=
 Address = 10.38.22.35/32
-DNS = 193.138.218.74
+DNS = 193.138.218.74, 1.1.1.1
 
 [Peer]
 PresharedKey = YJ680VN+dGrdsWNjSFqZ6vvwuiNhbq502ZL3G7Q3o3g=
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25
 `,
 			wireguard: WireguardConfig{
-				PrivateKey:   ptrTo("QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8="),
-				PreSharedKey: ptrTo("YJ680VN+dGrdsWNjSFqZ6vvwuiNhbq502ZL3G7Q3o3g="),
-				Addresses:    ptrTo("10.38.22.35/32"),
+				PrivateKey:          ptrTo("QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8="),
+				PreSharedKey:        ptrTo("YJ680VN+dGrdsWNjSFqZ6vvwuiNhbq502ZL3G7Q3o3g="),
+				Addresses:           ptrTo("10.38.22.35/32"),
+				DNS:                 ptrTo("193.138.218.74, 1.1.1.1"),
+				AllowedIPs:          ptrTo("0.0.0.0/0, ::/0"),
+				PersistentKeepalive: ptrTo("25"),
 			},
 		},
 	}
@@ -100,6 +105,7 @@ func Test_parseWireguardInterfaceSection(t *testing.T) {
 		iniData    string
 		privateKey *string
 		addresses  *string
+		dns        *string
 	}{
 		"no_fields": {
 			iniData: `[Interface]`,
@@ -115,9 +121,11 @@ PrivateKey = x
 [Interface]
 PrivateKey = QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8=
 Address = 10.38.22.35/32
+DNS = 1.1.1.1, 2606:4700:4700::1111
 `,
 			privateKey: ptrTo("QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8="),
 			addresses:  ptrTo("10.38.22.35/32"),
+			dns:        ptrTo("1.1.1.1, 2606:4700:4700::1111"),
 		},
 	}
 
@@ -130,10 +138,12 @@ Address = 10.38.22.35/32
 			iniSection, err := iniFile.GetSection("Interface")
 			require.NoError(t, err)
 
-			privateKey, addresses := parseWireguardInterfaceSection(iniSection)
+			config := WireguardConfig{}
+			parseWireguardInterfaceSection(iniSection, &config)
 
-			assert.Equal(t, testCase.privateKey, privateKey)
-			assert.Equal(t, testCase.addresses, addresses)
+			assert.Equal(t, testCase.privateKey, config.PrivateKey)
+			assert.Equal(t, testCase.addresses, config.Addresses)
+			assert.Equal(t, testCase.dns, config.DNS)
 		})
 	}
 }
@@ -147,7 +157,8 @@ func Test_parseWireguardPeerSection(t *testing.T) {
 		publicKey    *string
 		endpointIP   *string
 		endpointPort *string
-		errMessage   string
+		allowedIPs   *string
+		keepalive    *string
 	}{
 		"public key set": {
 			iniData: `[Peer]
@@ -174,10 +185,14 @@ Endpoint = 1.2.3.4:51820`,
 		"all_set": {
 			iniData: `[Peer]
 PublicKey = QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8=
-Endpoint = 1.2.3.4:51820`,
+Endpoint = 1.2.3.4:51820
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25-35`,
 			publicKey:    ptrTo("QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8="),
 			endpointIP:   ptrTo("1.2.3.4"),
 			endpointPort: ptrTo("51820"),
+			allowedIPs:   ptrTo("0.0.0.0/0, ::/0"),
+			keepalive:    ptrTo("25-35"),
 		},
 		"ipv6_endpoint": {
 			iniData: `[Peer]
@@ -196,18 +211,15 @@ Endpoint = [2a02:bbbb:aaaa:8075::10]:51820`,
 			iniSection, err := iniFile.GetSection("Peer")
 			require.NoError(t, err)
 
-			preSharedKey, publicKey, endpointIP,
-				endpointPort := parseWireguardPeerSection(iniSection)
+			config := WireguardConfig{}
+			parseWireguardPeerSection(iniSection, &config)
 
-			assert.Equal(t, testCase.preSharedKey, preSharedKey)
-			assert.Equal(t, testCase.publicKey, publicKey)
-			assert.Equal(t, testCase.endpointIP, endpointIP)
-			assert.Equal(t, testCase.endpointPort, endpointPort)
-			if testCase.errMessage != "" {
-				assert.EqualError(t, err, testCase.errMessage)
-			} else {
-				assert.NoError(t, err)
-			}
+			assert.Equal(t, testCase.preSharedKey, config.PreSharedKey)
+			assert.Equal(t, testCase.publicKey, config.PublicKey)
+			assert.Equal(t, testCase.endpointIP, config.EndpointIP)
+			assert.Equal(t, testCase.endpointPort, config.EndpointPort)
+			assert.Equal(t, testCase.allowedIPs, config.AllowedIPs)
+			assert.Equal(t, testCase.keepalive, config.PersistentKeepalive)
 		})
 	}
 }

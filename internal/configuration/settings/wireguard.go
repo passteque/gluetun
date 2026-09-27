@@ -275,14 +275,20 @@ func (w *Wireguard) read(r *reader.Reader, amneziaWG bool) (err error) {
 		w.Addresses = append(w.Addresses, address)
 	}
 
-	w.AllowedIPs, err = r.CSVNetipPrefixes(prefix + "_ALLOWED_IPS")
-	if err != nil {
-		return err // already wrapped
+	w.AllowedIPs = nil
+	for _, allowedIPString := range r.CSV(prefix + "_ALLOWED_IPS") {
+		allowedIP, err := netip.ParsePrefix(strings.TrimSpace(allowedIPString))
+		if err != nil {
+			return fmt.Errorf("parsing allowed IP: %w", err)
+		}
+		w.AllowedIPs = append(w.AllowedIPs, allowedIP)
 	}
 
-	w.PersistentKeepaliveInterval, err = r.DurationPtr(prefix + "_PERSISTENT_KEEPALIVE_INTERVAL")
-	if err != nil {
-		return err
+	if !amneziaWG {
+		w.PersistentKeepaliveInterval, err = r.DurationPtr(prefix + "_PERSISTENT_KEEPALIVE_INTERVAL")
+		if err != nil {
+			return err
+		}
 	}
 
 	w.MTU, err = r.Uint32Ptr(prefix + "_MTU")

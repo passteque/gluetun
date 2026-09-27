@@ -1,11 +1,13 @@
 package amneziawg
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strconv"
 	"strings"
 
 	"github.com/qdm12/gluetun/internal/wireguard"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type Settings struct {
@@ -31,8 +33,8 @@ type Settings struct {
 	// unsigned integers, where a zero value makes the AmneziaWG library use its
 	// own default value.
 
-	// HeaderProtectionKey is a 32 bytes hexadecimal encoded key, shared with the
-	// server, which encrypts the low entropy fields of the message headers.
+	// HeaderProtectionKey is a 32-byte base64 encoded key, shared with the server,
+	// which encrypts the low entropy fields of the message headers.
 	// Once set, each of the s1 to s4 paddings is used as the cipher nonce and so
 	// must be at least headerProtectionNonceSize bytes long.
 	HeaderProtectionKey string
@@ -60,12 +62,24 @@ type Settings struct {
 	// Each retransmission sends the AmneziaWG signature and junk packets
 	// followed by the Wireguard initiation.
 	MaxHandshakeAttempts [2]uint32
+	// PersistentKeepaliveInterval is the range, in seconds, from which the
+	// interval between persistent keepalive packets is selected.
+	PersistentKeepaliveInterval [2]uint32
+	// RandomTrailers controls whether random trailers are added to packets.
+	RandomTrailers bool
+	// DisableCookies controls whether cookie reply packets are disabled.
+	DisableCookies bool
 }
 
 // uapiConfig returns the AmneziaWG specific configuration, in the UAPI format
 // used by the library. The order of the lines does not matter to the library,
 // it is only made deterministic for testing purposes.
-func (s Settings) uapiConfig() string {
+func (s Settings) uapiConfig() (config string, err error) {
+	headerProtectionKey, err := headerProtectionKeyToHex(s.HeaderProtectionKey)
+	if err != nil {
+		return "", fmt.Errorf("parsing header protection key: %w", err)
+	}
+
 	uintFields := [...]struct {
 		key   string
 		value uint16
@@ -91,7 +105,7 @@ func (s Settings) uapiConfig() string {
 		{"i3", s.InitPacketI3},
 		{"i4", s.InitPacketI4},
 		{"i5", s.InitPacketI5},
-		{"header_protection_key", s.HeaderProtectionKey},
+		{"header_protection_key", headerProtectionKey},
 		{"content_padding_addition", uint32RangeToString(s.ContentPaddingAddition)},
 		{"rekey_after_time", uint32RangeToString(s.RekeyAfterTime)},
 		{"rekey_timeout", uint32RangeToString(s.RekeyTimeout)},
@@ -113,8 +127,30 @@ func (s Settings) uapiConfig() string {
 		}
 		lines = append(lines, field.key+"="+field.value)
 	}
+	if s.RandomTrailers {
+		lines = append(lines, "random_trailers=true")
+	}
+	if s.DisableCookies {
+		lines = append(lines, "disable_cookies=true")
+	}
 
-	return strings.Join(lines, "\n")
+	return strings.Join(lines, "\n"), nil
+}
+
+func (s Settings) peerUAPIConfig() (config string, err error) {
+	if s.PersistentKeepaliveInterval == [2]uint32{} {
+		return "", nil
+	}
+
+	publicKey, err := wgtypes.ParseKey(s.Wireguard.PublicKey)
+	if err != nil {
+		return "", fmt.Errorf("parsing public key: %w", err)
+	}
+	lines := [...]string{
+		"public_key=" + hex.EncodeToString(publicKey[:]),
+		"persistent_keepalive_interval=" + uint32RangeToString(s.PersistentKeepaliveInterval),
+	}
+	return strings.Join(lines[:], "\n"), nil
 }
 
 func (s *Settings) SetDefaults() {
@@ -128,6 +164,10 @@ func (s Settings) Check() error {
 
 	if s.HeaderProtectionKey == "" {
 		return nil
+	}
+	_, err := headerProtectionKeyToHex(s.HeaderProtectionKey)
+	if err != nil {
+		return fmt.Errorf("invalid header protection key: %w", err)
 	}
 
 	paddings := [...]struct {
@@ -151,6 +191,22 @@ func (s Settings) Check() error {
 	}
 
 	return nil
+}
+
+// headerProtectionKeyToHex parses a 32-byte standard base64 encoded header
+// protection key and returns its canonical hexadecimal form for the UAPI.
+// An empty key disables header protection and is returned unchanged.
+func headerProtectionKeyToHex(key string) (hexadecimalKey string, err error) {
+	if key == "" {
+		return "", nil
+	}
+
+	parsedKey, err := wgtypes.ParseKey(key)
+	if err != nil {
+		return "", fmt.Errorf("must be a 32-byte base64 encoded key: %w", err)
+	}
+
+	return hex.EncodeToString(parsedKey[:]), nil
 }
 
 // uint32RangeToString returns a range in the `number` or `min-max` format used
