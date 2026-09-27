@@ -1,4 +1,4 @@
-package secrets
+package files
 
 import (
 	"io/fs"
@@ -10,85 +10,36 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func Test_Source_Get(t *testing.T) {
+type noopWarner struct{}
+
+func (noopWarner) Warnf(string, ...interface{}) {}
+
+func Test_Source_Get_amneziaWGConfigFields(t *testing.T) {
 	t.Parallel()
 
-	const testFile = "test_file"
-
 	testCases := map[string]struct {
-		makeSource func(tempDir string) (source *Source, err error)
-		key        string
-		value      string
-		isSet      bool
+		key   string
+		value string
 	}{
-		"empty_key": {
-			makeSource: func(tempDir string) (source *Source, err error) {
-				return &Source{
-					rootDirectory: tempDir,
-					environ:       map[string]string{},
-				}, nil
-			},
+		"allowed_ips": {
+			key:   "amneziawg_allowed_ips",
+			value: "0.0.0.0/0, ::/0",
 		},
-		"no_secret_file": {
-			makeSource: func(tempDir string) (source *Source, err error) {
-				return &Source{
-					rootDirectory: tempDir,
-					environ:       map[string]string{},
-				}, nil
-			},
-			key: testFile,
+		"persistent_keepalive": {
+			key:   "amneziawg_persistent_keepalive_interval",
+			value: "25-35",
 		},
-		"empty_secret_file": {
-			makeSource: func(tempDir string) (source *Source, err error) {
-				secretFilepath := filepath.Join(tempDir, testFile)
-				const permission = fs.FileMode(0o600)
-				err = os.WriteFile(secretFilepath, nil, permission)
-				if err != nil {
-					return nil, err
-				}
-				return &Source{
-					rootDirectory: tempDir,
-					environ:       map[string]string{},
-				}, nil
-			},
-			key:   testFile,
-			isSet: true,
+		"dns": {
+			key:   "amneziawg_dns",
+			value: "1.1.1.1, 8.8.8.8",
 		},
-		"default_secret_file": {
-			makeSource: func(tempDir string) (source *Source, err error) {
-				secretFilepath := filepath.Join(tempDir, testFile)
-				const permission = fs.FileMode(0o600)
-				err = os.WriteFile(secretFilepath, []byte{'A'}, permission)
-				if err != nil {
-					return nil, err
-				}
-				return &Source{
-					rootDirectory: tempDir,
-					environ:       map[string]string{},
-				}, nil
-			},
-			key:   testFile,
-			value: "A",
-			isSet: true,
+		"random_trailers": {
+			key:   "amneziawg_random_trailers",
+			value: "on",
 		},
-		"env_specified_secret_file": {
-			makeSource: func(tempDir string) (source *Source, err error) {
-				secretFilepath := filepath.Join(tempDir, "test_file_custom")
-				const permission = fs.FileMode(0o600)
-				err = os.WriteFile(secretFilepath, []byte{'A'}, permission)
-				if err != nil {
-					return nil, err
-				}
-				return &Source{
-					rootDirectory: tempDir,
-					environ: map[string]string{
-						"TEST_FILE_SECRETFILE": secretFilepath,
-					},
-				}, nil
-			},
-			key:   testFile,
-			value: "A",
-			isSet: true,
+		"disable_cookies": {
+			key:   "amneziawg_disable_cookies",
+			value: "on",
 		},
 	}
 
@@ -96,19 +47,37 @@ func Test_Source_Get(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			source, err := testCase.makeSource(t.TempDir())
+			rootDirectory := t.TempDir()
+			configDirectory := filepath.Join(rootDirectory, "amneziawg")
+			err := os.Mkdir(configDirectory, fs.FileMode(0o700))
 			require.NoError(t, err)
+			config := `[Interface]
+PrivateKey = qOZ8vN2mK4pL7wR1tY6uI3oP5aS9dF0gH8jK2lM4nB0=
+DNS = 1.1.1.1, 8.8.8.8
+RandomTrailers = on
+DisableCookies = on
+
+[Peer]
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25-35
+`
+			configPath := filepath.Join(configDirectory, "awg0.conf")
+			const permission = fs.FileMode(0o600)
+			err = os.WriteFile(configPath, []byte(config), permission)
+			require.NoError(t, err)
+			source := &Source{
+				rootDirectory: rootDirectory,
+				environ:       map[string]string{},
+				warner:        noopWarner{},
+			}
 
 			value, isSet := source.Get(testCase.key)
+
+			assert.True(t, isSet)
 			assert.Equal(t, testCase.value, value)
-			assert.Equal(t, testCase.isSet, isSet)
 		})
 	}
 }
-
-type noopWarner struct{}
-
-func (noopWarner) Warnf(string, ...any) {}
 
 func Test_Source_Get_amneziaWGFallback(t *testing.T) {
 	t.Parallel()
@@ -154,7 +123,7 @@ func Test_Source_Get_amneziaWGFallback(t *testing.T) {
 				path := filepath.Join(rootDirectory, key)
 				if testCase.customPath {
 					path = filepath.Join(rootDirectory, "custom_keepalive")
-					source.environ["AMNEZIAWG_PERSISTENT_KEEPALIVE_INTERVAL_SECRETFILE"] = path
+					source.environ["AMNEZIAWG_PERSISTENT_KEEPALIVE_INTERVAL_FILE"] = path
 				}
 				err := os.WriteFile(path, []byte(*testCase.individual), 0o600)
 				require.NoError(t, err)

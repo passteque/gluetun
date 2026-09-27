@@ -39,23 +39,32 @@ func Test_Source_ParseAmneziawgConf(t *testing.T) {
 [Interface]
 PrivateKey = QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8=
 Address = 10.38.22.35/32
-DNS = 193.138.218.74
+DNS = 193.138.218.74, 1.1.1.1
 Jc = 4
 H1 = 721391205
 I1 = <b 0x1234>
+RandomTrailers = on
+DisableCookies = on
 
 [Peer]
 PresharedKey = YJ680VN+dGrdsWNjSFqZ6vvwuiNhbq502ZL3G7Q3o3g=
+AllowedIPs = 0.0.0.0/0, ::/0
+PersistentKeepalive = 25-35
 `,
 			amneziawg: AmneziawgConfig{
 				Wireguard: WireguardConfig{
-					PrivateKey:   ptrTo("QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8="),
-					PreSharedKey: ptrTo("YJ680VN+dGrdsWNjSFqZ6vvwuiNhbq502ZL3G7Q3o3g="),
-					Addresses:    ptrTo("10.38.22.35/32"),
+					PrivateKey:          ptrTo("QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8="),
+					PreSharedKey:        ptrTo("YJ680VN+dGrdsWNjSFqZ6vvwuiNhbq502ZL3G7Q3o3g="),
+					Addresses:           ptrTo("10.38.22.35/32"),
+					DNS:                 ptrTo("193.138.218.74, 1.1.1.1"),
+					AllowedIPs:          ptrTo("0.0.0.0/0, ::/0"),
+					PersistentKeepalive: ptrTo("25-35"),
 				},
-				Jc: ptrTo("4"),
-				H1: ptrTo("721391205"),
-				I1: ptrTo("<b 0x1234>"),
+				Jc:             ptrTo("4"),
+				H1:             ptrTo("721391205"),
+				I1:             ptrTo("<b 0x1234>"),
+				RandomTrailers: ptrTo("on"),
+				DisableCookies: ptrTo("on"),
 			},
 		},
 		"v3_parameters": {
@@ -63,7 +72,7 @@ PresharedKey = YJ680VN+dGrdsWNjSFqZ6vvwuiNhbq502ZL3G7Q3o3g=
 [Interface]
 PrivateKey = QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8=
 Address = 10.38.22.35/32
-HeaderProtectionKey = a8e67cbcdda62b8a4bef0475b58eae237a0fe5a4bd745d201fc8cada53389c1d
+HeaderProtectionKey = qOZ8vN2mK4pL7wR1tY6uI3oP5aS9dF0gH8jK2lM4nB0=
 ContentPaddingAddition = 66-93
 RekeyAfterTime = 110-126
 RekeyTimeout = 5
@@ -80,7 +89,7 @@ PublicKey = QMNoEriYqOcgOfqNb5XmFThzMGXMOyEiIiCmkmS8VyQ=
 					Addresses:  new("10.38.22.35/32"),
 					PublicKey:  new("QMNoEriYqOcgOfqNb5XmFThzMGXMOyEiIiCmkmS8VyQ="),
 				},
-				HeaderProtectionKey:    new("a8e67cbcdda62b8a4bef0475b58eae237a0fe5a4bd745d201fc8cada53389c1d"),
+				HeaderProtectionKey:    new("qOZ8vN2mK4pL7wR1tY6uI3oP5aS9dF0gH8jK2lM4nB0="),
 				ContentPaddingAddition: new("66-93"),
 				RekeyAfterTime:         new("110-126"),
 				RekeyTimeout:           new("5"),

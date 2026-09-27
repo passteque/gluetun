@@ -8,6 +8,7 @@ import (
 	"github.com/qdm12/gluetun/internal/constants/vpn"
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/pprof"
+	"github.com/qdm12/gosettings"
 	"github.com/qdm12/gosettings/reader"
 	"github.com/qdm12/gotree"
 )
@@ -244,5 +245,18 @@ func (s *Settings) Read(r *reader.Reader, warner Warner) (err error) {
 		}
 	}
 
+	s.applyVPNDNS()
+
 	return nil
+}
+
+func (s *Settings) applyVPNDNS() {
+	if s.VPN.Type != vpn.AmneziaWg || len(s.VPN.AmneziaWg.DNSServers) == 0 ||
+		(s.DNS.UpstreamType != "" && s.DNS.UpstreamType != DNSUpstreamTypePlain) ||
+		len(s.DNS.UpstreamPlainAddresses) > 0 || len(s.DNS.Providers) > 0 {
+		return
+	}
+
+	s.DNS.UpstreamPlainAddresses = gosettings.CopySlice(s.VPN.AmneziaWg.DNSServers)
+	s.DNS.UpstreamType = DNSUpstreamTypePlain
 }

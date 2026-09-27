@@ -1,14 +1,17 @@
 package settings
 
 import (
-	"encoding/hex"
 	"fmt"
+	"math"
+	"net/netip"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/qdm12/gosettings"
 	"github.com/qdm12/gosettings/reader"
 	"github.com/qdm12/gotree"
+	"golang.zx2c4.com/wireguard/wgctrl/wgtypes"
 )
 
 type AmneziaWg struct {
@@ -36,8 +39,8 @@ type AmneziaWg struct {
 	// unsigned integers, read from the `number` or `min-max` format, and left
 	// to 0 makes the AmneziaWG library use its own default value.
 
-	// HeaderProtectionKey is a 32 bytes hexadecimal encoded key, shared with the
-	// server, which encrypts the low entropy fields of the message headers.
+	// HeaderProtectionKey is a 32-byte base64 encoded key, shared with the server,
+	// which encrypts the low entropy fields of the message headers.
 	// Once set, each of the S1 to S4 paddings is used as the cipher nonce and so
 	// must be greater than or equal to 12.
 	HeaderProtectionKey *string `json:"header_protection_key"`
@@ -63,6 +66,18 @@ type AmneziaWg struct {
 	// underlying Wireguard implementation before giving up on a handshake,
 	// from which a random value is picked.
 	MaxHandshakeAttempts *[2]uint32 `json:"max_handshake_attempts"`
+	// PersistentKeepaliveInterval is the range, in seconds, from which the
+	// interval between persistent keepalive packets is selected. It is the
+	// source of truth for AmneziaWG; the nested Wireguard duration is only
+	// accepted as legacy input and normalized into this range.
+	PersistentKeepaliveInterval *[2]uint32 `json:"persistent_keep_alive_interval"`
+	// RandomTrailers controls whether random trailers are added to packets.
+	RandomTrailers *bool `json:"random_trailers"`
+	// DisableCookies controls whether cookie reply packets are disabled.
+	DisableCookies *bool `json:"disable_cookies"`
+	// DNSServers contains DNS servers read from the AmneziaWG configuration file.
+	// They are applied to the top-level DNS settings after all sources are read.
+	DNSServers []netip.AddrPort `json:"-"`
 }
 
 func (a *AmneziaWg) read(r *reader.Reader) (err error) {
@@ -119,35 +134,60 @@ func (a *AmneziaWg) read(r *reader.Reader) (err error) {
 		}
 	}
 
+	a.PersistentKeepaliveInterval, err = parsePersistentKeepaliveRange(
+		r.Get("AMNEZIAWG_PERSISTENT_KEEPALIVE_INTERVAL", opt))
+	if err != nil {
+		return fmt.Errorf("AMNEZIAWG_PERSISTENT_KEEPALIVE_INTERVAL: %w", err)
+	}
+
+	a.RandomTrailers, err = readAmneziaWGBool(r, "AMNEZIAWG_RANDOM_TRAILERS")
+	if err != nil {
+		return err
+	}
+
+	a.DisableCookies, err = readAmneziaWGBool(r, "AMNEZIAWG_DISABLE_COOKIES")
+	if err != nil {
+		return err
+	}
+
+	a.DNSServers, err = parseAmneziaWGDNSServers(r.Get("AMNEZIAWG_DNS", opt))
+	if err != nil {
+		return fmt.Errorf("AMNEZIAWG_DNS: %w", err)
+	}
+
 	return nil
 }
 
 func (a AmneziaWg) copy() (copied AmneziaWg) {
 	return AmneziaWg{
-		Wireguard:              a.Wireguard.copy(),
-		JunkPacketCount:        gosettings.CopyPointer(a.JunkPacketCount),
-		JunkPacketMin:          gosettings.CopyPointer(a.JunkPacketMin),
-		JunkPacketMax:          gosettings.CopyPointer(a.JunkPacketMax),
-		PaddingS1:              gosettings.CopyPointer(a.PaddingS1),
-		PaddingS2:              gosettings.CopyPointer(a.PaddingS2),
-		PaddingS3:              gosettings.CopyPointer(a.PaddingS3),
-		PaddingS4:              gosettings.CopyPointer(a.PaddingS4),
-		HeaderH1:               gosettings.CopyPointer(a.HeaderH1),
-		HeaderH2:               gosettings.CopyPointer(a.HeaderH2),
-		HeaderH3:               gosettings.CopyPointer(a.HeaderH3),
-		HeaderH4:               gosettings.CopyPointer(a.HeaderH4),
-		InitPacketI1:           gosettings.CopyPointer(a.InitPacketI1),
-		InitPacketI2:           gosettings.CopyPointer(a.InitPacketI2),
-		InitPacketI3:           gosettings.CopyPointer(a.InitPacketI3),
-		InitPacketI4:           gosettings.CopyPointer(a.InitPacketI4),
-		InitPacketI5:           gosettings.CopyPointer(a.InitPacketI5),
-		HeaderProtectionKey:    gosettings.CopyPointer(a.HeaderProtectionKey),
-		ContentPaddingAddition: gosettings.CopyPointer(a.ContentPaddingAddition),
-		RekeyAfterTime:         gosettings.CopyPointer(a.RekeyAfterTime),
-		RekeyTimeout:           gosettings.CopyPointer(a.RekeyTimeout),
-		RejectAfterTime:        gosettings.CopyPointer(a.RejectAfterTime),
-		KeepaliveTimeout:       gosettings.CopyPointer(a.KeepaliveTimeout),
-		MaxHandshakeAttempts:   gosettings.CopyPointer(a.MaxHandshakeAttempts),
+		Wireguard:                   a.Wireguard.copy(),
+		JunkPacketCount:             gosettings.CopyPointer(a.JunkPacketCount),
+		JunkPacketMin:               gosettings.CopyPointer(a.JunkPacketMin),
+		JunkPacketMax:               gosettings.CopyPointer(a.JunkPacketMax),
+		PaddingS1:                   gosettings.CopyPointer(a.PaddingS1),
+		PaddingS2:                   gosettings.CopyPointer(a.PaddingS2),
+		PaddingS3:                   gosettings.CopyPointer(a.PaddingS3),
+		PaddingS4:                   gosettings.CopyPointer(a.PaddingS4),
+		HeaderH1:                    gosettings.CopyPointer(a.HeaderH1),
+		HeaderH2:                    gosettings.CopyPointer(a.HeaderH2),
+		HeaderH3:                    gosettings.CopyPointer(a.HeaderH3),
+		HeaderH4:                    gosettings.CopyPointer(a.HeaderH4),
+		InitPacketI1:                gosettings.CopyPointer(a.InitPacketI1),
+		InitPacketI2:                gosettings.CopyPointer(a.InitPacketI2),
+		InitPacketI3:                gosettings.CopyPointer(a.InitPacketI3),
+		InitPacketI4:                gosettings.CopyPointer(a.InitPacketI4),
+		InitPacketI5:                gosettings.CopyPointer(a.InitPacketI5),
+		HeaderProtectionKey:         gosettings.CopyPointer(a.HeaderProtectionKey),
+		ContentPaddingAddition:      gosettings.CopyPointer(a.ContentPaddingAddition),
+		RekeyAfterTime:              gosettings.CopyPointer(a.RekeyAfterTime),
+		RekeyTimeout:                gosettings.CopyPointer(a.RekeyTimeout),
+		RejectAfterTime:             gosettings.CopyPointer(a.RejectAfterTime),
+		KeepaliveTimeout:            gosettings.CopyPointer(a.KeepaliveTimeout),
+		MaxHandshakeAttempts:        gosettings.CopyPointer(a.MaxHandshakeAttempts),
+		PersistentKeepaliveInterval: gosettings.CopyPointer(a.PersistentKeepaliveInterval),
+		RandomTrailers:              gosettings.CopyPointer(a.RandomTrailers),
+		DisableCookies:              gosettings.CopyPointer(a.DisableCookies),
+		DNSServers:                  gosettings.CopySlice(a.DNSServers),
 	}
 }
 
@@ -176,6 +216,11 @@ func (a *AmneziaWg) overrideWith(other AmneziaWg) {
 	a.RejectAfterTime = gosettings.OverrideWithPointer(a.RejectAfterTime, other.RejectAfterTime)
 	a.KeepaliveTimeout = gosettings.OverrideWithPointer(a.KeepaliveTimeout, other.KeepaliveTimeout)
 	a.MaxHandshakeAttempts = gosettings.OverrideWithPointer(a.MaxHandshakeAttempts, other.MaxHandshakeAttempts)
+	a.normalizePersistentKeepalive(other.PersistentKeepaliveInterval,
+		other.Wireguard.PersistentKeepaliveInterval)
+	a.RandomTrailers = gosettings.OverrideWithPointer(a.RandomTrailers, other.RandomTrailers)
+	a.DisableCookies = gosettings.OverrideWithPointer(a.DisableCookies, other.DisableCookies)
+	a.DNSServers = gosettings.OverrideWithSlice(a.DNSServers, other.DNSServers)
 }
 
 func (a *AmneziaWg) setDefaults(vpnProvider string) {
@@ -218,6 +263,29 @@ func (a *AmneziaWg) setDefaults(vpnProvider string) {
 
 	const defaultMaxHandshakeAttempts = 18
 	a.MaxHandshakeAttempts = gosettings.DefaultPointer(a.MaxHandshakeAttempts, uint32Range(defaultMaxHandshakeAttempts))
+	a.normalizePersistentKeepalive(a.PersistentKeepaliveInterval,
+		a.Wireguard.PersistentKeepaliveInterval)
+	a.RandomTrailers = gosettings.DefaultPointer(a.RandomTrailers, false)
+	a.DisableCookies = gosettings.DefaultPointer(a.DisableCookies, false)
+	a.DNSServers = gosettings.DefaultSlice(a.DNSServers, []netip.AddrPort{})
+}
+
+func (a *AmneziaWg) normalizePersistentKeepalive(interval *[2]uint32,
+	legacyInterval *time.Duration,
+) {
+	switch {
+	case interval != nil:
+		a.PersistentKeepaliveInterval = gosettings.CopyPointer(interval)
+		a.Wireguard.PersistentKeepaliveInterval = new(time.Duration)
+	case legacyInterval != nil:
+		persistentKeepaliveInterval, err := persistentKeepaliveDurationToRange(*legacyInterval)
+		if err != nil {
+			a.PersistentKeepaliveInterval = gosettings.DefaultPointer(a.PersistentKeepaliveInterval, [2]uint32{})
+			return
+		}
+		a.PersistentKeepaliveInterval = persistentKeepaliveInterval
+		a.Wireguard.PersistentKeepaliveInterval = new(time.Duration)
+	}
 }
 
 func (a AmneziaWg) toLinesNode() (node *gotree.Node) {
@@ -275,6 +343,10 @@ func (a AmneziaWg) toLinesNode() (node *gotree.Node) {
 	for _, field := range rangeFields {
 		node.Appendf("%s: %s", field.key, uint32RangeToString(field.value))
 	}
+	node.Appendf("Persistent keepalive interval (seconds): %s",
+		uint32RangeToString(a.PersistentKeepaliveInterval))
+	node.Appendf("Random trailers: %s", gosettings.BoolToYesNo(a.RandomTrailers))
+	node.Appendf("Disable cookies: %s", gosettings.BoolToYesNo(a.DisableCookies))
 
 	return node
 }
@@ -299,6 +371,19 @@ func (a AmneziaWg) validate(vpnProvider string, ipv6Supported bool) error {
 	err := a.Wireguard.validate(vpnProvider, ipv6Supported, amneziaWG)
 	if err != nil {
 		return fmt.Errorf("wireguard settings: %w", err)
+	}
+
+	persistentKeepaliveMinimum := a.PersistentKeepaliveInterval[0]
+	persistentKeepaliveMaximum := a.PersistentKeepaliveInterval[1]
+	if persistentKeepaliveMinimum > persistentKeepaliveMaximum {
+		return fmt.Errorf("persistent keepalive maximum %d must be greater than or equal to minimum %d",
+			persistentKeepaliveMaximum, persistentKeepaliveMinimum)
+	}
+	if *a.Wireguard.PersistentKeepaliveInterval != 0 {
+		_, err = persistentKeepaliveDurationToRange(*a.Wireguard.PersistentKeepaliveInterval)
+		if err != nil {
+			return fmt.Errorf("legacy persistent keepalive interval: %w", err)
+		}
 	}
 
 	err = validateHeaderProtectionKey(*a.HeaderProtectionKey)
@@ -396,22 +481,72 @@ func parseUint32Range(value *string) (rangeValue *[2]uint32, err error) {
 	return rangeValue, nil
 }
 
-// validateHeaderProtectionKey checks the hexadecimal encoded header protection
-// key, only used by AmneziaWG 3 and onwards. An empty key disables it.
+func parsePersistentKeepaliveRange(value *string) (rangeValue *[2]uint32, err error) {
+	if value == nil {
+		return nil, nil //nolint:nilnil // a nil value means the setting is not set
+	}
+
+	duration, durationErr := time.ParseDuration(*value)
+	if durationErr != nil {
+		return parseUint32Range(value)
+	}
+	return persistentKeepaliveDurationToRange(duration)
+}
+
+func persistentKeepaliveDurationToRange(duration time.Duration) (rangeValue *[2]uint32, err error) {
+	if duration < 0 {
+		return nil, fmt.Errorf("duration %s is negative", duration)
+	}
+	if duration%time.Second != 0 {
+		return nil, fmt.Errorf("duration %s must be a whole number of seconds", duration)
+	}
+	seconds := duration / time.Second
+	if seconds > math.MaxUint32 {
+		return nil, fmt.Errorf("duration %s exceeds %d seconds", duration, uint64(math.MaxUint32))
+	}
+
+	return new([2]uint32{uint32(seconds), uint32(seconds)}), nil
+}
+
+func readAmneziaWGBool(r *reader.Reader, key string) (value *bool, err error) {
+	switch r.String(key) {
+	case "0":
+		return new(false), nil
+	case "1":
+		return new(true), nil
+	default:
+		return r.BoolPtr(key)
+	}
+}
+
+func parseAmneziaWGDNSServers(value *string) (servers []netip.AddrPort, err error) {
+	if value == nil {
+		return nil, nil
+	}
+
+	for serverString := range strings.SplitSeq(*value, ",") {
+		serverString = strings.TrimSpace(serverString)
+		server, err := netip.ParseAddr(serverString)
+		if err != nil {
+			return nil, fmt.Errorf("parsing address %q: %w", serverString, err)
+		}
+		const dnsPort = 53
+		servers = append(servers, netip.AddrPortFrom(server, dnsPort))
+	}
+
+	return servers, nil
+}
+
+// validateHeaderProtectionKey checks the base64 encoded header protection key,
+// only used by AmneziaWG 3 and onwards. An empty key disables it.
 func validateHeaderProtectionKey(key string) error {
 	if key == "" {
 		return nil
 	}
 
-	keyBytes, err := hex.DecodeString(key)
+	_, err := wgtypes.ParseKey(key)
 	if err != nil {
-		return err
+		return fmt.Errorf("must be a 32-byte base64 encoded key: %w", err)
 	}
-	const keySize = 32
-	if len(keyBytes) != keySize {
-		return fmt.Errorf("must be %d bytes long, got %d",
-			keySize, len(keyBytes))
-	}
-
 	return nil
 }

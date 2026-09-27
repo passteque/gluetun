@@ -26,12 +26,15 @@ func (s *Source) lazyLoadWireguardConf() WireguardConfig {
 }
 
 type WireguardConfig struct {
-	PrivateKey   *string
-	PreSharedKey *string
-	Addresses    *string
-	PublicKey    *string
-	EndpointIP   *string
-	EndpointPort *string
+	PrivateKey          *string
+	PreSharedKey        *string
+	Addresses           *string
+	DNS                 *string
+	PublicKey           *string
+	EndpointIP          *string
+	EndpointPort        *string
+	AllowedIPs          *string
+	PersistentKeepalive *string
 }
 
 var regexINISectionNotExist = regexp.MustCompile(`^section ".+" does not exist$`)
@@ -47,7 +50,7 @@ func ParseWireguardConf(path string) (config WireguardConfig, err error) {
 
 	interfaceSection, err := iniFile.GetSection("Interface")
 	if err == nil {
-		config.PrivateKey, config.Addresses = parseWireguardInterfaceSection(interfaceSection)
+		parseWireguardInterfaceSection(interfaceSection, &config)
 	} else if !regexINISectionNotExist.MatchString(err.Error()) {
 		// can never happen
 		return WireguardConfig{}, fmt.Errorf("getting interface section: %w", err)
@@ -55,8 +58,7 @@ func ParseWireguardConf(path string) (config WireguardConfig, err error) {
 
 	peerSection, err := iniFile.GetSection("Peer")
 	if err == nil {
-		config.PreSharedKey, config.PublicKey, config.EndpointIP,
-			config.EndpointPort = parseWireguardPeerSection(peerSection)
+		parseWireguardPeerSection(peerSection, &config)
 	} else if !regexINISectionNotExist.MatchString(err.Error()) {
 		// can never happen
 		return WireguardConfig{}, fmt.Errorf("getting peer section: %w", err)
@@ -65,31 +67,27 @@ func ParseWireguardConf(path string) (config WireguardConfig, err error) {
 	return config, nil
 }
 
-func parseWireguardInterfaceSection(interfaceSection *ini.Section) (
-	privateKey, addresses *string,
-) {
-	privateKey = getINIKeyFromSection(interfaceSection, "PrivateKey")
-	addresses = getINIKeyFromSection(interfaceSection, "Address")
-	return privateKey, addresses
+func parseWireguardInterfaceSection(interfaceSection *ini.Section, config *WireguardConfig) {
+	config.PrivateKey = getINIKeyFromSection(interfaceSection, "PrivateKey")
+	config.Addresses = getINIKeyFromSection(interfaceSection, "Address")
+	config.DNS = getINIKeyFromSection(interfaceSection, "DNS")
 }
 
-func parseWireguardPeerSection(peerSection *ini.Section) (
-	preSharedKey, publicKey, endpointIP, endpointPort *string,
-) {
-	preSharedKey = getINIKeyFromSection(peerSection, "PresharedKey")
-	publicKey = getINIKeyFromSection(peerSection, "PublicKey")
+func parseWireguardPeerSection(peerSection *ini.Section, config *WireguardConfig) {
+	config.PreSharedKey = getINIKeyFromSection(peerSection, "PresharedKey")
+	config.PublicKey = getINIKeyFromSection(peerSection, "PublicKey")
+	config.AllowedIPs = getINIKeyFromSection(peerSection, "AllowedIPs")
+	config.PersistentKeepalive = getINIKeyFromSection(peerSection, "PersistentKeepalive")
 	endpoint := getINIKeyFromSection(peerSection, "Endpoint")
 	if endpoint != nil {
 		host, port, err := net.SplitHostPort(*endpoint)
 		if err == nil {
-			endpointIP = &host
-			endpointPort = &port
+			config.EndpointIP = &host
+			config.EndpointPort = &port
 		} else {
-			endpointIP = endpoint
+			config.EndpointIP = endpoint
 		}
 	}
-
-	return preSharedKey, publicKey, endpointIP, endpointPort
 }
 
 var regexINIKeyNotExist = regexp.MustCompile(`key ".*" not exists$`)
