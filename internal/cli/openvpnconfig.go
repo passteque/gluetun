@@ -75,11 +75,10 @@ func (c *CLI) OpenvpnConfig(logger OpenvpnConfigLogger, reader *reader.Reader,
 	client := (*http.Client)(nil)
 	warner := (Warner)(nil)
 	parallelResolver := (ParallelResolver)(nil)
-	ipFetcher := (IPFetcher)(nil)
 	openvpnFileExtractor := extract.New()
 
 	providers := provider.NewProviders(storage, time.Now, warner, client,
-		unzipper, parallelResolver, ipFetcher, openvpnFileExtractor, allSettings.Updater)
+		unzipper, parallelResolver, openvpnFileExtractor, allSettings.Updater)
 	providerConf := providers.Get(allSettings.VPN.Provider.Name)
 	connection, err := providerConf.GetConnection(
 		allSettings.VPN.Provider.ServerSelection, ipv6SupportLevel == netlink.IPv6Internet)
