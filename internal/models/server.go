@@ -48,7 +48,7 @@ func (s *Server) HasMinimumInformation() (err error) {
 		return errors.New("no network protocol should be set")
 	case s.VPN == vpn.OpenVPN && !s.TCP && !s.UDP:
 		return errors.New("both TCP and UDP fields are false for OpenVPN")
-	case s.VPN == vpn.Wireguard && s.WgPubKey == "":
+	case s.VPN == vpn.Wireguard && s.WgPubKey == "" && s.ServerName == "":
 		return errors.New("wireguard public key field is empty")
 	default:
 		return nil

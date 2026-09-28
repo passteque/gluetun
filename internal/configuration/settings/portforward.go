@@ -236,7 +236,7 @@ func (p *PortForwarding) read(r *reader.Reader) (err error) {
 		return err
 	}
 
-	usernameKeys := []string{"VPN_PORT_FORWARDING_USERNAME", "OPENVPN_USER", "USER"}
+	usernameKeys := []string{"VPN_PORT_FORWARDING_USERNAME", "OPENVPN_USER", "USER", "VPN_USER", "WIREGUARD_USER"}
 	for _, key := range usernameKeys {
 		p.Username = r.String(key, reader.ForceLowercase(false))
 		if p.Username != "" {
@@ -244,7 +244,7 @@ func (p *PortForwarding) read(r *reader.Reader) (err error) {
 		}
 	}
 
-	passwordKeys := []string{"VPN_PORT_FORWARDING_PASSWORD", "OPENVPN_PASSWORD", "PASSWORD"}
+	passwordKeys := []string{"VPN_PORT_FORWARDING_PASSWORD", "OPENVPN_PASSWORD", "PASSWORD", "VPN_PASSWORD", "WIREGUARD_PASSWORD"}
 	for _, key := range passwordKeys {
 		p.Password = r.String(key, reader.ForceLowercase(false))
 		if p.Password != "" {

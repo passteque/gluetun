@@ -22,6 +22,7 @@ type regionData struct {
 	Servers     struct {
 		UDP []serverData `json:"ovpnudp"`
 		TCP []serverData `json:"ovpntcp"`
+		WG  []serverData `json:"wg"`
 	} `json:"servers"`
 }
 
