@@ -14,17 +14,30 @@ func (h *handler) handleHTTPS(responseWriter http.ResponseWriter, request *http.
 		return
 	}
 
-	responseWriter.WriteHeader(http.StatusOK)
-
 	hijacker, ok := responseWriter.(http.Hijacker)
 	if !ok {
 		http.Error(responseWriter, "Hijacking not supported", http.StatusInternalServerError)
+		if err := destinationConn.Close(); err != nil {
+			h.logger.Error("closing destination connection: " + err.Error())
+		}
 		return
 	}
 	clientConnection, _, err := hijacker.Hijack()
 	if err != nil {
 		h.logger.Warn(err.Error())
-		http.Error(responseWriter, err.Error(), http.StatusServiceUnavailable)
+		if err := destinationConn.Close(); err != nil {
+			h.logger.Error("closing destination connection: " + err.Error())
+		}
+		return
+	}
+
+	// Write the CONNECT response manually after hijacking to avoid
+	// Go's net/http adding Transfer-Encoding: chunked, which violates
+	// RFC 7231 Section 4.3.6 and breaks clients like FFmpeg.
+	_, err = clientConnection.Write([]byte("HTTP/1.1 200 Connection Established\r\n\r\n"))
+	if err != nil {
+		h.logger.Warn("writing CONNECT response: " + err.Error())
+		_ = clientConnection.Close()
 		if err := destinationConn.Close(); err != nil {
 			h.logger.Error("closing destination connection: " + err.Error())
 		}
