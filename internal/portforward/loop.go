@@ -119,9 +119,9 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 		case err := <-serviceRunError:
 			l.logger.Error(err.Error())
 		case <-retryAfter:
-			// Retry starting the service after a delay
-			retryAfter = nil
 		}
+		// Any pending retry is superseded by the restart below
+		retryAfter = nil
 
 		previousService := l.currentService()
 		if previousService != nil {
@@ -146,7 +146,8 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			// Signal to the Update call that the service has started
 			// and if it failed to start.
 			if err != nil {
-				err = fmt.Errorf("starting port forwarding service: %w", err)
+				err = fmt.Errorf("starting port forwarding service: %w - retrying in %s", err, retryDelay)
+				retryAfter = time.After(retryDelay)
 			}
 			updateResult <- err
 		} else if err != nil {
