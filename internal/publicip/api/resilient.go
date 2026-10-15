@@ -1,10 +1,12 @@
 package api
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -116,8 +118,7 @@ func (r *ResilientFetcher) FetchInfo(ctx context.Context, ip netip.Addr) (
 	}
 	resultsCh := make(chan resultData)
 	fetchersStarted := 0
-	for range r.fetchers {
-		fetcher := r.fetchers[fetchersStarted]
+	for i, fetcher := range r.fetchers {
 		if r.isBanned(fetcher) ||
 			(ip.IsValid() && !fetcher.CanFetchAnyIP()) {
 			continue
@@ -130,17 +131,28 @@ func (r *ResilientFetcher) FetchInfo(ctx context.Context, ip netip.Addr) (
 				result: result,
 				err:    err,
 			}
-		}(fetchersStarted, fetcher)
+		}(i, fetcher)
 		fetchersStarted++
+	}
+
+	if fetchersStarted == 0 {
+		if ip.IsValid() {
+			return models.PublicIP{}, fmt.Errorf("no fetcher available for ip address %s: "+
+				"all fetchers are banned or can only fetch their own public ip address", ip)
+		}
+		return models.PublicIP{}, errors.New("no fetcher available: all fetchers are banned")
 	}
 
 	// Collect resultDatas from goroutines first, which takes I/O time
 	// so that we don't lock the ban map mutex for too long.
-	resultDatas := make([]resultData, fetchersStarted)
-	for range resultDatas {
-		data := <-resultsCh
-		resultDatas[data.i] = data
+	resultDatas := make([]resultData, 0, fetchersStarted)
+	for range fetchersStarted {
+		resultDatas = append(resultDatas, <-resultsCh)
 	}
+	// Keep the fetchers order so ties are resolved deterministically.
+	slices.SortFunc(resultDatas, func(a, b resultData) int {
+		return cmp.Compare(a.i, b.i)
+	})
 
 	// Mutex lock ban map and process results
 	results := make([]models.PublicIP, 0, fetchersStarted)
