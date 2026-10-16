@@ -119,6 +119,14 @@ func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 		return
 	}
 
+	// The IP rules must be removed last, after the link is deleted
+	// together with its addresses. Otherwise, once a rule is removed,
+	// packets of connections established through the tunnel would be
+	// routed out of the default route interface, with the tunnel
+	// address as source, and leak outside the VPN, since the firewall
+	// accepts established connections.
+	const ruleCleanupOrder = 8
+
 	if *settings.IPv6 {
 		// requires net.ipv6.conf.all.disable_ipv6=0
 		ruleCleanup6, err := AddRule(settings.RulePriority,
@@ -128,7 +136,7 @@ func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 			waitError <- fmt.Errorf("adding IPv6 rule: %w", err)
 			return
 		}
-		cleanups.Add("removing IPv6 rule", 1, ruleCleanup6)
+		cleanups.Add("removing IPv6 rule", ruleCleanupOrder, ruleCleanup6)
 	}
 
 	ruleCleanup, err := AddRule(settings.RulePriority,
@@ -139,7 +147,7 @@ func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 		return
 	}
 
-	cleanups.Add("removing IPv4 rule", 1, ruleCleanup)
+	cleanups.Add("removing IPv4 rule", ruleCleanupOrder, ruleCleanup)
 	ready <- struct{}{}
 
 	waitError <- waitAndCleanup()
