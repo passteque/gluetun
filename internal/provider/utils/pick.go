@@ -24,6 +24,12 @@ func NewConnectionPicker() *ConnectionPicker {
 	return &ConnectionPicker{}
 }
 
+func (c *ConnectionPicker) PickConnection(connections []models.Connection,
+	selection settings.ServerSelection,
+) (connection models.Connection, err error) {
+	return pickConnection(connections, selection, c)
+}
+
 func (c *ConnectionPicker) pickConnection(connections []models.Connection,
 ) models.Connection {
 	fingerprint := fingerprintPool(connections)

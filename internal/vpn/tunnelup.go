@@ -25,6 +25,7 @@ type tunnelUpData struct {
 	pmtud    tunnelUpPMTUDData
 	// Port forwarding
 	vpnIntf        string
+	gateway        netip.Addr
 	serverName     string // used for PIA
 	canPortForward bool   // used for PIA
 	username       string // used for PIA

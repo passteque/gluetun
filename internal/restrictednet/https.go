@@ -3,6 +3,7 @@ package restrictednet
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"errors"
 	"fmt"
 	"net"
@@ -20,6 +21,23 @@ import (
 // have its response body fully read/discarded and then closed.
 // The returned cleanup function must be called to remove the temporary firewall rule and close connections.
 func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, destinationAddrPort netip.AddrPort,
+) (httpClient *http.Client, cleanup func() error, err error) {
+	return c.openHTTPS(ctx, destinationTLSName, destinationAddrPort, nil)
+}
+
+// OpenHTTPSWithRootCAs behaves like [Client.OpenHTTPS], using rootCAs instead
+// of the system certificate pool to authenticate the destination.
+func (c *Client) OpenHTTPSWithRootCAs(ctx context.Context, destinationTLSName string,
+	destinationAddrPort netip.AddrPort, rootCAs *x509.CertPool,
+) (httpClient *http.Client, cleanup func() error, err error) {
+	if rootCAs == nil {
+		return nil, nil, errors.New("root certificate pool is not set")
+	}
+	return c.openHTTPS(ctx, destinationTLSName, destinationAddrPort, rootCAs)
+}
+
+func (c *Client) openHTTPS(ctx context.Context, destinationTLSName string,
+	destinationAddrPort netip.AddrPort, rootCAs *x509.CertPool,
 ) (httpClient *http.Client, cleanup func() error, err error) {
 	fd, sourceAddrPort, err := bindSourceConnection(destinationAddrPort.Addr())
 	if err != nil {
@@ -43,7 +61,7 @@ func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, desti
 	}
 
 	dial := makeDial(connection, destinationTLSName)
-	httpClient = newHTTPSClient(destinationTLSName, dial)
+	httpClient = newHTTPSClient(destinationTLSName, dial, rootCAs)
 	cleanup = func() error {
 		var errs []error
 		httpClient.CloseIdleConnections()
@@ -67,7 +85,7 @@ func (c *Client) OpenHTTPS(ctx context.Context, destinationTLSName string, desti
 
 type dialFunc func(ctx context.Context, network, address string) (net.Conn, error)
 
-func newHTTPSClient(destinationTLSName string, dial dialFunc) *http.Client {
+func newHTTPSClient(destinationTLSName string, dial dialFunc, rootCAs *x509.CertPool) *http.Client {
 	const timeout = 5 * time.Second
 	transport := &http.Transport{
 		MaxIdleConns:        1,
@@ -75,6 +93,7 @@ func newHTTPSClient(destinationTLSName string, dial dialFunc) *http.Client {
 		MaxConnsPerHost:     1,
 		TLSClientConfig: &tls.Config{
 			MinVersion: tls.VersionTLS12,
+			RootCAs:    rootCAs,
 			ServerName: destinationTLSName,
 		},
 		DialContext: dial,
