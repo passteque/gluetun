@@ -1,12 +1,10 @@
 package api
 
 import (
-	"cmp"
 	"context"
 	"errors"
 	"fmt"
 	"net/netip"
-	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -112,13 +110,14 @@ func (r *ResilientFetcher) FetchInfo(ctx context.Context, ip netip.Addr) (
 	defer r.mutex.RUnlock()
 
 	type resultData struct {
-		i      int
-		result models.PublicIP
-		err    error
+		i       int
+		fetcher Fetcher
+		result  models.PublicIP
+		err     error
 	}
 	resultsCh := make(chan resultData)
 	fetchersStarted := 0
-	for i, fetcher := range r.fetchers {
+	for _, fetcher := range r.fetchers {
 		if r.isBanned(fetcher) ||
 			(ip.IsValid() && !fetcher.CanFetchAnyIP()) {
 			continue
@@ -127,11 +126,12 @@ func (r *ResilientFetcher) FetchInfo(ctx context.Context, ip netip.Addr) (
 		go func(i int, fetcher Fetcher) {
 			result, err := fetcher.FetchInfo(ctx, ip)
 			resultsCh <- resultData{
-				i:      i,
-				result: result,
-				err:    err,
+				i:       i,
+				fetcher: fetcher,
+				result:  result,
+				err:     err,
 			}
-		}(i, fetcher)
+		}(fetchersStarted, fetcher)
 		fetchersStarted++
 	}
 
@@ -145,20 +145,17 @@ func (r *ResilientFetcher) FetchInfo(ctx context.Context, ip netip.Addr) (
 
 	// Collect resultDatas from goroutines first, which takes I/O time
 	// so that we don't lock the ban map mutex for too long.
-	resultDatas := make([]resultData, 0, fetchersStarted)
-	for range fetchersStarted {
-		resultDatas = append(resultDatas, <-resultsCh)
+	resultDatas := make([]resultData, fetchersStarted)
+	for range resultDatas {
+		data := <-resultsCh
+		resultDatas[data.i] = data
 	}
-	// Keep the fetchers order so ties are resolved deterministically.
-	slices.SortFunc(resultDatas, func(a, b resultData) int {
-		return cmp.Compare(a.i, b.i)
-	})
 
 	// Mutex lock ban map and process results
 	results := make([]models.PublicIP, 0, fetchersStarted)
 	errs := make([]error, 0, fetchersStarted)
 	for _, data := range resultDatas {
-		fetcher := r.fetchers[data.i]
+		fetcher := data.fetcher
 		if data.err != nil {
 			if errors.Is(data.err, ErrTooManyRequests) {
 				r.setBanned(fetcher)
