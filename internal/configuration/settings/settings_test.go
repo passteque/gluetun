@@ -1,10 +1,29 @@
 package settings
 
 import (
+	"net/netip"
 	"testing"
 
+	constvpn "github.com/qdm12/gluetun/internal/constants/vpn"
+	"github.com/qdm12/gosettings/reader"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+type mapSource map[string]string
+
+func (s mapSource) String() string { return "test map" }
+
+func (s mapSource) Get(key string) (value string, isSet bool) {
+	value, isSet = s[key]
+	return value, isSet
+}
+
+func (s mapSource) KeyTransform(key string) string { return key }
+
+type noopWarner struct{}
+
+func (noopWarner) Warn(string) {}
 
 func Test_Settings_String(t *testing.T) {
 	t.Parallel()
@@ -119,4 +138,32 @@ func Test_Settings_String(t *testing.T) {
 			assert.Equal(t, testCase.s, s)
 		})
 	}
+}
+
+func Test_Settings_Read_amneziaWGConfigFields(t *testing.T) {
+	t.Parallel()
+
+	settingsReader := reader.New(reader.Settings{
+		Sources: []reader.Source{mapSource{
+			"VPN_TYPE":              constvpn.AmneziaWg,
+			"AMNEZIAWG_ALLOWED_IPS": "0.0.0.0/0,::/0",
+			"AMNEZIAWG_PERSISTENT_KEEPALIVE_INTERVAL": "25-35",
+			"AMNEZIAWG_RANDOM_TRAILERS":               "on",
+			"AMNEZIAWG_DISABLE_COOKIES":               "on",
+		}},
+	})
+	settings := Settings{}
+
+	err := settings.Read(settingsReader, noopWarner{})
+	require.NoError(t, err)
+	settings.SetDefaults()
+
+	assert.Equal(t, []netip.Prefix{
+		netip.MustParsePrefix("0.0.0.0/0"),
+		netip.MustParsePrefix("::/0"),
+	}, settings.VPN.AmneziaWg.Wireguard.AllowedIPs)
+	assert.Equal(t, [2]uint32{25, 35}, *settings.VPN.AmneziaWg.PersistentKeepaliveInterval)
+	assert.Zero(t, *settings.VPN.AmneziaWg.Wireguard.PersistentKeepaliveInterval)
+	assert.True(t, *settings.VPN.AmneziaWg.RandomTrailers)
+	assert.True(t, *settings.VPN.AmneziaWg.DisableCookies)
 }
