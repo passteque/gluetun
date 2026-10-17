@@ -185,7 +185,3 @@ func (l *Loop) Stop() (err error) {
 	<-l.runDone
 	return l.ClearData()
 }
-
-func (l *Loop) Fetcher() (fetcher *api.ResilientFetcher) {
-	return l.fetcher
-}
