@@ -45,8 +45,7 @@ func (c *closers) cleanup(logger Logger) {
 type step int
 
 const (
-	// stepOne closes the wireguard controller client,
-	// and removes the IP rule.
+	// stepOne closes the wireguard controller client.
 	stepOne step = iota
 	// stepTwo closes the UAPI listener.
 	stepTwo
@@ -60,4 +59,10 @@ const (
 	stepSix
 	// stepSeven closes the bind connection and the TUN device file.
 	stepSeven
+	// stepEight removes the IP rules. It is the last step, since removing a
+	// rule before the link and its addresses are gone makes packets of the
+	// connections established through the tunnel leave through the default
+	// route interface with the tunnel address as source, leaking outside
+	// the VPN (the firewall accepts established connections).
+	stepEight
 )

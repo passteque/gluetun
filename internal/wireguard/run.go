@@ -115,6 +115,12 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 		return
 	}
 
+	// The IP rules must be removed last, after the link is deleted
+	// together with its addresses. Otherwise, once a rule is removed,
+	// packets of connections established through the tunnel would be
+	// routed out of the default route interface, with the tunnel
+	// address as source, and leak outside the VPN, since the firewall
+	// accepts established connections.
 	if *w.settings.IPv6 {
 		// requires net.ipv6.conf.all.disable_ipv6=0
 		ruleCleanup6, err := w.addRule(w.settings.RulePriority,
@@ -123,7 +129,7 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 			waitError <- fmt.Errorf("adding IPv6 rule: %w", err)
 			return
 		}
-		closers.add("removing IPv6 rule", stepOne, ruleCleanup6)
+		closers.add("removing IPv6 rule", stepEight, ruleCleanup6)
 	}
 
 	ruleCleanup, err := w.addRule(w.settings.RulePriority,
@@ -133,7 +139,7 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 		return
 	}
 
-	closers.add("removing IPv4 rule", stepOne, ruleCleanup)
+	closers.add("removing IPv4 rule", stepEight, ruleCleanup)
 	w.logger.Info("Wireguard setup is complete. " +
 		"Note Wireguard is a silent protocol and it may or may not work, without giving any error message. " +
 		"Typically i/o timeout errors indicate the Wireguard connection is not working.")
