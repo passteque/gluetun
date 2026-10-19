@@ -8,8 +8,10 @@ import (
 	"strconv"
 )
 
-// CreateUser creates a user in Alpine with the given UID.
-func (a *Alpine) CreateUser(username string, uid int) (createdUsername string, err error) {
+// CreateUser creates a user in Alpine with the given UID and GID,
+// and returns the username to use for the given UID, which is either
+// the given username or the username of an existing user with this UID.
+func (a *Alpine) CreateUser(username string, uid, gid int) (createdUsername string, err error) {
 	UIDStr := strconv.Itoa(uid)
 	u, err := a.lookupID(UIDStr)
 	_, unknownUID := err.(user.UnknownUserIdError)
@@ -18,9 +20,6 @@ func (a *Alpine) CreateUser(username string, uid int) (createdUsername string, e
 	}
 
 	if u != nil {
-		if u.Username == username {
-			return "", nil
-		}
 		return u.Username, nil
 	}
 
@@ -40,7 +39,9 @@ func (a *Alpine) CreateUser(username string, uid int) (createdUsername string, e
 	if err != nil {
 		return "", err
 	}
-	s := fmt.Sprintf("%s:x:%d:::/dev/null:/sbin/nologin\n", username, uid)
+	// The GID must be set, otherwise the Go os/user package ignores
+	// the line, and the user would be appended again on the next start.
+	s := fmt.Sprintf("%s:x:%d:%d::/dev/null:/sbin/nologin\n", username, uid, gid)
 	_, err = file.WriteString(s)
 	if err != nil {
 		_ = file.Close()

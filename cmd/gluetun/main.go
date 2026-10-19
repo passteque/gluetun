@@ -297,7 +297,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	}
 
 	const defaultUsername = "nonrootuser"
-	nonRootUsername, err := alpineConf.CreateUser(defaultUsername, puid)
+	nonRootUsername, err := alpineConf.CreateUser(defaultUsername, puid, pgid)
 	if err != nil {
 		return fmt.Errorf("creating user: %w", err)
 	}
