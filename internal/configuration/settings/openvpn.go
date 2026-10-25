@@ -379,8 +379,8 @@ func (o OpenVPN) WithDefaults(provider string) OpenVPN {
 
 func (o *OpenVPN) read(r *reader.Reader) (err error) {
 	o.Version = r.String("OPENVPN_VERSION")
-	o.User = r.Get("OPENVPN_USER", reader.RetroKeys("USER"), reader.ForceLowercase(false))
-	o.Password = r.Get("OPENVPN_PASSWORD", reader.RetroKeys("PASSWORD"), reader.ForceLowercase(false))
+	o.User = r.Get("OPENVPN_USER", reader.RetroKeys("USER", "VPN_USER", "WIREGUARD_USER"), reader.ForceLowercase(false))
+	o.Password = r.Get("OPENVPN_PASSWORD", reader.RetroKeys("PASSWORD", "VPN_PASSWORD", "WIREGUARD_PASSWORD"), reader.ForceLowercase(false))
 	o.ConfFile = r.Get("OPENVPN_CUSTOM_CONFIG", reader.ForceLowercase(false))
 	o.Ciphers = r.CSV("OPENVPN_CIPHERS", reader.RetroKeys("OPENVPN_CIPHER"))
 	o.Auth = r.Get("OPENVPN_AUTH")
