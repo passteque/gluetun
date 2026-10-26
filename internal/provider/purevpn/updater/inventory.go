@@ -84,8 +84,12 @@ type inventoryBody struct {
 
 // inventoryCity is a city hosting servers, referenced by their DNS entry ID.
 type inventoryCity struct {
-	Name      string              `json:"name"`
+	Name        string `json:"name"`
+	DataCenters []struct {
+		ID uint `json:"id"`
+	} `json:"data_centers"`
 	Protocols []inventoryProtocol `json:"protocols"`
+	Features  []string            `json:"features"`
 }
 
 type inventoryCountry struct {
@@ -144,44 +148,34 @@ func parseInventoryJSON(reader io.Reader) (hts hostToServer, err error) {
 
 		p2p := hasP2PFeature(country.Features)
 		for _, protocol := range country.Protocols {
-			hts.addProtocolServers(protocol, dnsIDToHostname, dataCenterIPs, p2p)
+			hts.addProtocolServers(protocol, dnsIDToHostname, dataCenterIPs, p2p, "")
 		}
 	}
 
-	hts.addCities(response.Body.Cities, dnsIDToHostname)
+	for _, city := range response.Body.Cities {
+		dataCenterIPs := make([]netip.Addr, 0, len(city.DataCenters))
+		for _, dataCenterRef := range city.DataCenters {
+			ip, ok := dataCenterIDToIP[dataCenterRef.ID]
+			if !ok || slices.Contains(dataCenterIPs, ip) {
+				continue
+			}
+			dataCenterIPs = append(dataCenterIPs, ip)
+		}
+
+		p2p := hasP2PFeature(city.Features)
+		for _, protocol := range city.Protocols {
+			hts.addProtocolServers(protocol, dnsIDToHostname, dataCenterIPs, p2p, city.Name)
+		}
+	}
 
 	return hts, nil
-}
-
-// addCities sets the city of the servers hosted in each city of the inventory.
-// Servers without a hostname, or already having a city, are left as is.
-func (hts hostToServer) addCities(cities []inventoryCity, dnsIDToHostname map[uint]string) {
-	for _, city := range cities {
-		if city.Name == "" {
-			continue
-		}
-		for _, protocol := range city.Protocols {
-			for _, dns := range protocol.DNS {
-				hostname, ok := dnsIDToHostname[dns.DNSID]
-				if !ok {
-					continue
-				}
-				server, ok := hts[hostname]
-				if !ok || server.City != "" {
-					continue
-				}
-				server.City = city.Name
-				hts[hostname] = server
-			}
-		}
-	}
 }
 
 // addProtocolServers adds a server for each hostname of the protocol, served
 // on the port of the protocol. Only TCP and UDP are handled since only
 // OpenVPN is supported by this updater.
 func (hts hostToServer) addProtocolServers(protocol inventoryProtocol,
-	dnsIDToHostname map[uint]string, dataCenterIPs []netip.Addr, p2p bool,
+	dnsIDToHostname map[uint]string, dataCenterIPs []netip.Addr, p2p bool, cityName string,
 ) {
 	tcp := strings.EqualFold(protocol.Protocol, constants.TCP)
 	udp := strings.EqualFold(protocol.Protocol, constants.UDP)
@@ -203,6 +197,13 @@ func (hts hostToServer) addProtocolServers(protocol inventoryProtocol,
 			udpPorts = []uint16{dns.PortNumber} // 53, 5565 or 15021
 		}
 		hts.add(hostname, dataCenterIPs, tcp, udp, tcpPorts, udpPorts, p2p)
+		if cityName != "" {
+			server := hts[hostname]
+			if server.City == "" {
+				server.City = cityName
+				hts[hostname] = server
+			}
+		}
 	}
 }
 

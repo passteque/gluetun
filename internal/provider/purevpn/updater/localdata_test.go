@@ -38,6 +38,14 @@ func Test_parseLocalData(t *testing.T) {
 	assert.Nil(t, serverUDP.TCPPorts)
 }
 
+func Test_parseLocalDataFromFiles_fileNotFound(t *testing.T) {
+	t.Parallel()
+
+	_, err := parseLocalDataFromFiles(map[string][]byte{})
+
+	assert.ErrorIs(t, err, errFileNotFound)
+}
+
 func Test_parseLocalData_noHosts(t *testing.T) {
 	t.Parallel()
 

@@ -79,11 +79,11 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 		return nil, fmt.Errorf("parsing inventory JSON from %q: %w", inventoryURL, err)
 	}
 
-	if localHTS, err := parseLocalDataFromFiles(files); err != nil {
-		u.logger.Warn(fmt.Sprintf("not using app-bundled local data as fallback: %v", err))
-	} else {
-		hts.mergeWithFallback(localHTS)
+	localHTS, err := parseLocalDataFromFiles(files)
+	if err != nil {
+		return nil, fmt.Errorf("parsing app-bundled local data: %w", err)
 	}
+	hts.mergeWithFallback(localHTS)
 
 	if len(hts) < minServers {
 		return nil, fmt.Errorf("%w: %d and expected at least %d",

@@ -156,49 +156,113 @@ func Test_hasP2PFeature(t *testing.T) {
 func Test_parseInventoryJSON_cities(t *testing.T) {
 	t.Parallel()
 
-	const content = `{
-		"body":{
-			"data_centers":[{"id":10,"ip":"1.2.3.4"}],
-			"dns":[
-				{"id":101,"hostname":"aa2-tcp.ptoserver.com","type":"primary"},
-				{"id":102,"hostname":"aabb2-udp.ptoserver.com","type":"primary"},
-				{"id":103,"hostname":"aacc2-udp.ptoserver.com","type":"primary"}
-			],
-			"cities":[
-				{
-					"id":1,"name":"First City","country":"AA",
-					"protocols":[
-						{"protocol":"TCP","dns":[{"dns_id":101,"port_number":80}]},
-						{"protocol":"UDP","dns":[{"dns_id":102,"port_number":15021}]}
-					]
-				},
-				{
-					"id":2,"name":"Second City","country":"AA",
-					"protocols":[
-						{"protocol":"UDP","dns":[{"dns_id":102,"port_number":15021}]}
-					]
-				},
-				{"id":3,"name":"","country":"AA","protocols":[]}
-			],
-			"countries":[
-				{
-					"data_centers":[{"id":10}],
-					"protocols":[
-						{"protocol":"TCP","dns":[{"dns_id":101,"port_number":80}]},
-						{"protocol":"UDP","dns":[{"dns_id":102,"port_number":15021}]},
-						{"protocol":"UDP","dns":[{"dns_id":103,"port_number":5565}]}
+	testCases := map[string]struct {
+		content         string
+		expectedServers map[string]models.Server
+	}{
+		"city_only_servers_and_merges": {
+			content: `{
+				"body":{
+					"data_centers":[
+						{"id":10,"ip":"1.2.3.4"},
+						{"id":11,"ip":"5.6.7.8"}
+					],
+					"dns":[
+						{"id":101,"hostname":"aa2-tcp.ptoserver.com"},
+						{"id":102,"hostname":"aa2-udp.ptoserver.com"},
+						{"id":104,"hostname":"cityonly2-udp.ptoserver.com"},
+						{"id":105,"hostname":"empty2-udp.ptoserver.com"}
+					],
+					"countries":[
+						{
+							"data_centers":[{"id":10},{"id":11},{"id":10}],
+							"protocols":[
+								{"protocol":"TCP","dns":[{"dns_id":101,"port_number":80}]},
+								{"protocol":"UDP","dns":[{"dns_id":102,"port_number":15021}]}
+							]
+						}
+					],
+					"cities":[
+						{
+							"name":"Metro",
+							"data_centers":[{"id":10},{"id":11},{"id":10}],
+							"features":["p2p"],
+							"protocols":[
+								{"protocol":"UDP","dns":[
+									{"dns_id":104,"port_number":5565},
+									{"dns_id":104,"port_number":5565}
+								]}
+							]
+						},
+						{
+							"name":"First City",
+							"data_centers":[{"id":10},{"id":11}],
+							"protocols":[
+								{"protocol":"TCP","dns":[{"dns_id":101,"port_number":80}]},
+								{"protocol":"UDP","dns":[{"dns_id":102,"port_number":5565}]}
+							]
+						},
+						{
+							"name":"Second City",
+							"data_centers":[{"id":11}],
+							"protocols":[
+								{"protocol":"UDP","dns":[{"dns_id":102,"port_number":5565}]}
+							]
+						},
+						{
+							"name":"",
+							"data_centers":[{"id":10}],
+							"protocols":[
+								{"protocol":"UDP","dns":[{"dns_id":105,"port_number":5565}]}
+							]
+						}
 					]
 				}
-			]
-		}
-	}`
+			}`,
+			expectedServers: map[string]models.Server{
+				"aa2-tcp.ptoserver.com": {
+					Hostname: "aa2-tcp.ptoserver.com",
+					VPN:      vpn.OpenVPN,
+					TCP:      true,
+					TCPPorts: []uint16{80},
+					City:     "First City",
+					IPs:      []netip.Addr{netip.MustParseAddr("1.2.3.4"), netip.MustParseAddr("5.6.7.8")},
+				},
+				"aa2-udp.ptoserver.com": {
+					Hostname: "aa2-udp.ptoserver.com",
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					UDPPorts: []uint16{15021, 5565},
+					City:     "First City",
+					IPs:      []netip.Addr{netip.MustParseAddr("1.2.3.4"), netip.MustParseAddr("5.6.7.8")},
+				},
+				"cityonly2-udp.ptoserver.com": {
+					Hostname:   "cityonly2-udp.ptoserver.com",
+					VPN:        vpn.OpenVPN,
+					UDP:        true,
+					UDPPorts:   []uint16{5565},
+					Categories: []string{"p2p"},
+					City:       "Metro",
+					IPs:        []netip.Addr{netip.MustParseAddr("1.2.3.4"), netip.MustParseAddr("5.6.7.8")},
+				},
+				"empty2-udp.ptoserver.com": {
+					Hostname: "empty2-udp.ptoserver.com",
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					UDPPorts: []uint16{5565},
+					IPs:      []netip.Addr{netip.MustParseAddr("1.2.3.4")},
+				},
+			},
+		},
+	}
 
-	hts, err := parseInventoryJSON(bytes.NewBufferString(content))
-	require.NoError(t, err)
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
 
-	assert.Equal(t, "First City", hts["aa2-tcp.ptoserver.com"].City)
-	// Listed in two cities, the first one in the inventory wins.
-	assert.Equal(t, "First City", hts["aabb2-udp.ptoserver.com"].City)
-	// Not listed in any city of the inventory.
-	assert.Empty(t, hts["aacc2-udp.ptoserver.com"].City)
+			hts, err := parseInventoryJSON(bytes.NewBufferString(testCase.content))
+			require.NoError(t, err)
+			assert.Equal(t, testCase.expectedServers, map[string]models.Server(hts))
+		})
+	}
 }

@@ -13,8 +13,7 @@ import (
 
 const localDataAsarPath = "node_modules/atom-sdk/lib/offline-data/local-data.js"
 
-// parseLocalDataFromFiles parses the local data bundled with the PureVPN
-// application, used as a fallback for hosts missing from the online inventory.
+// parseLocalDataFromFiles parses the local data bundled with the PureVPN application.
 func parseLocalDataFromFiles(files map[string][]byte) (hostToServer, error) {
 	content, ok := files[localDataAsarPath]
 	if !ok {
