@@ -5,11 +5,11 @@ go 1.26
 require (
 	github.com/ProtonMail/go-srp v0.0.7
 	github.com/amnezia-vpn/amneziawg-go/v3 v3.0.3
-	github.com/breml/rootcerts v0.3.7
+	github.com/breml/rootcerts v0.3.8
 	github.com/fatih/color v1.19.0
 	github.com/jsimonetti/rtnetlink v1.4.2
-	github.com/klauspost/compress v1.20.0
-	github.com/klauspost/pgzip v1.2.6
+	github.com/klauspost/compress v1.20.3
+	github.com/klauspost/pgzip v1.3.0
 	github.com/mdlayher/genetlink v1.4.0
 	github.com/mdlayher/netlink v1.9.0
 	github.com/miekg/dns v1.1.62
@@ -28,7 +28,7 @@ require (
 	github.com/qdm12/ss-server v0.6.0
 	github.com/stretchr/testify v1.12.1
 	github.com/ti-mo/netfilter v0.5.3
-	github.com/ulikunitz/xz v0.5.16
+	github.com/ulikunitz/xz v0.5.17
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a
 	go.uber.org/mock v0.6.0
 	golang.org/x/net v0.55.0
