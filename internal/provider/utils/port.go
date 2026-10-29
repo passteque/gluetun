@@ -65,7 +65,8 @@ func getCustomPort(selection settings.ServerSelection) (port uint16) {
 
 // noConnectionError returns an error indicating no connection could be picked.
 func noConnectionError(selection settings.ServerSelection, serversCount int) error {
-	if customPort := getCustomPort(selection); customPort > 0 {
+	customPort := getCustomPort(selection)
+	if customPort > 0 {
 		return fmt.Errorf("no server supports the custom port %d out of %d filtered servers",
 			customPort, serversCount)
 	}

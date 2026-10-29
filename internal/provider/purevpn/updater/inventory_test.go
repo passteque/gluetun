@@ -151,8 +151,7 @@ func Test_hasP2PFeature(t *testing.T) {
 	}
 }
 
-// Test_parseInventoryJSON_cities tests the city of each server is taken from
-// the cities of the inventory, which reference servers by their DNS entry ID.
+// Test_parseInventoryJSON_cities tests city-level hosts, ports, and IPs from the inventory.
 func Test_parseInventoryJSON_cities(t *testing.T) {
 	t.Parallel()
 

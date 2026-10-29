@@ -2,7 +2,6 @@ package updater
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -10,8 +9,6 @@ import (
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
 )
-
-var errFileNotFound = errors.New("file not found in the application archive")
 
 func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	servers []models.Server, err error,
@@ -159,5 +156,5 @@ func firstFile(files map[string][]byte, paths ...string) (content []byte, usedPa
 			return content, path, nil
 		}
 	}
-	return nil, "", fmt.Errorf("%w: none of %q", errFileNotFound, paths)
+	return nil, "", fmt.Errorf("file not found in the application archive: none of %q", paths)
 }

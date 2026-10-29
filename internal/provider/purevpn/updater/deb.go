@@ -23,15 +23,6 @@ import (
 // named `data.tar` suffixed with the compression used, if any.
 const dataTARPrefix = "data.tar"
 
-var (
-	errARHeader    = errors.New("invalid ar archive header")
-	errTARNotFound = errors.New("tar archive not found in deb archive")
-	errTARNoData   = errors.New("tar archive has no data")
-	// errStopIteration is returned by an [eachARAMember] callback to stop
-	// the iteration without erroring out.
-	errStopIteration = errors.New("stop ar archive members iteration")
-)
-
 // extractFilesFromDeb streams through a PureVPN .deb file (an ar archive)
 // and returns the content of the given paths found in the Electron
 // application archive it contains, keyed by path. Paths not found are
@@ -39,20 +30,19 @@ var (
 // Only the requested files are kept in memory, the archives being streamed
 // through (the deb file is about 100 MB and unpacks to about 1 GB).
 func extractFilesFromDeb(debContent io.Reader, paths ...string) (files map[string][]byte, err error) {
-	// Path of the Electron application archive inside the data.tar member.
 	const appASARPath = "opt/PureVPN/resources/app.asar"
 
 	var memberNames []string
 	err = eachARAMember(bufio.NewReader(debContent),
-		func(name string, size int64, content io.Reader) error {
+		func(name string, size int64, content io.Reader) (stop bool, err error) {
 			memberNames = append(memberNames, name)
 			switch {
 			case !strings.HasPrefix(name, dataTARPrefix):
-				return nil
+				return false, nil
 			case size == 0:
-				return errTARNoData
+				return false, errors.New("tar archive has no data")
 			}
-			err := withDecompressedTAR(name, content,
+			err = withDecompressedTAR(name, content,
 				func(tarContent io.Reader) error {
 					return withTARFile(tarContent, appASARPath,
 						func(appASAR io.Reader, asarSize int64) (err error) {
@@ -61,17 +51,17 @@ func extractFilesFromDeb(debContent io.Reader, paths ...string) (files map[strin
 						})
 				})
 			if err != nil {
-				return err
+				return false, err
 			}
 			// The data.tar member is unique, no need to read further.
-			return errStopIteration
+			return true, nil
 		})
 	if err != nil {
 		return nil, err
 	}
 	if files == nil {
-		return nil, fmt.Errorf("%w: members found are %s",
-			errTARNotFound, strings.Join(memberNames, ", "))
+		return nil, fmt.Errorf("tar archive not found in deb archive: members found are %s",
+			strings.Join(memberNames, ", "))
 	}
 	return files, nil
 }
@@ -80,9 +70,10 @@ func extractFilesFromDeb(debContent io.Reader, paths ...string) (files map[strin
 // calling fn with the member name, its size in bytes and a reader
 // restricted to its content.
 // Any content not read by fn is skipped before the next member is read.
-// Returning [errStopIteration] from fn stops the iteration and
-// eachARAMember returns a nil error.
-func eachARAMember(reader *bufio.Reader, fn func(name string, size int64, content io.Reader) error) error {
+// Returning true from fn stops the iteration without error.
+func eachARAMember(reader *bufio.Reader,
+	fn func(name string, size int64, content io.Reader) (stop bool, err error),
+) error {
 	const (
 		globalHeader = "!<arch>\n"
 		headerLength = 60
@@ -92,11 +83,12 @@ func eachARAMember(reader *bufio.Reader, fn func(name string, size int64, conten
 	)
 
 	global := make([]byte, len(globalHeader))
-	if _, err := io.ReadFull(reader, global); err != nil {
+	_, err := io.ReadFull(reader, global)
+	if err != nil {
 		return fmt.Errorf("reading ar archive header: %w", err)
 	}
 	if string(global) != globalHeader {
-		return errARHeader
+		return errors.New("invalid ar archive header")
 	}
 
 	for {
@@ -121,19 +113,22 @@ func eachARAMember(reader *bufio.Reader, fn func(name string, size int64, conten
 		}
 
 		content := io.LimitReader(reader, size)
-		if err := fn(name, size, content); err != nil {
-			if errors.Is(err, errStopIteration) {
-				return nil
-			}
+		stop, err := fn(name, size, content)
+		if err != nil {
 			return err
 		}
+		if stop {
+			return nil
+		}
 
-		if _, err := io.Copy(io.Discard, content); err != nil {
+		_, err = io.Copy(io.Discard, content)
+		if err != nil {
 			return fmt.Errorf("skipping ar member %q: %w", name, err)
 		}
 		if size%2 == 1 {
 			// Members are aligned on 2 bytes.
-			if _, err := reader.Discard(1); err != nil {
+			_, err = reader.Discard(1)
+			if err != nil {
 				return fmt.Errorf("skipping padding of ar member %q: %w", name, err)
 			}
 		}
@@ -186,7 +181,8 @@ func withTARFile(tarContent io.Reader, filePath string, fn func(content io.Reade
 		if strings.TrimPrefix(header.Name, "./") != filePath {
 			continue
 		}
-		if err := fn(tarReader, header.Size); err != nil {
+		err = fn(tarReader, header.Size)
+		if err != nil {
 			return err
 		}
 		return nil
@@ -246,7 +242,8 @@ func extractFilesFromASAR(appASAR io.Reader, asarSize int64, paths ...string) (
 	}
 
 	prefix := make([]byte, prefixLength)
-	if _, err := io.ReadFull(appASAR, prefix); err != nil {
+	_, err = io.ReadFull(appASAR, prefix)
+	if err != nil {
 		return nil, fmt.Errorf("reading asar archive prefix: %w", err)
 	}
 	headerPickleSize := int64(binary.LittleEndian.Uint32(prefix[4:8]))
@@ -270,15 +267,18 @@ func extractFilesFromASAR(appASAR io.Reader, asarSize int64, paths ...string) (
 	dataSize := asarNumber(asarSize - dataStart) //nolint:gosec
 
 	headerContent := make([]byte, jsonHeaderLength)
-	if _, err := io.ReadFull(appASAR, headerContent); err != nil {
+	_, err = io.ReadFull(appASAR, headerContent)
+	if err != nil {
 		return nil, fmt.Errorf("reading asar archive header: %w", err)
 	}
-	if _, err := io.CopyN(io.Discard, appASAR, padding); err != nil {
+	_, err = io.CopyN(io.Discard, appASAR, padding)
+	if err != nil {
 		return nil, fmt.Errorf("skipping asar header padding: %w", err)
 	}
 
 	var rootNode asarNode
-	if err := json.Unmarshal(headerContent, &rootNode); err != nil {
+	err = json.Unmarshal(headerContent, &rootNode)
+	if err != nil {
 		return nil, fmt.Errorf("json decoding asar header: %w", err)
 	}
 
@@ -321,12 +321,14 @@ func extractFilesFromASAR(appASAR io.Reader, asarSize int64, paths ...string) (
 		toSkip := target.offset - position
 		if toSkip > 0 {
 			// The offset is decoded with a 63 bits maximum, it fits in an int64.
-			if _, err := io.CopyN(io.Discard, appASAR, int64(toSkip)); err != nil { //nolint:gosec
+			_, err = io.CopyN(io.Discard, appASAR, int64(toSkip)) //nolint:gosec
+			if err != nil {
 				return nil, fmt.Errorf("skipping to asar file %q: %w", target.path, err)
 			}
 		}
 		content := make([]byte, target.size)
-		if _, err := io.ReadFull(appASAR, content); err != nil {
+		_, err = io.ReadFull(appASAR, content)
+		if err != nil {
 			return nil, fmt.Errorf("reading asar file %q: %w", target.path, err)
 		}
 		files[target.path] = content

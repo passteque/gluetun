@@ -39,7 +39,7 @@ func Test_extractFilesFromDeb(t *testing.T) {
 		files      map[string][]byte
 		errMessage string
 	}{
-		"gzip tar archive": {
+		"gzip_tar_archive": {
 			debContent: newDebArchive(t, asarContent, ".gz"),
 			paths:      []string{firstPath, secondPath},
 			files: map[string][]byte{
@@ -47,22 +47,22 @@ func Test_extractFilesFromDeb(t *testing.T) {
 				secondPath: secondContent,
 			},
 		},
-		"xz tar archive": {
+		"xz_tar_archive": {
 			debContent: newDebArchive(t, asarContent, ".xz"),
 			paths:      []string{firstPath},
 			files:      map[string][]byte{firstPath: firstContent},
 		},
-		"uncompressed tar archive": {
+		"uncompressed_tar_archive": {
 			debContent: newDebArchive(t, asarContent, ""),
 			paths:      []string{secondPath},
 			files:      map[string][]byte{secondPath: secondContent},
 		},
-		"path not in asar archive": {
+		"path_not_in_asar_archive": {
 			debContent: newDebArchive(t, asarContent, ".gz"),
 			paths:      []string{"node_modules/atom-sdk/missing.js"},
 			files:      map[string][]byte{},
 		},
-		"no tar archive member": {
+		"no_tar_archive_member": {
 			debContent: newARArchive(t,
 				arTestMember{name: "debian-binary", content: []byte("2.0\n")},
 				arTestMember{name: "control.tar.gz/", content: []byte("not empty")},
@@ -70,21 +70,21 @@ func Test_extractFilesFromDeb(t *testing.T) {
 			paths:      []string{firstPath},
 			errMessage: "tar archive not found in deb archive: members found are debian-binary, control.tar.gz",
 		},
-		"tar archive with no data": {
+		"tar_archive_with_no_data": {
 			debContent: newARArchive(t,
 				arTestMember{name: "data.tar.xz/", content: nil},
 			),
 			paths:      []string{firstPath},
 			errMessage: "tar archive has no data",
 		},
-		"no app.asar file in tar archive": {
+		"no_app_asar_file_in_tar_archive": {
 			debContent: newDebArchiveContent(t, "data.tar.gz/", gzipBytes(t,
 				newTARArchive(t, map[string][]byte{"opt/PureVPN/resources/other.asar": []byte("content")})),
 			),
 			paths:      []string{firstPath},
 			errMessage: `file "opt/PureVPN/resources/app.asar" not found in tar archive`,
 		},
-		"invalid ar archive": {
+		"invalid_ar_archive": {
 			debContent: []byte("not an ar archive"),
 			paths:      []string{firstPath},
 			errMessage: "invalid ar archive header",

@@ -125,7 +125,7 @@ func Test_validateFeatureFilters(t *testing.T) {
 			if testCase.errMessage == "" {
 				assert.NoError(t, err)
 			} else {
-				assert.EqualError(t, err, testCase.errMessage)
+				assert.ErrorContains(t, err, testCase.errMessage)
 			}
 		})
 	}

@@ -36,7 +36,6 @@ func parseInventoryURLTemplate(endpointsJS []byte) (template string, err error) 
 	if pathMatch == "" {
 		return "", errors.New("inventory path not found in endpoints file")
 	}
-	// Strip surrounding quotes from the JS string literal.
 	path := strings.Trim(pathMatch, `"`)
 	return strings.TrimRight(baseURL, "/") + path, nil
 }
@@ -82,7 +81,7 @@ type inventoryBody struct {
 	DataCenters []inventoryDataCenter `json:"data_centers"`
 }
 
-// inventoryCity is a city hosting servers, referenced by their DNS entry ID.
+// inventoryCity is a city with data centers and features hosting servers referenced by DNS entry ID.
 type inventoryCity struct {
 	Name        string `json:"name"`
 	DataCenters []struct {

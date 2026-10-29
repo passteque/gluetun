@@ -17,7 +17,7 @@ const localDataAsarPath = "node_modules/atom-sdk/lib/offline-data/local-data.js"
 func parseLocalDataFromFiles(files map[string][]byte) (hostToServer, error) {
 	content, ok := files[localDataAsarPath]
 	if !ok {
-		return nil, fmt.Errorf("%w: %s", errFileNotFound, localDataAsarPath)
+		return nil, fmt.Errorf("file not found in the application archive: %s", localDataAsarPath)
 	}
 	return parseLocalData(content)
 }
@@ -197,18 +197,15 @@ func parseHostPortFromDNSEntry(entry string) (host string, port uint16, ok bool)
 
 	remaining := entry[portStart:]
 
-	// Find how many consecutive digits we have at the beginning of this slice
 	endOffset := 0
 	for endOffset < len(remaining) && remaining[endOffset] >= '0' && remaining[endOffset] <= '9' {
 		endOffset++
 	}
 
-	// If no digits were found, it's an invalid port
 	if endOffset == 0 {
 		return "", 0, false
 	}
 
-	// Update your end position based on how many digits we found
 	portEnd := portStart + endOffset
 
 	const base, bitSize = 10, 16

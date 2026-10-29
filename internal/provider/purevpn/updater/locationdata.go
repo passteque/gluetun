@@ -35,7 +35,7 @@ var countryCityCodeToCityName = map[string]string{
 }
 
 // locationWithRegion is a struct that represents a location with its country, city, and region,
-// and is to be used to hardcoded locations with a region field set in older data (see [locationsWithRegions]).
+// and is used to populate hardcoded locations with a region field set in older data (see [locationsWithRegions]).
 // TODO v4: remove region field from purevpn.
 type locationWithRegion struct {
 	country string

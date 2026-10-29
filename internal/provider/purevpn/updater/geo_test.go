@@ -14,32 +14,32 @@ func Test_parseHostname(t *testing.T) {
 		country  string
 		city     string
 	}{
-		"country only no city code": {
+		"country_only_no_city_code": {
 			hostname: "ca2-auto-udp.ptoserver.com",
 			country:  "Canada",
 			city:     "",
 		},
-		"single-letter city code q": {
+		"single_letter_city_code_q": {
 			hostname: "caq2-auto-udp.ptoserver.com",
 			country:  "Canada",
 			city:     "Montreal",
 		},
-		"australia brisbane code bb": {
+		"australia_brisbane_code_bb": {
 			hostname: "aubb2-auto-udp.ptoserver.com",
 			country:  "Australia",
 			city:     "Brisbane",
 		},
-		"australia brisbane code bn": {
+		"australia_brisbane_code_bn": {
 			hostname: "aubn2-auto-udp.ptoserver.com",
 			country:  "Australia",
 			city:     "Brisbane",
 		},
-		"single-letter city code v": {
+		"single_letter_city_code_v": {
 			hostname: "cav2-auto-udp.ptoserver.com",
 			country:  "Canada",
 			city:     "Vancouver",
 		},
-		"two-letter city code to": {
+		"two_letter_city_code_to": {
 			hostname: "cato2-auto-udp.ptoserver.com",
 			country:  "Canada",
 			city:     "Toronto",

@@ -31,7 +31,6 @@ func parseHostname(hostname string) (country, city string, warnings []string) {
 			fmt.Sprintf("hostname %q does not contain %q", hostname, locationSeparator))
 		return country, city, warnings
 	case countryCodeLength:
-		// no city code
 		return country, "", warnings
 	}
 	countryCityCode := strings.ToLower(hostname[:twoMinusIndex])

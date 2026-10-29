@@ -43,7 +43,7 @@ func Test_parseLocalDataFromFiles_fileNotFound(t *testing.T) {
 
 	_, err := parseLocalDataFromFiles(map[string][]byte{})
 
-	assert.ErrorIs(t, err, errFileNotFound)
+	assert.ErrorContains(t, err, "file not found in the application archive")
 }
 
 func Test_parseLocalData_noHosts(t *testing.T) {

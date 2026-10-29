@@ -107,6 +107,7 @@ func Test_Updater_withLocations(t *testing.T) {
 		})
 	}
 }
+
 func Test_FetchServers_downloadTimeout(t *testing.T) {
 	t.Parallel()
 
@@ -129,7 +130,7 @@ func Test_FetchServers_downloadTimeout(t *testing.T) {
 		"inventory_timeout_unchanged": {
 			slowPath:   "/res_test/inventory/shared/linux/v3/app.json",
 			err:        context.DeadlineExceeded,
-			errMessage: "fetching inventory JSON",
+			errMessage: "parsing inventory JSON",
 		},
 		"canceled_deb_body": {
 			slowPath:       "/purevpn.deb",

@@ -94,7 +94,7 @@ func Test_GetConnection(t *testing.T) {
 				Hostname: "x509",
 			}},
 		},
-		"OpenVPN server uses protocol-specific TCP port when no custom port set": {
+		"OpenVPN_server_uses_protocol-specific_TCP_port_when_no_custom_port_set": {
 			filteredServers: []models.Server{
 				{
 					VPN:      vpn.OpenVPN,
@@ -119,7 +119,7 @@ func Test_GetConnection(t *testing.T) {
 				Hostname: "name",
 			}},
 		},
-		"OpenVPN server uses protocol-specific UDP port when no custom port set": {
+		"OpenVPN_server_uses_protocol-specific_UDP_port_when_no_custom_port_set": {
 			filteredServers: []models.Server{
 				{
 					VPN:      vpn.OpenVPN,
@@ -141,7 +141,7 @@ func Test_GetConnection(t *testing.T) {
 				Hostname: "name",
 			}},
 		},
-		"OpenVPN custom port supported by server": {
+		"OpenVPN_custom_port_supported_by_server": {
 			filteredServers: []models.Server{
 				{
 					VPN:      vpn.OpenVPN,
@@ -166,7 +166,7 @@ func Test_GetConnection(t *testing.T) {
 				Hostname: "name",
 			}},
 		},
-		"OpenVPN custom port not supported by server": {
+		"OpenVPN_custom_port_not_supported_by_server": {
 			filteredServers: []models.Server{
 				{
 					VPN:      vpn.OpenVPN,

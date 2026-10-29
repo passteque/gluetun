@@ -81,18 +81,16 @@ func comparablesAreEqualNoOrder[T comparable](a, b []T) bool {
 		return false
 	}
 
-	// Track element frequencies
 	counts := make(map[T]int, len(a))
-	for _, v := range a {
-		counts[v]++
+	for _, element := range a {
+		counts[element]++
 	}
 
-	// Decrement counts and check for mismatches
-	for _, v := range b {
-		if counts[v] == 0 {
+	for _, element := range b {
+		if counts[element] == 0 {
 			return false
 		}
-		counts[v]--
+		counts[element]--
 	}
 
 	return true

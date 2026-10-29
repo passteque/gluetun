@@ -17,11 +17,11 @@ func Test_inferPureVPNTraits(t *testing.T) {
 		"regular": {
 			hostname: "us2-udp.ptoserver.com",
 		},
-		"port forwarding": {
+		"port_forwarding": {
 			hostname:    "us2-udp-pf.ptoserver.com",
 			portForward: true,
 		},
-		"quantum resistant": {
+		"quantum_resistant": {
 			hostname: "us2-auto-udp-qr.ptoserver.com",
 			qr:       true,
 		},
@@ -29,7 +29,7 @@ func Test_inferPureVPNTraits(t *testing.T) {
 			hostname:   "us2-obf-udp.ptoserver.com",
 			obfuscated: true,
 		},
-		"multiple traits": {
+		"multiple_traits": {
 			hostname:    "us2-udp-qr-pf.ptoserver.com",
 			portForward: true,
 			qr:          true,
