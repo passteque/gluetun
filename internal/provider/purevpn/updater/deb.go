@@ -223,9 +223,13 @@ func extractFilesFromASAR(appASAR io.Reader, asarSize int64, paths ...string) (
 	files map[string][]byte, err error,
 ) {
 	const (
-		// The first 4 uint32 values of an asar archive, the last one being
-		// the length in bytes of the JSON header string following them.
-		prefixLength = 16
+		// The asar archive starts with a pickle holding the size of the
+		// header pickle that follows, which holds the payload size and the
+		// JSON header string length, then the JSON header string padded
+		// to 4 bytes. The files data area starts right after the header pickle.
+		prefixLength     = 16
+		sizePickleLength = 8
+		maxPadding       = 3
 		// The PureVPN 2.9.0 archive is 320 MiB with a 12 MiB JSON header.
 		// Both are capped with margin to bound the memory and the reading
 		// done on a corrupted or malicious archive.
@@ -245,23 +249,32 @@ func extractFilesFromASAR(appASAR io.Reader, asarSize int64, paths ...string) (
 	if _, err := io.ReadFull(appASAR, prefix); err != nil {
 		return nil, fmt.Errorf("reading asar archive prefix: %w", err)
 	}
-	jsonHeaderLength := int64(binary.LittleEndian.Uint32(prefix[prefixLength-4:]))
+	headerPickleSize := int64(binary.LittleEndian.Uint32(prefix[4:8]))
+	jsonHeaderLength := int64(binary.LittleEndian.Uint32(prefix[12:16]))
+	dataStart := sizePickleLength + headerPickleSize
+	padding := dataStart - prefixLength - jsonHeaderLength
 	switch {
 	case jsonHeaderLength == 0:
 		return nil, fmt.Errorf("invalid asar header length %d", jsonHeaderLength)
 	case jsonHeaderLength > maxJSONHeaderLength:
 		return nil, fmt.Errorf("asar header length %d exceeds maximum of %d",
 			jsonHeaderLength, maxJSONHeaderLength)
-	case jsonHeaderLength > asarSize-prefixLength:
-		return nil, fmt.Errorf("asar header length %d exceeds archive size %d",
-			jsonHeaderLength, asarSize)
+	case padding < 0 || padding > maxPadding:
+		return nil, fmt.Errorf("asar header pickle size %d does not match header length %d",
+			headerPickleSize, jsonHeaderLength)
+	case dataStart > asarSize:
+		return nil, fmt.Errorf("asar header ending at offset %d exceeds archive size %d",
+			dataStart, asarSize)
 	}
-	// Non negative given the header length checks above.
-	dataSize := asarNumber(asarSize - prefixLength - jsonHeaderLength) //nolint:gosec
+	// Non negative given the header checks above.
+	dataSize := asarNumber(asarSize - dataStart) //nolint:gosec
 
 	headerContent := make([]byte, jsonHeaderLength)
 	if _, err := io.ReadFull(appASAR, headerContent); err != nil {
 		return nil, fmt.Errorf("reading asar archive header: %w", err)
+	}
+	if _, err := io.CopyN(io.Discard, appASAR, padding); err != nil {
+		return nil, fmt.Errorf("skipping asar header padding: %w", err)
 	}
 
 	var rootNode asarNode
@@ -299,7 +312,7 @@ func extractFilesFromASAR(appASAR io.Reader, asarSize int64, paths ...string) (
 	})
 
 	files = make(map[string][]byte, len(targets))
-	// Offset in the files data area, which starts right after the JSON header.
+	// Offset in the files data area, which starts right after the header pickle.
 	var position asarNumber
 	for _, target := range targets {
 		if target.offset < position {

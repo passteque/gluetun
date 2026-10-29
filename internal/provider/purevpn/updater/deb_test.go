@@ -113,10 +113,14 @@ func Test_extractFilesFromASAR(t *testing.T) {
 	const path = "node_modules/atom-sdk/lib/offline-data/local-data.js"
 	fileContent := []byte(`module.exports={body:{reseller_id:1}}`)
 	validASAR := newASARArchive(t, map[string][]byte{path: fileContent})
+
+	paddedHeader := []byte(`{"files":{"a.js":{"offset":"0","size":3},"b.js":{"offset":"3","size":3}}}`)
+	require.Equal(t, 1, len(paddedHeader)%4)
+	paddedASAR := newRawASARArchive(paddedHeader, []byte("aaabbb"))
+
 	beyondHeader := []byte(`{"files":{"file.js":{"offset":"1000000000","size":10}}}`)
 	beyondPayload := []byte("0123456789")
-	//nolint:gosec // the JSON header of a test archive cannot exceed 4 GiB
-	beyondASAR := newRawASARArchive(uint32(len(beyondHeader)), beyondHeader, beyondPayload)
+	beyondASAR := newRawASARArchive(beyondHeader, beyondPayload)
 
 	testCases := map[string]struct {
 		asarContent []byte
@@ -132,6 +136,15 @@ func Test_extractFilesFromASAR(t *testing.T) {
 			paths:       []string{path},
 			files:       map[string][]byte{path: fileContent},
 		},
+		"header_padding": {
+			asarContent: paddedASAR,
+			asarSize:    int64(len(paddedASAR)),
+			paths:       []string{"a.js", "b.js"},
+			files: map[string][]byte{
+				"a.js": []byte("aaa"),
+				"b.js": []byte("bbb"),
+			},
+		},
 		"archive_size_exceeding_maximum": {
 			asarContent: validASAR,
 			asarSize:    1024*1024*1024 + 1,
@@ -140,16 +153,23 @@ func Test_extractFilesFromASAR(t *testing.T) {
 			unreadBytes: len(validASAR),
 		},
 		"header_length_exceeding_maximum": {
-			asarContent: newRawASARArchive(32*1024*1024+1, nil, nil),
+			asarContent: newASARPrefix(8+32*1024*1024+4, 32*1024*1024+1),
 			asarSize:    64 * 1024 * 1024,
 			paths:       []string{path},
 			errMessage:  "asar header length 33554433 exceeds maximum of 33554432",
 		},
-		"header_length_exceeding_archive_size": {
-			asarContent: newRawASARArchive(1000, []byte(`{}`), nil),
+		"header_pickle_size_mismatch": {
+			asarContent: append(newASARPrefix(8+2+4, 2), []byte(`{}`)...),
+			asarSize:    1000,
+			paths:       []string{path},
+			errMessage:  "asar header pickle size 14 does not match header length 2",
+			unreadBytes: 2,
+		},
+		"header_exceeding_archive_size": {
+			asarContent: append(newASARPrefix(8+1000, 1000), []byte(`{}`)...),
 			asarSize:    18,
 			paths:       []string{path},
-			errMessage:  "asar header length 1000 exceeds archive size 18",
+			errMessage:  "asar header ending at offset 1016 exceeds archive size 18",
 			unreadBytes: 2,
 		},
 		"file_ending_beyond_archive_data": {
@@ -316,18 +336,28 @@ func newASARArchive(t *testing.T, files map[string][]byte) (content []byte) {
 	headerContent, err := json.Marshal(root)
 	require.NoError(t, err)
 
-	//nolint:gosec // the JSON header of a test archive cannot exceed 4 GiB
-	return newRawASARArchive(uint32(len(headerContent)), headerContent, payload)
+	return newRawASARArchive(headerContent, payload)
 }
 
-// newRawASARArchive returns an asar archive made of the 16 bytes prefix
-// declaring the given JSON header length, the JSON header and the payload.
-func newRawASARArchive(headerLength uint32, headerContent, payload []byte) (content []byte) {
-	buffer := bytes.NewBuffer(nil)
-	prefix := make([]byte, 16)
+// newRawASARArchive returns an asar archive made of the 16 bytes prefix,
+// the JSON header padded to 4 bytes and the payload.
+func newRawASARArchive(headerContent, payload []byte) (content []byte) {
+	const alignment = 4
+	padding := (alignment - len(headerContent)%alignment) % alignment
+	//nolint:gosec // the JSON header of a test archive cannot exceed 4 GiB
+	headerLength := uint32(len(headerContent))
+	content = newASARPrefix(8+headerLength+uint32(padding), headerLength)
+	content = append(content, headerContent...)
+	content = append(content, make([]byte, padding)...)
+	return append(content, payload...)
+}
+
+// newASARPrefix returns the 16 bytes prefix of an asar archive.
+func newASARPrefix(headerPickleSize, headerLength uint32) (prefix []byte) {
+	prefix = make([]byte, 16)
+	binary.LittleEndian.PutUint32(prefix[0:4], 4)
+	binary.LittleEndian.PutUint32(prefix[4:8], headerPickleSize)
+	binary.LittleEndian.PutUint32(prefix[8:12], headerPickleSize-4)
 	binary.LittleEndian.PutUint32(prefix[12:16], headerLength)
-	buffer.Write(prefix)
-	buffer.Write(headerContent)
-	buffer.Write(payload)
-	return buffer.Bytes()
+	return prefix
 }
