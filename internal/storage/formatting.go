@@ -19,11 +19,7 @@ func noServerFoundError(selection settings.ServerSelection) (err error) {
 
 	messageParts = append(messageParts, "VPN "+selection.VPN)
 
-	protocol := constants.UDP
-	if selection.OpenVPN.Protocol == constants.TCP {
-		protocol = constants.TCP
-	}
-	messageParts = append(messageParts, "protocol "+protocol)
+	messageParts = append(messageParts, openVPNProtocolParts(selection)...)
 
 	switch len(selection.Countries) {
 	case 0:
@@ -113,10 +109,7 @@ func noServerFoundError(selection settings.ServerSelection) (err error) {
 		messageParts = append(messageParts, part)
 	}
 
-	if *selection.OpenVPN.PIAEncPreset != "" {
-		part := "encryption preset " + *selection.OpenVPN.PIAEncPreset
-		messageParts = append(messageParts, part)
-	}
+	messageParts = append(messageParts, openVPNEncryptionPresetParts(selection)...)
 
 	if *selection.FreeOnly {
 		messageParts = append(messageParts, "free tier only")
@@ -146,16 +139,38 @@ func noServerFoundError(selection settings.ServerSelection) (err error) {
 		messageParts = append(messageParts, "tor only")
 	}
 
-	targetIP := selection.OpenVPN.EndpointIP
-	if selection.VPN == vpn.Wireguard {
-		targetIP = selection.Wireguard.EndpointIP
-	}
-	if targetIP.IsValid() {
-		messageParts = append(messageParts,
-			"target ip address "+targetIP.String())
-	}
+	messageParts = append(messageParts, targetIPParts(selection)...)
 
 	message := "for " + strings.Join(messageParts, "; ")
 
 	return fmt.Errorf("no server found: %s", message)
+}
+
+func openVPNProtocolParts(selection settings.ServerSelection) []string {
+	if selection.VPN != vpn.OpenVPN {
+		return nil
+	}
+	protocol := constants.UDP
+	if selection.OpenVPN.Protocol == constants.TCP {
+		protocol = constants.TCP
+	}
+	return []string{"protocol " + protocol}
+}
+
+func openVPNEncryptionPresetParts(selection settings.ServerSelection) []string {
+	if selection.VPN != vpn.OpenVPN || *selection.OpenVPN.PIAEncPreset == "" {
+		return nil
+	}
+	return []string{"encryption preset " + *selection.OpenVPN.PIAEncPreset}
+}
+
+func targetIPParts(selection settings.ServerSelection) []string {
+	targetIP := selection.OpenVPN.EndpointIP
+	if selection.VPN == vpn.Wireguard {
+		targetIP = selection.Wireguard.EndpointIP
+	}
+	if !targetIP.IsValid() || targetIP.IsUnspecified() {
+		return nil
+	}
+	return []string{"target ip address " + targetIP.String()}
 }
