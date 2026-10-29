@@ -102,12 +102,10 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 
 	hts.adaptWithIPs(hostToIPs)
 
-	if len(hts) < minServers {
-		return nil, fmt.Errorf("%w: %d and expected at least %d",
-			common.ErrNotEnoughServers, len(hts), minServers)
+	servers, err = u.withLocations(hts.toServersSlice(), minServers)
+	if err != nil {
+		return nil, fmt.Errorf("setting server locations: %w", err)
 	}
-
-	servers = u.withLocations(hts.toServersSlice())
 
 	sort.Sort(models.SortableServers(servers))
 
@@ -116,16 +114,19 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 
 // withLocations sets the country and region of each server based on the
 // location codes contained in its hostname, keeping the city from the
-// inventory if the hostname does not contain one, and discards any server
-// for which no location could be found.
-func (u *Updater) withLocations(servers []models.Server) (kept []models.Server) {
+// inventory if the hostname does not contain one. It discards any server
+// whose country cannot be found, and returns an error if fewer than
+// minServers servers remain.
+func (u *Updater) withLocations(servers []models.Server, minServers int) (
+	kept []models.Server, err error,
+) {
 	kept = make([]models.Server, 0, len(servers))
 	for _, server := range servers {
 		country, hostCity, warnings := parseHostname(server.Hostname)
 		for _, warning := range warnings {
 			u.logger.Warn(warning)
 		}
-		if country == "" && server.City == "" {
+		if country == "" {
 			continue
 		}
 		server.Country = country
@@ -136,7 +137,13 @@ func (u *Updater) withLocations(servers []models.Server) (kept []models.Server) 
 		server.Region = getRegionFromCountryCity(country, server.City)
 		kept = append(kept, server)
 	}
-	return kept
+
+	if len(kept) < minServers {
+		return nil, fmt.Errorf("%w: %d and expected at least %d",
+			common.ErrNotEnoughServers, len(kept), minServers)
+	}
+
+	return kept, nil
 }
 
 // firstFile returns the content of the first path present in the files,
