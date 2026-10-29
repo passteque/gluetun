@@ -17,7 +17,6 @@ import (
 	"github.com/qdm12/gluetun/internal/constants/providers"
 	"github.com/qdm12/gluetun/internal/openvpn/extract"
 	"github.com/qdm12/gluetun/internal/provider"
-	"github.com/qdm12/gluetun/internal/publicip/api"
 	"github.com/qdm12/gluetun/internal/updater"
 	"github.com/qdm12/gluetun/internal/updater/resolver"
 	"github.com/qdm12/gluetun/internal/updater/unzip"
@@ -45,7 +44,8 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 		"Minimum ratio of servers to find for the update to succeed")
 	flagSet.BoolVar(&updateAll, "all", false, "Update servers for all VPN providers")
 	flagSet.StringVar(&csvProviders, "providers", "", "CSV string of VPN providers to update server data for")
-	flagSet.StringVar(&ipToken, "ip-token", "", "IP data service token (e.g. ipinfo.io) to use")
+	flagSet.StringVar(&ipToken, "ip-token", "",
+		"no longer used, the server updater no longer needs IP geolocation data")
 	flagSet.StringVar(&protonUsername, "proton-username", "",
 		"(Retro-compatibility) Username to use to authenticate with Proton. Use -proton-email instead.") // v4 remove this
 	flagSet.StringVar(&protonEmail, "proton-email", "", "Email to use to authenticate with Proton")
@@ -64,6 +64,8 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 	switch {
 	case dnsServer != "":
 		logger.Warn("The -dns flag is no longer used, your DNS will use DoH with Cloudflare and Google")
+	case ipToken != "":
+		logger.Warn("The -ip-token flag is no longer used, the server updater no longer needs IP geolocation data")
 	case endUserMode:
 		logger.Warn("The -enduser flag is now unused")
 	case maintainerMode:
@@ -122,21 +124,10 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 	httpClient := &http.Client{Timeout: clientTimeout}
 	unzipper := unzip.New(httpClient)
 	parallelResolver := resolver.NewParallelResolver(dnsDialer)
-	nameTokenPairs := []api.NameToken{
-		{Name: string(api.IPInfo), Token: ipToken},
-		{Name: string(api.IP2Location)},
-		{Name: string(api.IfConfigCo)},
-	}
-	fetchers, err := api.New(nameTokenPairs, httpClient)
-	if err != nil {
-		return fmt.Errorf("creating public IP fetchers: %w", err)
-	}
-	ipFetcher := api.NewResilient(fetchers, logger)
-
 	openvpnFileExtractor := extract.New()
 
 	providers := provider.NewProviders(storage, time.Now, logger, httpClient,
-		unzipper, parallelResolver, ipFetcher, openvpnFileExtractor, options)
+		unzipper, parallelResolver, openvpnFileExtractor, options)
 
 	updater := updater.New(httpClient, storage, providers, logger, *options.PreferDirectDownload)
 	err = updater.UpdateServers(ctx, options.Providers, options.MinRatio)

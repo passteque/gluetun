@@ -64,8 +64,6 @@ func GetConnection(provider string,
 	}
 
 	protocol := getProtocol(selection)
-	port := getPort(selection, defaults.OpenVPNTCPPort,
-		defaults.OpenVPNUDPPort, defaults.WireguardPort)
 
 	connections := make([]models.Connection, 0, len(servers))
 	for _, server := range servers {
@@ -75,29 +73,38 @@ func GetConnection(provider string,
 			slices.SortStableFunc(server.IPs, ipv6First(netip.Addr.Is6))
 		}
 
+		ports := getPorts(selection, server, defaults.OpenVPNTCPPort,
+			defaults.OpenVPNUDPPort, defaults.WireguardPort)
+		if len(ports) == 0 {
+			// The server does not support the custom port set.
+			continue
+		}
+
+		hostname := server.Hostname
+		if selection.VPN == vpn.OpenVPN && server.OvpnX509 != "" {
+			// For Windscribe where hostname and
+			// OpenVPN x509 are not the same.
+			hostname = server.OvpnX509
+		}
+
 		for _, ip := range server.IPs {
 			if !ipv6Supported && ip.Is6() {
 				continue
 			}
 
-			hostname := server.Hostname
-			if selection.VPN == vpn.OpenVPN && server.OvpnX509 != "" {
-				// For Windscribe where hostname and
-				// OpenVPN x509 are not the same.
-				hostname = server.OvpnX509
+			for _, port := range ports {
+				connection := models.Connection{
+					Type:        selection.VPN,
+					IP:          ip,
+					Port:        port,
+					Protocol:    protocol,
+					Hostname:    hostname,
+					ServerName:  server.ServerName,
+					PortForward: server.PortForward,
+					PubKey:      server.WgPubKey, // Wireguard
+				}
+				connections = append(connections, connection)
 			}
-
-			connection := models.Connection{
-				Type:        selection.VPN,
-				IP:          ip,
-				Port:        port,
-				Protocol:    protocol,
-				Hostname:    hostname,
-				ServerName:  server.ServerName,
-				PortForward: server.PortForward,
-				PubKey:      server.WgPubKey, // Wireguard
-			}
-			connections = append(connections, connection)
 		}
 	}
 
@@ -105,6 +112,10 @@ func GetConnection(provider string,
 		slices.SortStableFunc(connections, ipv6First(func(c models.Connection) bool {
 			return c.IP.Is6()
 		}))
+	}
+
+	if len(connections) == 0 {
+		return connection, noConnectionError(selection, len(servers))
 	}
 
 	return pickConnection(connections, selection, connPicker)

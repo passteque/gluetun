@@ -3,59 +3,88 @@ package updater
 import (
 	"context"
 	"fmt"
-	"net/netip"
 	"sort"
-	"strings"
+	"time"
 
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
-	"github.com/qdm12/gluetun/internal/publicip/api"
-	"github.com/qdm12/gluetun/internal/updater/openvpn"
 )
 
 func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	servers []models.Server, err error,
 ) {
-	if !u.ipFetcher.CanFetchAnyIP() {
-		return nil, fmt.Errorf("IP fetcher %s does not support fetching any IP", u.ipFetcher.String())
-	}
-
-	const url = "https://d11a57lttb2ffq.cloudfront.net/heartbleed/router/Recommended-CA2.zip"
-	contents, err := u.unzipper.FetchAndExtract(ctx, url)
+	debURL, err := fetchDebURL(ctx, u.client)
 	if err != nil {
-		return nil, err
-	} else if len(contents) < minServers {
-		return nil, fmt.Errorf("%w: %d and expected at least %d",
-			common.ErrNotEnoughServers, len(contents), minServers)
+		return nil, fmt.Errorf("fetching .deb URL: %w", err)
 	}
 
-	hts := make(hostToServer)
-
-	for fileName, content := range contents {
-		if !strings.HasSuffix(fileName, ".ovpn") {
-			continue
-		}
-
-		tcp, udp, err := openvpn.ExtractProto(content)
-		if err != nil {
-			// treat error as warning and go to next file
-			u.warner.Warn(err.Error() + " in " + fileName)
-			continue
-		}
-
-		host, warning, err := openvpn.ExtractHost(content)
-		if warning != "" {
-			u.warner.Warn(warning)
-		}
-
-		if err != nil {
-			// treat error as warning and go to next file
-			u.warner.Warn(err.Error() + " in " + fileName)
-			continue
-		}
-
-		hts.add(host, tcp, udp)
+	debClient := *u.client
+	const downloadTimeout = 5 * time.Minute
+	debClient.Timeout = downloadTimeout
+	debBody, err := fetchURL(ctx, &debClient, debURL, "dhnx3d2u57yhc.cloudfront.net")
+	if err != nil {
+		return nil, fmt.Errorf("fetching PureVPN .deb file: %w", err)
 	}
+	defer debBody.Close()
+
+	// The file layout of the Electron application archive varies between
+	// PureVPN application versions, hence the several candidate paths.
+	const (
+		appEndpointsPath        = "node_modules/atom-sdk/node_modules/utils/lib/constants/end-points.js"
+		inventoryEndpointsPath  = "node_modules/atom-sdk/node_modules/inventory/lib/constants/end-points.js"
+		inventoryOfflinePath    = "node_modules/atom-sdk/node_modules/inventory/lib/offline-data/inventory-data.js"
+		inventoryOfflineSrcPath = "node_modules/atom-sdk/node_modules/inventory/src/offline-data/inventory-data.js"
+	)
+	files, err := extractFilesFromDeb(debBody,
+		appEndpointsPath, inventoryEndpointsPath,
+		inventoryOfflinePath, inventoryOfflineSrcPath, localDataAsarPath)
+	if err != nil {
+		return nil, fmt.Errorf("extracting files from PureVPN .deb file: %w", err)
+	}
+
+	endpointsContent, endpointsPath, err := firstFile(files,
+		appEndpointsPath, inventoryEndpointsPath)
+	if err != nil {
+		return nil, fmt.Errorf("extracting inventory endpoints: %w", err)
+	}
+
+	inventoryURLTemplate, err := parseInventoryURLTemplate(endpointsContent)
+	if err != nil {
+		return nil, fmt.Errorf("parsing inventory URL template from %q: %w", endpointsPath, err)
+	}
+
+	offlineContent, offlinePath, err := firstFile(files,
+		inventoryOfflinePath, inventoryOfflineSrcPath)
+	if err != nil {
+		return nil, fmt.Errorf("extracting inventory offline data: %w", err)
+	}
+
+	resellerUID, err := parseResellerUIDFromInventoryOffline(offlineContent)
+	if err != nil {
+		return nil, fmt.Errorf("parsing reseller UID from %q: %w", offlinePath, err)
+	}
+
+	inventoryURL, err := buildInventoryURL(inventoryURLTemplate, resellerUID)
+	if err != nil {
+		return nil, fmt.Errorf("building inventory URL: %w", err)
+	}
+
+	inventoryBody, err := fetchURL(ctx, u.client, inventoryURL, "bpc-prod-a230.s3.serverwild.com")
+	if err != nil {
+		return nil, fmt.Errorf("fetching inventory JSON: %w", err)
+	}
+	defer inventoryBody.Close()
+
+	hts, err := parseInventoryJSON(inventoryBody)
+	if err != nil {
+		return nil, fmt.Errorf("parsing inventory JSON from %q: %w", inventoryURL, err)
+	}
+
+	localHTS, err := parseLocalDataFromFiles(files)
+	if err != nil {
+		return nil, fmt.Errorf("parsing app-bundled local data: %w", err)
+	}
+	hts.mergeWithFallback(localHTS)
 
 	if len(hts) < minServers {
 		return nil, fmt.Errorf("%w: %d and expected at least %d",
@@ -66,54 +95,66 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	resolveSettings := parallelResolverSettings(hosts)
 	hostToIPs, warnings, err := u.parallelResolver.Resolve(ctx, resolveSettings)
 	for _, warning := range warnings {
-		u.warner.Warn(warning)
+		u.logger.Warn(warning)
 	}
 	if err != nil {
 		return nil, err
-	}
-
-	if len(hostToIPs) < minServers {
-		return nil, fmt.Errorf("%w: %d and expected at least %d",
-			common.ErrNotEnoughServers, len(servers), minServers)
 	}
 
 	hts.adaptWithIPs(hostToIPs)
 
-	servers = hts.toServersSlice()
-
-	// Get public IP address information
-	ipsToGetInfo := make([]netip.Addr, len(servers))
-	for i := range servers {
-		ipsToGetInfo[i] = servers[i].IPs[0]
-	}
-	ipsInfo, err := api.FetchMultiInfo(ctx, u.ipFetcher, ipsToGetInfo)
+	servers, err = u.withLocations(hts.toServersSlice(), minServers)
 	if err != nil {
-		return nil, err
-	}
-
-	for i := range servers {
-		parsedCountry, parsedCity, warnings := parseHostname(servers[i].Hostname)
-		for _, warning := range warnings {
-			u.warner.Warn(warning)
-		}
-		servers[i].Country = parsedCountry
-		if servers[i].Country == "" {
-			servers[i].Country = ipsInfo[i].Country
-		}
-		servers[i].City = parsedCity
-		if servers[i].City == "" {
-			servers[i].City = ipsInfo[i].City
-		}
-
-		if (parsedCountry == "" ||
-			comparePlaceNames(parsedCountry, ipsInfo[i].Country)) &&
-			(parsedCity == "" ||
-				comparePlaceNames(parsedCity, ipsInfo[i].City)) {
-			servers[i].Region = ipsInfo[i].Region
-		}
+		return nil, fmt.Errorf("setting server locations: %w", err)
 	}
 
 	sort.Sort(models.SortableServers(servers))
 
 	return servers, nil
+}
+
+// withLocations sets the country and region of each server based on the
+// location codes contained in its hostname, keeping the city from the
+// inventory if the hostname does not contain one. It discards any server
+// whose country cannot be found, and returns an error if fewer than
+// minServers servers remain.
+func (u *Updater) withLocations(servers []models.Server, minServers int) (
+	kept []models.Server, err error,
+) {
+	kept = make([]models.Server, 0, len(servers))
+	for _, server := range servers {
+		country, hostCity, warnings := parseHostname(server.Hostname)
+		for _, warning := range warnings {
+			u.logger.Warn(warning)
+		}
+		if country == "" {
+			continue
+		}
+		server.Country = country
+		if server.City == "" {
+			server.City = hostCity
+		}
+		// TODO v4: retro-compatibility, remove this
+		server.Region = getRegionFromCountryCity(country, server.City)
+		kept = append(kept, server)
+	}
+
+	if len(kept) < minServers {
+		return nil, fmt.Errorf("%w: %d and expected at least %d",
+			common.ErrNotEnoughServers, len(kept), minServers)
+	}
+
+	return kept, nil
+}
+
+// firstFile returns the content of the first path present in the files,
+// along with the path used.
+func firstFile(files map[string][]byte, paths ...string) (content []byte, usedPath string, err error) {
+	for _, path := range paths {
+		content, ok := files[path]
+		if ok {
+			return content, path, nil
+		}
+	}
+	return nil, "", fmt.Errorf("file not found in the application archive: none of %q", paths)
 }
