@@ -278,7 +278,7 @@ func validateFeatureFilters(settings ServerSelection, vpnServiceProvider string)
 	case *settings.MultiHopOnly && vpnServiceProvider != providers.Surfshark:
 		return errors.New("multi hop only filter is not supported")
 	case *settings.PortForwardOnly &&
-		!helpers.IsOneOf(vpnServiceProvider, providers.PrivateInternetAccess, providers.Protonvpn):
+		!helpers.IsOneOf(vpnServiceProvider, providers.PrivateInternetAccess, providers.Protonvpn, providers.Purevpn):
 		return errors.New("port forwarding only filter is not supported")
 	case *settings.SecureCoreOnly && vpnServiceProvider != providers.Protonvpn:
 		return errors.New("secure core only filter is not supported")
