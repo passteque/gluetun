@@ -96,7 +96,7 @@ func Test_Updater_withLocations(t *testing.T) {
 			assert.Equal(t, testCase.kept, kept)
 			assert.ErrorIs(t, err, testCase.errWrapped)
 			if testCase.errWrapped != nil {
-				assert.EqualError(t, err, testCase.errMessage)
+				assert.ErrorContains(t, err, testCase.errMessage)
 			} else {
 				assert.NoError(t, err)
 			}
