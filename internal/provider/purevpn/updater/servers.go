@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
@@ -20,7 +21,10 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 		return nil, fmt.Errorf("fetching .deb URL: %w", err)
 	}
 
-	debBody, err := fetchURL(ctx, u.client, debURL, "dhnx3d2u57yhc.cloudfront.net")
+	debClient := *u.client
+	const downloadTimeout = 5 * time.Minute
+	debClient.Timeout = downloadTimeout
+	debBody, err := fetchURL(ctx, &debClient, debURL, "dhnx3d2u57yhc.cloudfront.net")
 	if err != nil {
 		return nil, fmt.Errorf("fetching PureVPN .deb file: %w", err)
 	}
