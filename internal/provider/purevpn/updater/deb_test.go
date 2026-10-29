@@ -107,6 +107,79 @@ func Test_extractFilesFromDeb(t *testing.T) {
 	}
 }
 
+func Test_extractFilesFromASAR(t *testing.T) {
+	t.Parallel()
+
+	const path = "node_modules/atom-sdk/lib/offline-data/local-data.js"
+	fileContent := []byte(`module.exports={body:{reseller_id:1}}`)
+	validASAR := newASARArchive(t, map[string][]byte{path: fileContent})
+	beyondHeader := []byte(`{"files":{"file.js":{"offset":"1000000000","size":10}}}`)
+	beyondPayload := []byte("0123456789")
+	//nolint:gosec // the JSON header of a test archive cannot exceed 4 GiB
+	beyondASAR := newRawASARArchive(uint32(len(beyondHeader)), beyondHeader, beyondPayload)
+
+	testCases := map[string]struct {
+		asarContent []byte
+		asarSize    int64
+		paths       []string
+		files       map[string][]byte
+		errMessage  string
+		unreadBytes int
+	}{
+		"valid_archive": {
+			asarContent: validASAR,
+			asarSize:    int64(len(validASAR)),
+			paths:       []string{path},
+			files:       map[string][]byte{path: fileContent},
+		},
+		"archive_size_exceeding_maximum": {
+			asarContent: validASAR,
+			asarSize:    1024*1024*1024 + 1,
+			paths:       []string{path},
+			errMessage:  "asar archive size 1073741825 exceeds maximum of 1073741824",
+			unreadBytes: len(validASAR),
+		},
+		"header_length_exceeding_maximum": {
+			asarContent: newRawASARArchive(32*1024*1024+1, nil, nil),
+			asarSize:    64 * 1024 * 1024,
+			paths:       []string{path},
+			errMessage:  "asar header length 33554433 exceeds maximum of 33554432",
+		},
+		"header_length_exceeding_archive_size": {
+			asarContent: newRawASARArchive(1000, []byte(`{}`), nil),
+			asarSize:    18,
+			paths:       []string{path},
+			errMessage:  "asar header length 1000 exceeds archive size 18",
+			unreadBytes: 2,
+		},
+		"file_ending_beyond_archive_data": {
+			asarContent: beyondASAR,
+			asarSize:    int64(len(beyondASAR)),
+			paths:       []string{"file.js"},
+			errMessage:  `asar file "file.js" ends at offset 1000000010 beyond the archive data size 10`,
+			unreadBytes: len(beyondPayload),
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			reader := bytes.NewReader(testCase.asarContent)
+
+			files, err := extractFilesFromASAR(reader, testCase.asarSize, testCase.paths...)
+
+			if testCase.errMessage != "" {
+				assert.ErrorContains(t, err, testCase.errMessage)
+				assert.Equal(t, testCase.unreadBytes, reader.Len())
+				return
+			}
+			require.NoError(t, err)
+			assert.Equal(t, testCase.files, files)
+		})
+	}
+}
+
 type arTestMember struct {
 	name    string
 	content []byte
@@ -243,10 +316,16 @@ func newASARArchive(t *testing.T, files map[string][]byte) (content []byte) {
 	headerContent, err := json.Marshal(root)
 	require.NoError(t, err)
 
+	//nolint:gosec // the JSON header of a test archive cannot exceed 4 GiB
+	return newRawASARArchive(uint32(len(headerContent)), headerContent, payload)
+}
+
+// newRawASARArchive returns an asar archive made of the 16 bytes prefix
+// declaring the given JSON header length, the JSON header and the payload.
+func newRawASARArchive(headerLength uint32, headerContent, payload []byte) (content []byte) {
 	buffer := bytes.NewBuffer(nil)
 	prefix := make([]byte, 16)
-	//nolint:gosec // the JSON header of a test archive cannot exceed 4 GiB
-	binary.LittleEndian.PutUint32(prefix[12:16], uint32(len(headerContent)))
+	binary.LittleEndian.PutUint32(prefix[12:16], headerLength)
 	buffer.Write(prefix)
 	buffer.Write(headerContent)
 	buffer.Write(payload)

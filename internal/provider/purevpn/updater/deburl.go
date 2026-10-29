@@ -42,13 +42,38 @@ func fetchDebURL(ctx context.Context, client *http.Client) (debURL string, err e
 
 // fetchURL performs a GET request and returns the response body,
 // which the caller is responsible for closing.
-func fetchURL(ctx context.Context, client *http.Client, rawURL string) (body io.ReadCloser, err error) {
+// The URL and any redirect URL must be https and have a host equal to
+// or a subdomain of one of the allowed hosts.
+func fetchURL(ctx context.Context, client *http.Client, rawURL string,
+	allowedHosts ...string,
+) (body io.ReadCloser, err error) {
+	err = checkURL(rawURL, allowedHosts)
+	if err != nil {
+		return nil, fmt.Errorf("checking URL: %w", err)
+	}
+
+	restrictedClient := *client
+	restrictedClient.CheckRedirect = func(request *http.Request, via []*http.Request) error {
+		err := checkURL(request.URL.String(), allowedHosts)
+		if err != nil {
+			return fmt.Errorf("checking redirect URL: %w", err)
+		}
+		const maxRedirects = 10
+		switch {
+		case len(via) >= maxRedirects:
+			return fmt.Errorf("stopped after %d redirects", maxRedirects)
+		case client.CheckRedirect != nil:
+			return client.CheckRedirect(request, via)
+		}
+		return nil
+	}
+
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("creating request: %w", err)
 	}
 
-	response, err := client.Do(request)
+	response, err := restrictedClient.Do(request)
 	if err != nil {
 		return nil, fmt.Errorf("performing request: %w", err)
 	}
@@ -59,6 +84,28 @@ func fetchURL(ctx context.Context, client *http.Client, rawURL string) (body io.
 	}
 
 	return response.Body, nil
+}
+
+var errURLNotAllowed = errors.New("URL not allowed")
+
+func checkURL(rawURL string, allowedHosts []string) error {
+	parsedURL, err := url.Parse(rawURL)
+	if err != nil {
+		return fmt.Errorf("parsing URL: %w", err)
+	}
+
+	if parsedURL.Scheme != "https" {
+		return fmt.Errorf("%w: scheme %q is not https", errURLNotAllowed, parsedURL.Scheme)
+	}
+
+	host := strings.ToLower(parsedURL.Hostname())
+	for _, allowedHost := range allowedHosts {
+		if host == allowedHost || strings.HasSuffix(host, "."+allowedHost) {
+			return nil
+		}
+	}
+	return fmt.Errorf("%w: host %q is not one of or a subdomain of %q",
+		errURLNotAllowed, host, allowedHosts)
 }
 
 var (
