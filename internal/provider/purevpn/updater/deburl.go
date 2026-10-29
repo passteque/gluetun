@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"strings"
 )
 
@@ -42,8 +43,8 @@ func fetchDebURL(ctx context.Context, client *http.Client) (debURL string, err e
 
 // fetchURL performs a GET request and returns the response body,
 // which the caller is responsible for closing.
-// The URL and any redirect URL must be https and have a host equal to
-// or a subdomain of one of the allowed hosts.
+// The URL and any redirect URL must be https and have a host that is
+// one of the allowed hosts, purevpn.com or a subdomain of purevpn.com.
 func fetchURL(ctx context.Context, client *http.Client, rawURL string,
 	allowedHosts ...string,
 ) (body io.ReadCloser, err error) {
@@ -86,8 +87,6 @@ func fetchURL(ctx context.Context, client *http.Client, rawURL string,
 	return response.Body, nil
 }
 
-var errURLNotAllowed = errors.New("URL not allowed")
-
 func checkURL(rawURL string, allowedHosts []string) error {
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
@@ -95,17 +94,17 @@ func checkURL(rawURL string, allowedHosts []string) error {
 	}
 
 	if parsedURL.Scheme != "https" {
-		return fmt.Errorf("%w: scheme %q is not https", errURLNotAllowed, parsedURL.Scheme)
+		return fmt.Errorf("URL scheme %q is not https", parsedURL.Scheme)
 	}
 
 	host := strings.ToLower(parsedURL.Hostname())
-	for _, allowedHost := range allowedHosts {
-		if host == allowedHost || strings.HasSuffix(host, "."+allowedHost) {
-			return nil
-		}
+	switch {
+	case host == "purevpn.com",
+		strings.HasSuffix(host, ".purevpn.com"),
+		slices.Contains(allowedHosts, host):
+		return nil
 	}
-	return fmt.Errorf("%w: host %q is not one of or a subdomain of %q",
-		errURLNotAllowed, host, allowedHosts)
+	return fmt.Errorf("URL host %q is not allowed", host)
 }
 
 var (

@@ -55,7 +55,6 @@ func Test_fetchURL(t *testing.T) {
 	testCases := map[string]struct {
 		rawURL     string
 		content    string
-		errWrapped error
 		errMessage string
 	}{
 		"allowed_url": {
@@ -64,18 +63,15 @@ func Test_fetchURL(t *testing.T) {
 		},
 		"http_url": {
 			rawURL:     strings.Replace(server.URL, "https://", "http://", 1) + "/file.deb",
-			errWrapped: errURLNotAllowed,
-			errMessage: `checking URL: URL not allowed: scheme "http" is not https`,
+			errMessage: `checking URL: URL scheme "http" is not https`,
 		},
 		"redirect_to_http": {
 			rawURL:     server.URL + "/redirect_http",
-			errWrapped: errURLNotAllowed,
-			errMessage: `checking redirect URL: URL not allowed: scheme "http" is not https`,
+			errMessage: `checking redirect URL: URL scheme "http" is not https`,
 		},
 		"redirect_to_disallowed_host": {
 			rawURL:     server.URL + "/redirect_internal",
-			errWrapped: errURLNotAllowed,
-			errMessage: `checking redirect URL: URL not allowed: host "169.254.169.254"`,
+			errMessage: `checking redirect URL: URL host "169.254.169.254" is not allowed`,
 		},
 	}
 
@@ -85,8 +81,7 @@ func Test_fetchURL(t *testing.T) {
 
 			body, err := fetchURL(t.Context(), server.Client(), testCase.rawURL, "127.0.0.1")
 
-			if testCase.errWrapped != nil {
-				assert.ErrorIs(t, err, testCase.errWrapped)
+			if testCase.errMessage != "" {
 				assert.ErrorContains(t, err, testCase.errMessage)
 				return
 			}
@@ -102,46 +97,51 @@ func Test_fetchURL(t *testing.T) {
 func Test_checkURL(t *testing.T) {
 	t.Parallel()
 
-	allowedHosts := []string{"cloudfront.net", "purevpn.com"}
+	allowedHosts := []string{"dhnx3d2u57yhc.cloudfront.net"}
 
 	testCases := map[string]struct {
 		rawURL     string
-		errWrapped error
 		errMessage string
 	}{
-		"cloudfront_subdomain": {
+		"allowed_host": {
 			rawURL: "https://dhnx3d2u57yhc.cloudfront.net/cross-platform/linux-gui/2.9.0/PureVPN_amd64.deb",
 		},
-		"exact_host": {
+		"purevpn_domain": {
 			rawURL: "https://purevpn.com/file.deb",
+		},
+		"purevpn_subdomain": {
+			rawURL: "https://download.purevpn.com/file.deb",
 		},
 		"uppercase_host": {
 			rawURL: "https://WWW.PureVPN.com/file.deb",
 		},
 		"http_scheme": {
 			rawURL:     "http://dhnx3d2u57yhc.cloudfront.net/file.deb",
-			errWrapped: errURLNotAllowed,
-			errMessage: `scheme "http" is not https`,
+			errMessage: `URL scheme "http" is not https`,
+		},
+		"other_cloudfront_subdomain": {
+			rawURL:     "https://d1234567890abc.cloudfront.net/file.deb",
+			errMessage: `URL host "d1234567890abc.cloudfront.net" is not allowed`,
+		},
+		"allowed_host_subdomain": {
+			rawURL:     "https://evil.dhnx3d2u57yhc.cloudfront.net/file.deb",
+			errMessage: `URL host "evil.dhnx3d2u57yhc.cloudfront.net" is not allowed`,
 		},
 		"internal_ip_address": {
 			rawURL:     "https://169.254.169.254/file.deb",
-			errWrapped: errURLNotAllowed,
-			errMessage: `host "169.254.169.254" is not one of or a subdomain of`,
+			errMessage: `URL host "169.254.169.254" is not allowed`,
 		},
 		"localhost": {
 			rawURL:     "https://localhost:8000/file.deb",
-			errWrapped: errURLNotAllowed,
-			errMessage: `host "localhost" is not one of or a subdomain of`,
+			errMessage: `URL host "localhost" is not allowed`,
 		},
-		"allowed_host_as_subdomain_prefix": {
-			rawURL:     "https://cloudfront.net.example.com/file.deb",
-			errWrapped: errURLNotAllowed,
-			errMessage: `host "cloudfront.net.example.com" is not one of or a subdomain of`,
+		"purevpn_domain_as_subdomain_prefix": {
+			rawURL:     "https://purevpn.com.example.com/file.deb",
+			errMessage: `URL host "purevpn.com.example.com" is not allowed`,
 		},
-		"allowed_host_as_name_suffix": {
+		"purevpn_domain_as_name_suffix": {
 			rawURL:     "https://evilpurevpn.com/file.deb",
-			errWrapped: errURLNotAllowed,
-			errMessage: `host "evilpurevpn.com" is not one of or a subdomain of`,
+			errMessage: `URL host "evilpurevpn.com" is not allowed`,
 		},
 		"malformed_url": {
 			rawURL:     "https://%zz/file.deb",
@@ -155,15 +155,11 @@ func Test_checkURL(t *testing.T) {
 
 			err := checkURL(testCase.rawURL, allowedHosts)
 
-			switch {
-			case testCase.errWrapped != nil:
-				assert.ErrorIs(t, err, testCase.errWrapped)
+			if testCase.errMessage != "" {
 				assert.ErrorContains(t, err, testCase.errMessage)
-			case testCase.errMessage != "":
-				assert.ErrorContains(t, err, testCase.errMessage)
-			default:
-				assert.NoError(t, err)
+				return
 			}
+			assert.NoError(t, err)
 		})
 	}
 }

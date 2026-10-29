@@ -20,7 +20,7 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 		return nil, fmt.Errorf("fetching .deb URL: %w", err)
 	}
 
-	debBody, err := fetchURL(ctx, u.client, debURL, "cloudfront.net", "purevpn.com")
+	debBody, err := fetchURL(ctx, u.client, debURL, "dhnx3d2u57yhc.cloudfront.net")
 	if err != nil {
 		return nil, fmt.Errorf("fetching PureVPN .deb file: %w", err)
 	}
@@ -68,7 +68,7 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 		return nil, fmt.Errorf("building inventory URL: %w", err)
 	}
 
-	inventoryBody, err := fetchURL(ctx, u.client, inventoryURL, "s3.serverwild.com", "purevpn.com")
+	inventoryBody, err := fetchURL(ctx, u.client, inventoryURL, "bpc-prod-a230.s3.serverwild.com")
 	if err != nil {
 		return nil, fmt.Errorf("fetching inventory JSON: %w", err)
 	}
