@@ -1,8 +1,10 @@
 package dns
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -11,6 +13,8 @@ import (
 	"sort"
 	"strings"
 )
+
+var ErrNoResolverDetected = errors.New("no DNS resolver detected")
 
 func leakCheck(ctx context.Context, client *http.Client) (report string, err error) {
 	const sessionLength = 40
@@ -49,6 +53,9 @@ func leakCheck(ctx context.Context, client *http.Client) (report string, err err
 
 	if err != nil {
 		return "", err
+	} else if len(dnsToCount) == 0 {
+		// ipleak.net does not see every resolver, Google Public DNS for example.
+		return "", ErrNoResolverDetected
 	}
 
 	return formatPercentages(dnsToCount), nil
@@ -90,11 +97,6 @@ func triggerDNSQuery(ctx context.Context, client *http.Client, session string) (
 			response.StatusCode, response.Status, string(data))
 	}
 
-	type ipLeakData struct {
-		Session string          `json:"session"`
-		IP      map[string]uint `json:"ip"`
-	}
-
 	var parsed ipLeakData
 	err = json.Unmarshal(data, &parsed)
 	if err != nil {
@@ -104,6 +106,32 @@ func triggerDNSQuery(ctx context.Context, client *http.Client, session string) (
 	}
 
 	return parsed.IP, nil
+}
+
+type ipLeakData struct {
+	Session string      `json:"session"`
+	IP      dnsCounters `json:"ip"`
+}
+
+// dnsCounters maps each DNS resolver IP address detected to the number
+// of times it was detected.
+type dnsCounters map[string]uint
+
+// UnmarshalJSON accepts an empty JSON array `[]` as an empty map, since
+// ipleak.net encodes the "ip" field as `[]` instead of `{}` when no DNS
+// resolver was detected for the session (yet).
+func (d *dnsCounters) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("[]")) {
+		*d = dnsCounters{}
+		return nil
+	}
+	var m map[string]uint
+	err := json.Unmarshal(data, &m)
+	if err != nil {
+		return err
+	}
+	*d = m
+	return nil
 }
 
 func formatPercentages(data map[string]uint) string {
