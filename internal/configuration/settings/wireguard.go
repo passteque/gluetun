@@ -62,16 +62,19 @@ var regexpInterfaceName = regexp.MustCompile(`^[a-zA-Z0-9_]+$`)
 func (w Wireguard) validate(vpnProvider string, ipv6Supported, amneziawg bool) (err error) {
 	// Validate PrivateKey
 	if *w.PrivateKey == "" {
-		return errors.New("private key is not set")
-	}
-	_, err = wgtypes.ParseKey(*w.PrivateKey)
-	if err != nil {
-		err = fmt.Errorf("private key is not valid: %w", err)
-		if vpnProvider == providers.Nordvpn &&
-			err.Error() == "wgtypes: incorrect key size: 48" {
-			err = fmt.Errorf("%w - you might be using your access token instead of the Wireguard private key", err)
+		if vpnProvider != providers.PrivateInternetAccess {
+			return errors.New("private key is not set")
 		}
-		return err
+	} else if vpnProvider != providers.PrivateInternetAccess {
+		_, err = wgtypes.ParseKey(*w.PrivateKey)
+		if err != nil {
+			err = fmt.Errorf("private key is not valid: %w", err)
+			if vpnProvider == providers.Nordvpn &&
+				err.Error() == "wgtypes: incorrect key size: 48" {
+				err = fmt.Errorf("%w - you might be using your access token instead of the Wireguard private key", err)
+			}
+			return err
+		}
 	}
 
 	if vpnProvider == providers.Airvpn {
@@ -90,7 +93,9 @@ func (w Wireguard) validate(vpnProvider string, ipv6Supported, amneziawg bool) (
 
 	// Validate Addresses
 	if len(w.Addresses) == 0 {
-		return errors.New("interface address is not set")
+		if vpnProvider != providers.PrivateInternetAccess {
+			return errors.New("interface address is not set")
+		}
 	}
 
 	hasIPv4 := false
