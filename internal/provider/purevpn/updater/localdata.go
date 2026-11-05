@@ -1,6 +1,7 @@
 package updater
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"regexp"
@@ -80,10 +81,10 @@ func parseLocalData(data []byte) (hostToServer, error) {
 	}
 
 	if blocksFound == 0 {
-		return nil, fmt.Errorf("no TCP/UDP protocol blocks found in local-data payload")
+		return nil, errors.New("no TCP/UDP protocol blocks found in local-data payload")
 	}
 	if len(hts) == 0 {
-		return nil, fmt.Errorf("no OpenVPN TCP/UDP DNS hosts found in local-data payload")
+		return nil, errors.New("no OpenVPN TCP/UDP DNS hosts found in local-data payload")
 	}
 
 	return hts, nil
