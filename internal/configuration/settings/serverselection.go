@@ -277,8 +277,13 @@ func validateFeatureFilters(settings ServerSelection, vpnServiceProvider string)
 		return errors.New("stream only filter is not supported")
 	case *settings.MultiHopOnly && vpnServiceProvider != providers.Surfshark:
 		return errors.New("multi hop only filter is not supported")
+	// PureVPN servers advertise port forwarding, but gluetun does not negotiate
+	// the forwarded port with them: it has to be enabled outside of gluetun,
+	// for example on the PureVPN website. The filter only keeps servers which
+	// support port forwarding.
 	case *settings.PortForwardOnly &&
-		!helpers.IsOneOf(vpnServiceProvider, providers.PrivateInternetAccess, providers.Protonvpn, providers.Purevpn):
+		!helpers.IsOneOf(vpnServiceProvider,
+			providers.PrivateInternetAccess, providers.Protonvpn, providers.Purevpn):
 		return errors.New("port forwarding only filter is not supported")
 	case *settings.SecureCoreOnly && vpnServiceProvider != providers.Protonvpn:
 		return errors.New("secure core only filter is not supported")
