@@ -8,17 +8,15 @@ import (
 
 type Updater struct {
 	client           *http.Client
-	unzipper         common.Unzipper
 	parallelResolver common.ParallelResolver
 	logger           common.Warner
 }
 
-func New(client *http.Client, unzipper common.Unzipper,
+func New(client *http.Client,
 	warner common.Warner, parallelResolver common.ParallelResolver,
 ) *Updater {
 	return &Updater{
 		client:           client,
-		unzipper:         unzipper,
 		parallelResolver: parallelResolver,
 		logger:           warner,
 	}

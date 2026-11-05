@@ -199,7 +199,7 @@ func Test_FetchServers_downloadTimeout(t *testing.T) {
 				return transport.RoundTrip(request)
 			})
 			client.Timeout = clientTimeout
-			updater := New(client, nil, nil, nil)
+			updater := New(client, nil, nil)
 
 			_, err := updater.FetchServers(ctx, 1)
 
