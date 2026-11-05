@@ -67,8 +67,7 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 	// Validate CustomPort
 	if *o.CustomPort != 0 {
 		switch vpnProvider {
-		// no restriction on port, the ports are only restricted by
-		// the ones supported by the servers data
+		// no restriction on port
 		case providers.Custom, providers.Cyberghost, providers.HideMyAss,
 			providers.Privatevpn, providers.Purevpn, providers.Torguard:
 		// no custom port allowed
