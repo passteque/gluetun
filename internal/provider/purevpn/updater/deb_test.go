@@ -267,6 +267,16 @@ func xzBytes(t *testing.T, content []byte) []byte {
 	return buffer.Bytes()
 }
 
+func Test_extractFilesFromDeb_unsupportedTARSuffix(t *testing.T) {
+	t.Parallel()
+
+	debContent := newDebArchiveContent(t, dataTARPrefix+".bz2/", []byte("content"))
+
+	_, err := extractFilesFromDeb(bytes.NewReader(debContent), "app.asar")
+
+	assert.ErrorContains(t, err, `unsupported data.tar compression suffix ".bz2"`)
+}
+
 // newDebArchive returns a .deb (ar) archive containing the app.asar content
 // in a data.tar archive compressed with the given suffix (`.gz`, `.xz` or none).
 func newDebArchive(t *testing.T, asarContent []byte, suffix string) []byte {

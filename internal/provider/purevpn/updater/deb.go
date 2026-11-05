@@ -160,6 +160,10 @@ func withDecompressedTAR(fileName string, content io.Reader, fn func(tarContent 
 		defer decoder.Close()
 		return fn(decoder)
 	default:
+		if suffix != "" {
+			return fmt.Errorf("unsupported data.tar compression suffix %q", suffix)
+		}
+		// Uncompressed tar archive.
 		return fn(content)
 	}
 }
