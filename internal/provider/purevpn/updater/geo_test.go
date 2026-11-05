@@ -44,6 +44,11 @@ func Test_parseHostname(t *testing.T) {
 			country:  "Canada",
 			city:     "Toronto",
 		},
+		"virtual_region_prefix_stripped": {
+			hostname: "vleu-be2-ovpn-tcp.pointtoserver.com",
+			country:  "Belgium",
+			city:     "",
+		},
 	}
 
 	for name, testCase := range testCases {
