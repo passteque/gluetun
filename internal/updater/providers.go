@@ -51,6 +51,13 @@ func (u *Updater) updateProvider(ctx context.Context, provider Provider,
 		}
 	}
 
+	// An empty list of servers would replace the stored ones with nothing.
+	// This can happen when the minimum servers count is 0, because of the
+	// -minratio flag or because a single server is stored.
+	if len(servers) == 0 {
+		return fmt.Errorf("no server found for provider %s", providerName)
+	}
+
 	for _, server := range servers {
 		err := server.HasMinimumInformation()
 		if err != nil {
