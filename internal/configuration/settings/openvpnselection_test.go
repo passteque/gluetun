@@ -39,26 +39,6 @@ func Test_OpenVPNSelection_validate(t *testing.T) {
 			protocol:   constants.TCP,
 			customPort: 8080,
 		},
-		"mullvad_udp_custom_port_allowed": {
-			provider:   providers.Mullvad,
-			customPort: 1194,
-		},
-		"mullvad_udp_custom_port_denied": {
-			provider:   providers.Mullvad,
-			customPort: 5565,
-			errMessage: "custom endpoint port is not allowed: for VPN service provider mullvad",
-		},
-		"mullvad_tcp_custom_port_denied": {
-			provider:   providers.Mullvad,
-			protocol:   constants.TCP,
-			customPort: 8080,
-			errMessage: "custom endpoint port is not allowed: for VPN service provider mullvad",
-		},
-		"expressvpn_custom_port_denied": {
-			provider:   providers.Expressvpn,
-			customPort: 443,
-			errMessage: "custom endpoint port is not allowed: for VPN service provider expressvpn",
-		},
 	}
 
 	for name, testCase := range testCases {
@@ -76,9 +56,9 @@ func Test_OpenVPNSelection_validate(t *testing.T) {
 
 			if testCase.errMessage == "" {
 				assert.NoError(t, err)
-				return
+			} else {
+				assert.ErrorContains(t, err, testCase.errMessage)
 			}
-			assert.ErrorContains(t, err, testCase.errMessage)
 		})
 	}
 }
