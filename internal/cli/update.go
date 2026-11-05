@@ -45,7 +45,7 @@ func (c *CLI) Update(ctx context.Context, args []string, logger UpdaterLogger) e
 	flagSet.BoolVar(&updateAll, "all", false, "Update servers for all VPN providers")
 	flagSet.StringVar(&csvProviders, "providers", "", "CSV string of VPN providers to update server data for")
 	flagSet.StringVar(&ipToken, "ip-token", "",
-		"no longer used, the server updater no longer needs IP geolocation data")
+		"no longer used, the server updater no longer needs IP geolocation data") // TODO v4: remove
 	flagSet.StringVar(&protonUsername, "proton-username", "",
 		"(Retro-compatibility) Username to use to authenticate with Proton. Use -proton-email instead.") // v4 remove this
 	flagSet.StringVar(&protonEmail, "proton-email", "", "Email to use to authenticate with Proton")
