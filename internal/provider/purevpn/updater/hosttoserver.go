@@ -76,16 +76,23 @@ func (hts hostToServer) toHostsSlice() (hosts []string) {
 	return hosts
 }
 
+// adaptWithIPs replaces the IP addresses of each host with the ones found in
+// DNS, and discards any host which does not resolve, for example the hostname
+// of a decommissioned server (NXDOMAIN). Hosts which fail to resolve are not
+// present in hostToIPs, so a server is kept only when its hostname resolves:
+// the IP addresses carried by the source data (for example the data center IP
+// addresses of the inventory) are never used as a fallback, otherwise a stale
+// hostname would end up in the user storage pointing at a data center which no
+// longer serves it.
 func (hts hostToServer) adaptWithIPs(hostToIPs map[string][]netip.Addr) {
-	for host, IPs := range hostToIPs {
-		server := hts[host]
-		server.IPs = IPs
-		hts[host] = server
-	}
 	for host, server := range hts {
-		if len(server.IPs) == 0 {
+		resolvedIPs, ok := hostToIPs[host]
+		if !ok || len(resolvedIPs) == 0 {
 			delete(hts, host)
+			continue
 		}
+		server.IPs = resolvedIPs
+		hts[host] = server
 	}
 }
 
