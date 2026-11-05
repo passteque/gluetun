@@ -12,17 +12,6 @@ import (
 
 func uint16Ptr(n uint16) *uint16 { return &n }
 
-func openvpnSelection(protocol string, customPort uint16) settings.ServerSelection {
-	selection := settings.ServerSelection{
-		VPN: vpn.OpenVPN,
-		OpenVPN: settings.OpenVPNSelection{
-			CustomPort: uint16Ptr(customPort),
-			Protocol:   protocol,
-		},
-	}
-	return selection
-}
-
 func Test_getPorts(t *testing.T) {
 	t.Parallel()
 
@@ -49,29 +38,72 @@ func Test_getPorts(t *testing.T) {
 			ports:             []uint16{defaultOpenVPNUDP},
 		},
 		"OpenVPN UDP": {
-			selection:         openvpnSelection(constants.UDP, 0),
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					CustomPort: uint16Ptr(0),
+					Protocol:   constants.UDP,
+				},
+			},
+			defaultOpenVPNTCP: defaultOpenVPNTCP,
 			defaultOpenVPNUDP: defaultOpenVPNUDP,
+			defaultWireguard:  defaultWireguard,
 			ports:             []uint16{defaultOpenVPNUDP},
 		},
 		"OpenVPN UDP no default port defined": {
-			selection: openvpnSelection(constants.UDP, 0),
-			panics:    "no default OpenVPN UDP port is defined!",
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					CustomPort: uint16Ptr(0),
+					Protocol:   constants.UDP,
+				},
+			},
+			panics: "no default OpenVPN UDP port is defined!",
 		},
 		"OpenVPN TCP": {
-			selection:         openvpnSelection(constants.TCP, 0),
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					CustomPort: uint16Ptr(0),
+					Protocol:   constants.TCP,
+				},
+			},
 			defaultOpenVPNTCP: defaultOpenVPNTCP,
+			defaultOpenVPNUDP: defaultOpenVPNUDP,
+			defaultWireguard:  defaultWireguard,
 			ports:             []uint16{defaultOpenVPNTCP},
 		},
 		"OpenVPN TCP no default port defined": {
-			selection: openvpnSelection(constants.TCP, 0),
-			panics:    "no default OpenVPN TCP port is defined!",
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					CustomPort: uint16Ptr(0),
+					Protocol:   constants.TCP,
+				},
+			},
+			panics: "no default OpenVPN TCP port is defined!",
 		},
 		"OpenVPN custom port": {
-			selection: openvpnSelection(constants.UDP, 1234),
-			ports:     []uint16{1234},
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					CustomPort: uint16Ptr(1234),
+					Protocol:   constants.UDP,
+				},
+			},
+			defaultOpenVPNTCP: defaultOpenVPNTCP,
+			defaultOpenVPNUDP: defaultOpenVPNUDP,
+			defaultWireguard:  defaultWireguard,
+			ports:             []uint16{1234},
 		},
 		"OpenVPN_server_with_TCP_port": {
-			selection: openvpnSelection(constants.TCP, 0),
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					CustomPort: uint16Ptr(0),
+					Protocol:   constants.TCP,
+				},
+			},
 			server: models.Server{
 				VPN:      vpn.OpenVPN,
 				TCP:      true,
@@ -81,7 +113,13 @@ func Test_getPorts(t *testing.T) {
 			ports:             []uint16{80},
 		},
 		"OpenVPN_server_with_UDP_ports": {
-			selection: openvpnSelection(constants.UDP, 0),
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					CustomPort: uint16Ptr(0),
+					Protocol:   constants.UDP,
+				},
+			},
 			server: models.Server{
 				VPN:      vpn.OpenVPN,
 				UDP:      true,
@@ -91,7 +129,13 @@ func Test_getPorts(t *testing.T) {
 			ports:             []uint16{5565, 1210},
 		},
 		"OpenVPN_custom_port_supported_by_server": {
-			selection: openvpnSelection(constants.UDP, 1210),
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					CustomPort: uint16Ptr(1210),
+					Protocol:   constants.UDP,
+				},
+			},
 			server: models.Server{
 				VPN:      vpn.OpenVPN,
 				UDP:      true,
@@ -101,7 +145,13 @@ func Test_getPorts(t *testing.T) {
 			ports:             []uint16{1210},
 		},
 		"OpenVPN_custom_port_not_supported_by_server": {
-			selection: openvpnSelection(constants.UDP, 8080),
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					CustomPort: uint16Ptr(8080),
+					Protocol:   constants.UDP,
+				},
+			},
 			server: models.Server{
 				VPN:      vpn.OpenVPN,
 				UDP:      true,
@@ -110,7 +160,13 @@ func Test_getPorts(t *testing.T) {
 			defaultOpenVPNUDP: defaultOpenVPNUDP,
 		},
 		"OpenVPN_custom_port_and_server_without_ports": {
-			selection: openvpnSelection(constants.UDP, 8080),
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					CustomPort: uint16Ptr(8080),
+					Protocol:   constants.UDP,
+				},
+			},
 			server: models.Server{
 				VPN: vpn.OpenVPN,
 				UDP: true,
