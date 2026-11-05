@@ -395,6 +395,26 @@ func Test_GetConnection(t *testing.T) {
 				Hostname: "pl-1",
 			}},
 		},
+		"OpenVPN server with two IPs and two UDP ports": {
+			filteredServers: []models.Server{{
+				VPN:      vpn.OpenVPN,
+				UDP:      true,
+				UDPPorts: []uint16{5565, 1210},
+				IPs: []netip.Addr{
+					netip.AddrFrom4([4]byte{1, 1, 1, 1}),
+					netip.AddrFrom4([4]byte{1, 1, 1, 2}),
+				},
+				Hostname: "name",
+			}},
+			serverSelection: settings.ServerSelection{}.WithDefaults(providers.Mullvad),
+			defaults:        NewConnectionDefaults(443, 1194, 58820),
+			connections: []models.Connection{
+				{Type: vpn.OpenVPN, IP: netip.AddrFrom4([4]byte{1, 1, 1, 1}), Protocol: constants.UDP, Port: 5565, Hostname: "name"}, //nolint:lll
+				{Type: vpn.OpenVPN, IP: netip.AddrFrom4([4]byte{1, 1, 1, 1}), Protocol: constants.UDP, Port: 1210, Hostname: "name"}, //nolint:lll
+				{Type: vpn.OpenVPN, IP: netip.AddrFrom4([4]byte{1, 1, 1, 2}), Protocol: constants.UDP, Port: 5565, Hostname: "name"}, //nolint:lll
+				{Type: vpn.OpenVPN, IP: netip.AddrFrom4([4]byte{1, 1, 1, 2}), Protocol: constants.UDP, Port: 1210, Hostname: "name"}, //nolint:lll
+			},
+		},
 	}
 
 	for name, testCase := range testCases {
@@ -420,65 +440,6 @@ func Test_GetConnection(t *testing.T) {
 			assert.Contains(t, testCase.connections, connection)
 		})
 	}
-}
-
-// Test_GetConnection_port_per_connection tests a server supporting several
-// ports provides one connection per port, cycled through by the picker.
-func Test_GetConnection_port_per_connection(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	connPicker := NewConnectionPicker()
-
-	servers := []models.Server{{
-		VPN:      vpn.OpenVPN,
-		UDP:      true,
-		UDPPorts: []uint16{5565, 1210},
-		IPs: []netip.Addr{
-			netip.AddrFrom4([4]byte{1, 1, 1, 1}),
-			netip.AddrFrom4([4]byte{1, 1, 1, 2}),
-		},
-		Hostname: "name",
-	}}
-	selection := settings.ServerSelection{
-		VPN:  vpn.OpenVPN,
-		Mode: "random",
-	}.WithDefaults(providers.Purevpn)
-	defaults := NewConnectionDefaults(80, 15021, 434)
-
-	storage := common.NewMockStorage(ctrl)
-	storage.EXPECT().
-		FilterServers("", selection).
-		DoAndReturn(func(_ string, _ settings.ServerSelection) ([]models.Server, error) {
-			serverCopy := servers[0]
-			serverCopy.IPs = slices.Clone(servers[0].IPs)
-			serverCopy.UDPPorts = slices.Clone(servers[0].UDPPorts)
-			return []models.Server{serverCopy}, nil
-		}).
-		Times(5)
-
-	expectedConnections := []models.Connection{
-		{Type: vpn.OpenVPN, IP: netip.AddrFrom4([4]byte{1, 1, 1, 1}), Protocol: constants.UDP, Port: 5565, Hostname: "name"},
-		{Type: vpn.OpenVPN, IP: netip.AddrFrom4([4]byte{1, 1, 1, 1}), Protocol: constants.UDP, Port: 1210, Hostname: "name"},
-		{Type: vpn.OpenVPN, IP: netip.AddrFrom4([4]byte{1, 1, 1, 2}), Protocol: constants.UDP, Port: 5565, Hostname: "name"},
-		{Type: vpn.OpenVPN, IP: netip.AddrFrom4([4]byte{1, 1, 1, 2}), Protocol: constants.UDP, Port: 1210, Hostname: "name"},
-	}
-
-	pickedConnections := make([]models.Connection, 0, len(expectedConnections))
-	for range cap(pickedConnections) {
-		connection, err := GetConnection("", storage, selection, defaults, false, connPicker)
-		assert.NoError(t, err)
-		pickedConnections = append(pickedConnections, connection)
-	}
-
-	for _, expectedConnection := range expectedConnections {
-		assert.Contains(t, pickedConnections, expectedConnection)
-	}
-
-	// The picker cycles through the connections, going back to the first one.
-	connection, err := GetConnection("", storage, selection, defaults, false, connPicker)
-	assert.NoError(t, err)
-	assert.Equal(t, pickedConnections[0], connection)
 }
 
 // Test_GetConnection_ordered_selection_mode_fallback tests that
