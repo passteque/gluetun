@@ -13,7 +13,8 @@ import (
 
 // getPorts returns the ports to connect to on the server, one for each port
 // the server supports for the selected VPN protocol.
-// It returns no port when the server does not support the custom port set.
+// It returns no port when the server does not support the custom port set,
+// and the default port of the provider when the server defines no port.
 func getPorts(selection settings.ServerSelection, server models.Server,
 	defaultOpenVPNTCP, defaultOpenVPNUDP, defaultWireguard uint16,
 ) (ports []uint16) {
@@ -21,9 +22,11 @@ func getPorts(selection settings.ServerSelection, server models.Server,
 	switch selection.VPN {
 	case vpn.Wireguard, vpn.AmneziaWg:
 		// AmneziaWG is Wireguard with extra obfuscation, it uses the same
-		// endpoint port settings and only a single port is used, defined
-		// by the provider.
-		return portsForProtocol("Wireguard", customPort, nil, defaultWireguard)
+		// endpoint port settings. Servers are filtered by vpn type before
+		// this call, so the udp ports of a Wireguard server are Wireguard
+		// ports. No provider provides them yet, in which case the default
+		// port defined by the provider is used.
+		return portsForProtocol("Wireguard", customPort, server.UDPPorts, defaultWireguard)
 	case vpn.OpenVPN:
 		if selection.OpenVPN.Protocol == constants.TCP {
 			return portsForProtocol("OpenVPN TCP", customPort, server.TCPPorts, defaultOpenVPNTCP)

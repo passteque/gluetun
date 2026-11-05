@@ -197,6 +197,29 @@ func Test_getPorts(t *testing.T) {
 			}.WithDefaults(""),
 			panics: "no default Wireguard port is defined!",
 		},
+		"Wireguard_server_with_UDP_ports": {
+			selection: settings.ServerSelection{
+				VPN: vpn.Wireguard,
+			}.WithDefaults(""),
+			server: models.Server{
+				VPN:      vpn.Wireguard,
+				UDPPorts: []uint16{1104, 51820},
+			},
+			ports: []uint16{1104, 51820},
+		},
+		"Wireguard_custom_port_not_supported_by_server": {
+			selection: settings.ServerSelection{
+				VPN: vpn.Wireguard,
+				Wireguard: settings.WireguardSelection{
+					EndpointPort: uint16Ptr(443),
+				},
+			},
+			server: models.Server{
+				VPN:      vpn.Wireguard,
+				UDPPorts: []uint16{1104, 51820},
+			},
+			defaultWireguard: defaultWireguard,
+		},
 		"AmneziaWG": {
 			selection: settings.ServerSelection{
 				VPN: vpn.AmneziaWg,
