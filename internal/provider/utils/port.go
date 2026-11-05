@@ -22,11 +22,13 @@ func getPorts(selection settings.ServerSelection, server models.Server,
 	case vpn.Wireguard:
 		// Only a single port is used for Wireguard, defined by the provider.
 		return portsForProtocol("Wireguard", customPort, nil, defaultWireguard)
-	default: // OpenVPN
+	case vpn.OpenVPN:
 		if selection.OpenVPN.Protocol == constants.TCP {
 			return portsForProtocol("OpenVPN TCP", customPort, server.TCPPorts, defaultOpenVPNTCP)
 		}
 		return portsForProtocol("OpenVPN UDP", customPort, server.UDPPorts, defaultOpenVPNUDP)
+	default:
+		panic("unsupported vpn type: " + selection.VPN)
 	}
 }
 
@@ -58,8 +60,10 @@ func getCustomPort(selection settings.ServerSelection) (port uint16) {
 	switch selection.VPN {
 	case vpn.Wireguard:
 		return *selection.Wireguard.EndpointPort
-	default:
+	case vpn.OpenVPN:
 		return *selection.OpenVPN.CustomPort
+	default:
+		panic("unsupported vpn type: " + selection.VPN)
 	}
 }
 
