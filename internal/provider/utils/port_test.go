@@ -197,6 +197,23 @@ func Test_getPorts(t *testing.T) {
 			}.WithDefaults(""),
 			panics: "no default Wireguard port is defined!",
 		},
+		"AmneziaWG": {
+			selection: settings.ServerSelection{
+				VPN: vpn.AmneziaWg,
+			}.WithDefaults(""),
+			defaultWireguard: defaultWireguard,
+			ports:            []uint16{defaultWireguard},
+		},
+		"AmneziaWG_custom_port": {
+			selection: settings.ServerSelection{
+				VPN: vpn.AmneziaWg,
+				Wireguard: settings.WireguardSelection{
+					EndpointPort: uint16Ptr(1234),
+				},
+			},
+			defaultWireguard: defaultWireguard,
+			ports:            []uint16{1234},
+		},
 	}
 
 	for name, testCase := range testCases {

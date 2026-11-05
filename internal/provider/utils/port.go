@@ -19,8 +19,10 @@ func getPorts(selection settings.ServerSelection, server models.Server,
 ) (ports []uint16) {
 	customPort := getCustomPort(selection)
 	switch selection.VPN {
-	case vpn.Wireguard:
-		// Only a single port is used for Wireguard, defined by the provider.
+	case vpn.Wireguard, vpn.AmneziaWg:
+		// AmneziaWG is Wireguard with extra obfuscation, it uses the same
+		// endpoint port settings and only a single port is used, defined
+		// by the provider.
 		return portsForProtocol("Wireguard", customPort, nil, defaultWireguard)
 	case vpn.OpenVPN:
 		if selection.OpenVPN.Protocol == constants.TCP {
@@ -58,7 +60,7 @@ func portsForProtocol(portName string, customPort uint16, serverPorts []uint16,
 // or 0 when no custom port is set.
 func getCustomPort(selection settings.ServerSelection) (port uint16) {
 	switch selection.VPN {
-	case vpn.Wireguard:
+	case vpn.Wireguard, vpn.AmneziaWg:
 		return *selection.Wireguard.EndpointPort
 	case vpn.OpenVPN:
 		return *selection.OpenVPN.CustomPort
