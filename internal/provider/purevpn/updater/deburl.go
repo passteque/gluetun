@@ -29,7 +29,10 @@ func fetchDebURL(ctx context.Context, client *http.Client) (debURL string, err e
 		return "", fmt.Errorf("querying %s returned HTTP status code %d", url, response.StatusCode)
 	}
 
-	html, err := io.ReadAll(response.Body)
+	// The download page is a few hundred kilobytes in practice; the limit only
+	// protects against an unbounded or erroneous response body.
+	const maxPageBodySize = 4 * 1024 * 1024
+	html, err := io.ReadAll(io.LimitReader(response.Body, maxPageBodySize))
 	if err != nil {
 		return "", fmt.Errorf("reading response body: %w", err)
 	}
