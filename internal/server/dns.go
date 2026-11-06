@@ -53,6 +53,7 @@ func (h *dnsHandler) getStatus(w http.ResponseWriter) {
 
 func (h *dnsHandler) setStatus(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
 	var data statusWrapper
 	if err := decoder.Decode(&data); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
