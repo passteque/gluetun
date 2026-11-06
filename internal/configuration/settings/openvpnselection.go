@@ -69,11 +69,11 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 		switch vpnProvider {
 		// no restriction on port
 		case providers.Custom, providers.Cyberghost, providers.HideMyAss,
-			providers.Privatevpn, providers.Torguard:
+			providers.Privatevpn, providers.Purevpn, providers.Torguard:
 		// no custom port allowed
 		case providers.Expressvpn, providers.Fastestvpn,
 			providers.Giganews, providers.Ipvanish,
-			providers.Nordvpn, providers.Purevpn,
+			providers.Nordvpn,
 			providers.Surfshark, providers.VPNSecure,
 			providers.VPNUnlimited, providers.Vyprvpn:
 			return fmt.Errorf("custom endpoint port is not allowed: for VPN service provider %s", vpnProvider)

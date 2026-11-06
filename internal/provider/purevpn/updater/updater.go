@@ -1,23 +1,23 @@
 package updater
 
 import (
+	"net/http"
+
 	"github.com/qdm12/gluetun/internal/provider/common"
 )
 
 type Updater struct {
-	ipFetcher        common.IPFetcher
-	unzipper         common.Unzipper
+	client           *http.Client
 	parallelResolver common.ParallelResolver
-	warner           common.Warner
+	logger           common.Warner
 }
 
-func New(ipFetcher common.IPFetcher, unzipper common.Unzipper,
+func New(client *http.Client,
 	warner common.Warner, parallelResolver common.ParallelResolver,
 ) *Updater {
 	return &Updater{
-		ipFetcher:        ipFetcher,
-		unzipper:         unzipper,
+		client:           client,
 		parallelResolver: parallelResolver,
-		warner:           warner,
+		logger:           warner,
 	}
 }

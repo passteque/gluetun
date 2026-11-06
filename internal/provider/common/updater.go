@@ -31,9 +31,3 @@ type Unzipper interface {
 type Warner interface {
 	Warn(s string)
 }
-
-type IPFetcher interface {
-	String() string
-	CanFetchAnyIP() bool
-	FetchInfo(ctx context.Context, ip netip.Addr) (result models.PublicIP, err error)
-}
