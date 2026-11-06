@@ -89,7 +89,7 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 
 	var serviceRunError <-chan error
 	var retryAfter <-chan time.Time
-	const retryDelay = 5 * time.Second
+	retryDelay := minRetryDelay
 	for {
 		updateReceived := false
 		select {
@@ -97,12 +97,15 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			// Stop call takes care of stopping the service
 			return
 		case partialUpdate := <-updateTrigger:
-			updatedSettings, err := l.settings.updateWith(partialUpdate, *l.settings.VPNIsUp)
+			updatedSettings, err := l.settings.updateWith(partialUpdate)
 			if err != nil {
 				updateResult <- err
 				continue
 			}
 			updateReceived = true
+			// New settings supersede any pending retry.
+			retryAfter = nil
+			retryDelay = minRetryDelay
 			l.settingsMutex.Lock()
 			l.settings = updatedSettings
 			l.settingsMutex.Unlock()
@@ -137,12 +140,32 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 				err = fmt.Errorf("starting port forwarding service: %w", err)
 			}
 			updateResult <- err
+			if err != nil {
+				// The caller logs the error, schedule a retry since nothing
+				// else restarts the service while the VPN stays up.
+				l.logger.Info("retrying port forwarding in " + retryDelay.String())
+			}
 		} else if err != nil {
-			// Log the error and schedule a retry
 			l.logger.Errorf("starting port forwarding service: %s - retrying in %s", err, retryDelay)
+		}
+
+		if err != nil {
 			retryAfter = time.After(retryDelay)
+			retryDelay = nextRetryDelay(retryDelay)
+		} else {
+			retryDelay = minRetryDelay
 		}
 	}
+}
+
+const (
+	minRetryDelay = 5 * time.Second
+	maxRetryDelay = time.Minute
+)
+
+func nextRetryDelay(delay time.Duration) time.Duration {
+	const factor = 2
+	return min(factor*delay, maxRetryDelay)
 }
 
 func (l *Loop) UpdateWith(partialUpdate Settings) (err error) {

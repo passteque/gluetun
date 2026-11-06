@@ -25,12 +25,13 @@ func New(storage common.Storage, timeNow func() time.Time,
 	client *http.Client,
 ) *Provider {
 	const jsonPortForwardPath = "/gluetun/piaportforward.json"
+	serverUpdater := updater.New(client)
 	return &Provider{
 		storage:         storage,
 		timeNow:         timeNow,
 		connPicker:      utils.NewConnectionPicker(),
 		portForwardPath: jsonPortForwardPath,
-		Fetcher:         updater.New(client),
+		Fetcher:         serverUpdater,
 	}
 }
 

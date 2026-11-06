@@ -52,6 +52,13 @@ func makeDeviceConfig(settings Settings) (config wgtypes.Config, err error) {
 	}
 
 	firewallMark := int(settings.FirewallMark)
+	allowedIPs := make([]net.IPNet, len(settings.AllowedIPs))
+	for i, allowedIP := range settings.AllowedIPs {
+		allowedIPs[i] = net.IPNet{
+			IP:   allowedIP.Addr().AsSlice(),
+			Mask: net.CIDRMask(allowedIP.Bits(), allowedIP.Addr().BitLen()),
+		}
+	}
 
 	config = wgtypes.Config{
 		PrivateKey:   &privateKey,
@@ -59,18 +66,9 @@ func makeDeviceConfig(settings Settings) (config wgtypes.Config, err error) {
 		FirewallMark: &firewallMark,
 		Peers: []wgtypes.PeerConfig{
 			{
-				PublicKey:    publicKey,
-				PresharedKey: preSharedKey,
-				AllowedIPs: []net.IPNet{
-					{
-						IP:   net.IPv4(0, 0, 0, 0),
-						Mask: []byte{0, 0, 0, 0},
-					},
-					{
-						IP:   net.IPv6zero,
-						Mask: []byte(net.IPv6zero),
-					},
-				},
+				PublicKey:                   publicKey,
+				PresharedKey:                preSharedKey,
+				AllowedIPs:                  allowedIPs,
 				PersistentKeepaliveInterval: persistentKeepaliveInterval,
 				ReplaceAllowedIPs:           true,
 				Endpoint: &net.UDPAddr{

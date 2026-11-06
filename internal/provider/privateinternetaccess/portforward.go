@@ -28,13 +28,13 @@ func (p *Provider) PortForward(ctx context.Context,
 ) (internalToExternalPorts map[uint16]uint16, err error) {
 	switch {
 	case objects.ServerName == "":
-		panic("server name cannot be empty")
+		return nil, errors.New("server name cannot be empty")
 	case !objects.Gateway.IsValid():
-		panic("gateway is not set")
+		return nil, errors.New("gateway is not set")
 	case objects.Username == "":
-		panic("username is not set")
+		return nil, errors.New("username is not set")
 	case objects.Password == "":
-		panic("password is not set")
+		return nil, errors.New("password is not set")
 	}
 
 	serverName := objects.ServerName
@@ -83,7 +83,9 @@ func (p *Provider) PortForward(ctx context.Context,
 
 	// First time binding
 	for ctx.Err() == nil {
-		err = bindPort(ctx, privateIPClient, p.apiIP, data)
+		err = bindPortRetryRequest(ctx, logger, firstBindRetryDelays, func(ctx context.Context) error {
+			return bindPort(ctx, privateIPClient, p.apiIP, data)
+		})
 		if err == nil {
 			break
 		} else if !errors.Is(err, errPortBusy) {
@@ -109,9 +111,9 @@ func (p *Provider) KeepPortForward(ctx context.Context,
 ) (err error) {
 	switch {
 	case objects.ServerName == "":
-		panic("server name cannot be empty")
+		return errors.New("server name cannot be empty")
 	case !objects.Gateway.IsValid():
-		panic("gateway is not set")
+		return errors.New("gateway is not set")
 	}
 
 	privateIPClient, err := newHTTPClient(objects.ServerName)
@@ -156,8 +158,9 @@ func (p *Provider) KeepPortForward(ctx context.Context,
 func findAPIIP(ctx context.Context, client *http.Client, gateway netip.Addr) (
 	apiIP netip.Addr, err error,
 ) {
-	if gateway.Is6() {
-		panic("IPv6 gateway not supported")
+	err = validateRegistrationIPv4(gateway, "gateway")
+	if err != nil {
+		return netip.Addr{}, err
 	}
 
 	gatewayBytes := gateway.As4()
@@ -167,7 +170,13 @@ func findAPIIP(ctx context.Context, client *http.Client, gateway netip.Addr) (
 	oldAPIIP := netip.AddrFrom4(gatewayBytes)
 	gatewayBytes[2] = 0 // x.y.0.1 - new API IP reported by some users
 	newAPIIP := netip.AddrFrom4(gatewayBytes)
-	possibleIPs := []netip.Addr{gateway, oldAPIIP, newAPIIP}
+	possibleIPs := []netip.Addr{gateway}
+	if oldAPIIP != gateway {
+		possibleIPs = append(possibleIPs, oldAPIIP)
+	}
+	if newAPIIP != gateway && newAPIIP != oldAPIIP {
+		possibleIPs = append(possibleIPs, newAPIIP)
+	}
 
 	errs := make([]error, 0, len(possibleIPs))
 	for _, ip := range possibleIPs {
@@ -240,6 +249,12 @@ func readPIAPortForwardData(portForwardPath string) (data piaPortForwardData, er
 	} else if err != nil {
 		return data, err
 	}
+	const permission = fs.FileMode(0o600)
+	err = file.Chmod(permission)
+	if err != nil {
+		_ = file.Close()
+		return data, err
+	}
 
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&data); err != nil {
@@ -251,9 +266,14 @@ func readPIAPortForwardData(portForwardPath string) (data piaPortForwardData, er
 }
 
 func writePIAPortForwardData(portForwardPath string, data piaPortForwardData) (err error) {
-	const permission = fs.FileMode(0o644)
+	const permission = fs.FileMode(0o600)
 	file, err := os.OpenFile(portForwardPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, permission)
 	if err != nil {
+		return err
+	}
+	err = file.Chmod(permission)
+	if err != nil {
+		_ = file.Close()
 		return err
 	}
 
@@ -302,6 +322,17 @@ func packPayload(port uint16, token string, expiration time.Time) (payload strin
 func fetchToken(ctx context.Context, client *http.Client,
 	username, password string,
 ) (token string, err error) {
+	tokenURL := url.URL{
+		Scheme: "https",
+		Host:   "www.privateinternetaccess.com",
+		Path:   "/api/client/v2/token",
+	}
+	return fetchTokenFromURL(ctx, client, tokenURL.String(), username, password)
+}
+
+func fetchTokenFromURL(ctx context.Context, client *http.Client,
+	tokenURL, username, password string,
+) (token string, err error) {
 	errSubstitutions := map[string]string{
 		url.QueryEscape(username): "<username>",
 		url.QueryEscape(password): "<password>",
@@ -316,12 +347,7 @@ func fetchToken(ctx context.Context, client *http.Client,
 	form := url.Values{}
 	form.Add("username", username)
 	form.Add("password", password)
-	url := url.URL{
-		Scheme: "https",
-		Host:   "www.privateinternetaccess.com",
-		Path:   "/api/client/v2/token",
-	}
-	request, err := http.NewRequestWithContext(ctx, http.MethodPost, url.String(), strings.NewReader(form.Encode()))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, tokenURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", replaceInErr(err, errSubstitutions)
 	}
@@ -408,7 +434,38 @@ func fetchPortForwardData(ctx context.Context, client *http.Client, apiIP netip.
 	return port, data.Signature, expiration, err
 }
 
-var errPortBusy = errors.New("port is busy")
+var (
+	errPortBusy        = errors.New("port is busy")
+	errBindPortRequest = errors.New("bind port request failed")
+)
+
+// firstBindRetryDelays are the delays between attempts when the first
+// bind port request fails to complete, for example because the tunnel
+// is still settling right after it came up.
+var firstBindRetryDelays = []time.Duration{2 * time.Second, 4 * time.Second} //nolint:gochecknoglobals
+
+// bindPortRetryRequest calls bind, and calls it again after each of the
+// given delays if it fails with errBindPortRequest. Other errors are
+// returned immediately.
+func bindPortRetryRequest(ctx context.Context, logger utils.Logger,
+	retryDelays []time.Duration, bind func(ctx context.Context) error,
+) (err error) {
+	for _, delay := range retryDelays {
+		err = bind(ctx)
+		if !errors.Is(err, errBindPortRequest) {
+			return err
+		}
+		logger.Warn(err.Error() + " - retrying in " + delay.String())
+		timer := time.NewTimer(delay)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return err
+		case <-timer.C:
+		}
+	}
+	return bind(ctx)
+}
 
 var (
 	regexPortBusy = regexp.MustCompile(`^port \d+ is busy\. `)
@@ -449,7 +506,7 @@ func bindPort(ctx context.Context, client *http.Client, apiIPAddress netip.Addr,
 
 	response, err := client.Do(request)
 	if err != nil {
-		return replaceInErr(err, errSubstitutions)
+		return fmt.Errorf("%w: %w", errBindPortRequest, replaceInErr(err, errSubstitutions))
 	}
 	defer response.Body.Close()
 

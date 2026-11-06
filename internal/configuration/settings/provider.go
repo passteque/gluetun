@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
@@ -49,6 +50,7 @@ func (p *Provider) validate(vpnType string, filterChoicesGetter FilterChoicesGet
 			providers.Ivpn,
 			providers.Mullvad,
 			providers.Nordvpn,
+			providers.PrivateInternetAccess,
 			providers.Protonvpn,
 			providers.Surfshark,
 			providers.Windscribe,
@@ -66,6 +68,14 @@ func (p *Provider) validate(vpnType string, filterChoicesGetter FilterChoicesGet
 	err = p.PortForwarding.Validate(p.Name)
 	if err != nil {
 		return fmt.Errorf("port forwarding: %w", err)
+	}
+
+	customPIAPortForwarding := *p.PortForwarding.Enabled &&
+		p.Name == providers.Custom &&
+		*p.PortForwarding.Provider == providers.PrivateInternetAccess
+	serverNameMissing := p.PortForwarding.ServerName == "" && len(p.ServerSelection.Names) == 0
+	if customPIAPortForwarding && serverNameMissing {
+		return errors.New("port forwarding: server name is empty: set VPN_PORT_FORWARDING_SERVER_NAME")
 	}
 
 	return nil
