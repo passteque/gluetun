@@ -53,6 +53,7 @@ func (h *portForwardHandler) setPortForwarded(w http.ResponseWriter, r *http.Req
 	var data portsWrapper
 
 	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
 	err := decoder.Decode(&data)
 	if err != nil {
 		h.warner.Warn(fmt.Sprintf("failed setting forwarded ports: %s", err))
