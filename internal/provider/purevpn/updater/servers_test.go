@@ -103,4 +103,3 @@ func Test_Updater_withLocations(t *testing.T) {
 		})
 	}
 }
-
