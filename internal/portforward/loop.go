@@ -142,18 +142,19 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 
 		var err error
 		serviceRunError, err = newService.Start(runCtx)
-		if updateReceived {
-			// Signal to the Update call that the service has started
-			// and if it failed to start.
-			if err != nil {
-				err = fmt.Errorf("starting port forwarding service: %w - retrying in %s", err, retryDelay)
-				retryAfter = time.After(retryDelay)
-			}
-			updateResult <- err
-		} else if err != nil {
-			// Log the error and schedule a retry
-			l.logger.Errorf("starting port forwarding service: %s - retrying in %s", err, retryDelay)
+		if err != nil {
+			err = fmt.Errorf("starting port forwarding service: %w - retrying in %s", err, retryDelay)
 			retryAfter = time.After(retryDelay)
+			if !updateReceived {
+				// Otherwise the error is sent back to the update caller,
+				// which logs it.
+				l.logger.Error(err.Error())
+			}
+		}
+		if updateReceived {
+			// Signal to the Update call that the service has started,
+			// and if it failed to start.
+			updateResult <- err
 		}
 	}
 }
