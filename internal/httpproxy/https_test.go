@@ -83,14 +83,17 @@ func Test_handleHTTPS_tunnelPayloadForwardedRepeatedConnections(t *testing.T) {
 	proxyAddress := startProxyServer(t, logger, false)
 	payload := newTunnelPayload(tunnelPayloadLength)
 
-	var verifiedCount, leadingBytesLostCount, erroredCount int
+	var verifiedCount, alteredPayloadCount, erroredCount int
 	for probeNumber := range connectionCount {
 		outcome, err := runTunnelProbe(ctx, proxyAddress, destinationAddress, payload, false)
 		switch outcome {
 		case probeOutcomeVerified:
 			verifiedCount++
 		case probeOutcomeLeadingBytesLost:
-			leadingBytesLostCount++
+			alteredPayloadCount++
+			t.Errorf("probe %d: %s", probeNumber, err)
+		case probeOutcomeCorruptedPayload:
+			alteredPayloadCount++
 			t.Errorf("probe %d: %s", probeNumber, err)
 		case probeOutcomeErrored:
 			erroredCount++
@@ -98,9 +101,9 @@ func Test_handleHTTPS_tunnelPayloadForwardedRepeatedConnections(t *testing.T) {
 		}
 	}
 
-	t.Logf("connections=%d verified=%d leadingBytesLost=%d errored=%d",
-		connectionCount, verifiedCount, leadingBytesLostCount, erroredCount)
-	require.Zero(t, leadingBytesLostCount, "leading tunnel payload bytes dropped by the proxy")
+	t.Logf("connections=%d verified=%d alteredPayloads=%d errored=%d",
+		connectionCount, verifiedCount, alteredPayloadCount, erroredCount)
+	require.Zero(t, alteredPayloadCount, "tunnel payload altered by the proxy")
 	// A few probes can fail to connect on a heavily loaded machine, which says nothing about
 	// the tunnel. The check would be vacuous without a minimum number of verified probes though.
 	require.GreaterOrEqual(t, verifiedCount, minimumVerifiedCount,
@@ -159,7 +162,10 @@ const (
 	// could not be sent or answered, or the tunnel connection broke.
 	probeOutcomeErrored probeOutcome = iota
 	probeOutcomeVerified
+	// probeOutcomeLeadingBytesLost and probeOutcomeCorruptedPayload both mean the destination
+	// received the payload altered, which no load on the machine can explain.
 	probeOutcomeLeadingBytesLost
+	probeOutcomeCorruptedPayload
 )
 
 const (
@@ -256,8 +262,8 @@ func runTunnelProbe(ctx context.Context, proxyAddress, destinationAddress string
 			echoedLength, len(payload), echoed[:echoedLength], payload, err)
 	}
 	if !bytes.Equal(echoed, payload) {
-		return probeOutcomeErrored, fmt.Errorf(
-			"the destination echoed a different payload: got % x, want % x", echoed, payload)
+		return probeOutcomeCorruptedPayload, fmt.Errorf(
+			"the destination echoed a corrupted payload: got % x, want % x", echoed, payload)
 	}
 
 	return probeOutcomeVerified, nil
