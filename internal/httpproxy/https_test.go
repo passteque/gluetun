@@ -134,8 +134,8 @@ func Test_handleHTTPS_hijackingUnsupported(t *testing.T) {
 	}()
 
 	logger := NewMockLogger(gomock.NewController(t))
-	proxyHandler, ok := newHandler(ctx, &sync.WaitGroup{}, logger, false, false, "", "").(*handler)
-	require.Truef(t, ok, "the proxy handler should be a *handler")
+	//nolint:forcetypeassert
+	proxyHandler := newHandler(ctx, &sync.WaitGroup{}, logger, false, false, "", "").(*handler)
 
 	request := &http.Request{
 		Method:     http.MethodConnect,
