@@ -1,6 +1,6 @@
 module github.com/qdm12/gluetun
 
-go 1.26
+go 1.26.0
 
 require (
 	github.com/ProtonMail/go-srp v0.0.7
@@ -32,7 +32,7 @@ require (
 	github.com/youmark/pkcs8 v0.0.0-20201027041543-1326539a0a0a
 	go.uber.org/mock v0.6.0
 	golang.org/x/net v0.55.0
-	golang.org/x/sys v0.45.0
+	golang.org/x/sys v0.49.0
 	golang.org/x/text v0.38.0
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20230429144221-925a1e7659e6
