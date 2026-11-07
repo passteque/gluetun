@@ -27,8 +27,9 @@ func Test_handleHTTPS_tunnelPayloadForwarded(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {
-		// payloadLength is the size of the payload sent through the tunnel.
-		payloadLength int
+		// bulkPayload repeats the payload well above the HTTP server read buffer, so only its
+		// beginning is buffered when the handler hijacks.
+		bulkPayload bool
 		// payloadWithRequest writes the CONNECT request and the first tunnel bytes in a single
 		// write, so the HTTP server holds them in its read buffer when the handler hijacks.
 		payloadWithRequest bool
@@ -36,11 +37,11 @@ func Test_handleHTTPS_tunnelPayloadForwarded(t *testing.T) {
 		// returns, by holding the CONNECT response write back (see hijackRaceConn).
 		holdConnectResponseWrite bool
 	}{
-		"payload_buffered_with_connect_request":      {payloadLength: tunnelPayloadLength, payloadWithRequest: true},
-		"payload_stolen_by_background_read":          {payloadLength: tunnelPayloadLength, holdConnectResponseWrite: true},
-		"payload_after_connect_response":             {payloadLength: tunnelPayloadLength},
-		"bulk_payload_buffered_with_connect_request": {payloadLength: bulkPayloadLength, payloadWithRequest: true},
-		"bulk_payload_after_connect_response":        {payloadLength: bulkPayloadLength},
+		"payload_buffered_with_connect_request":      {payloadWithRequest: true},
+		"payload_stolen_by_background_read":          {holdConnectResponseWrite: true},
+		"payload_after_connect_response":             {},
+		"bulk_payload_buffered_with_connect_request": {bulkPayload: true, payloadWithRequest: true},
+		"bulk_payload_after_connect_response":        {bulkPayload: true},
 	}
 
 	for testName, testCase := range testCases {
@@ -53,7 +54,10 @@ func Test_handleHTTPS_tunnelPayloadForwarded(t *testing.T) {
 			destinationAddress := startEchoServer(t)
 			logger := NewMockLogger(gomock.NewController(t))
 			proxyAddress := startProxyServer(t, logger, testCase.holdConnectResponseWrite)
-			payload := newTunnelPayload(testCase.payloadLength)
+			payload := []byte(tunnelPayload)
+			if testCase.bulkPayload {
+				payload = bytes.Repeat(payload, bulkPayloadRepeatCount)
+			}
 
 			outcome, err := runTunnelProbe(ctx, proxyAddress, destinationAddress,
 				payload, testCase.payloadWithRequest)
@@ -81,7 +85,7 @@ func Test_handleHTTPS_tunnelPayloadForwardedRepeatedConnections(t *testing.T) {
 	destinationAddress := startEchoServer(t)
 	logger := NewMockLogger(gomock.NewController(t))
 	proxyAddress := startProxyServer(t, logger, false)
-	payload := newTunnelPayload(tunnelPayloadLength)
+	payload := []byte(tunnelPayload)
 
 	var verifiedCount, alteredPayloadCount, erroredCount int
 	for probeNumber := range connectionCount {
@@ -181,31 +185,14 @@ const (
 	// write. It is only reached if net/http stops reading from the client connection in the
 	// background before Hijack returns, in which case the test degrades to a plain one.
 	holdConnectResponseTimeout = time.Second
-	// tunnelPayloadLength is the size of the payload of a single probe, enough to hold the
-	// beginning of a TLS ClientHello record header.
-	tunnelPayloadLength = 10
-	// bulkPayloadLength is much larger than the HTTP server read buffer, so the payload is only
-	// partly buffered at hijack time and the rest is read from the connection afterwards.
-	bulkPayloadLength = 1 << 20
-	// payloadPeriod makes a payload shifted by a few bytes differ from the expected one.
-	payloadPeriod = 251
+	// tunnelPayload is the data a probe sends through the tunnel. A CONNECT tunnel generally
+	// carries TLS traffic, and the first byte of a ClientHello record is the one at risk, so
+	// anything but a single byte payload would do.
+	tunnelPayload = "the tunnel payload, sent to the destination and echoed back"
+	// bulkPayloadRepeatCount repeats tunnelPayload well above the 4 KiB read buffer of the
+	// HTTP server, so the payload cannot fit in it.
+	bulkPayloadRepeatCount = 200
 )
-
-// newTunnelPayload returns a payload mimicking the beginning of a TLS ClientHello record: a
-// CONNECT tunnel is generally opened for TLS traffic, and 0x16, the handshake record type, is
-// the first byte at risk.
-func newTunnelPayload(length int) []byte {
-	payload := make([]byte, length)
-	for index := range payload {
-		payload[index] = byte(index % payloadPeriod)
-	}
-	if length >= 3 {
-		payload[0] = 0x16 // handshake record type
-		payload[1] = 0x03 // major version
-		payload[2] = 0x01 // minor version
-	}
-	return payload
-}
 
 // runTunnelProbe sends a single CONNECT request to the proxy, then the tunnel payload, and checks
 // the destination echoes that payload back intact. The payload is sent within the same write as
@@ -253,20 +240,33 @@ func runTunnelProbe(ctx context.Context, proxyAddress, destinationAddress string
 		// The destination echoed back what it received, which is the payload without its
 		// leading bytes: the proxy lost them between the client and the destination.
 		return probeOutcomeLeadingBytesLost, fmt.Errorf(
-			"%d leading tunnel payload byte(s) dropped by the proxy: got % x, want % x",
-			len(payload)-echoedLength, echoed[:echoedLength], payload)
+			"%d leading tunnel payload byte(s) dropped by the proxy: got %s, want %s",
+			len(payload)-echoedLength, payloadExcerpt(echoed[:echoedLength]), payloadExcerpt(payload))
 	}
 	if echoedLength != len(payload) {
 		return probeOutcomeErrored, fmt.Errorf(
-			"only %d of the %d tunnel payload bytes came back: got % x, want % x: %w",
-			echoedLength, len(payload), echoed[:echoedLength], payload, err)
+			"only %d of the %d tunnel payload bytes came back: got %s, want %s: %w",
+			echoedLength, len(payload), payloadExcerpt(echoed[:echoedLength]), payloadExcerpt(payload), err)
 	}
 	if !bytes.Equal(echoed, payload) {
 		return probeOutcomeCorruptedPayload, fmt.Errorf(
-			"the destination echoed a corrupted payload: got % x, want % x", echoed, payload)
+			"the destination echoed a corrupted payload: got %s, want %s",
+			payloadExcerpt(echoed), payloadExcerpt(payload))
 	}
 
 	return probeOutcomeVerified, nil
+}
+
+// payloadExcerpt describes a payload for a failure message, since a bulk payload is too large
+// to be worth dumping.
+func payloadExcerpt(payload []byte) string {
+	const maximumExcerptLength = 32
+
+	if len(payload) <= maximumExcerptLength {
+		return fmt.Sprintf("%q", payload)
+	}
+
+	return fmt.Sprintf("%q… of %d bytes", payload[:maximumExcerptLength], len(payload))
 }
 
 // readConnectResponse reads the CONNECT response status line and headers, and fails when the
