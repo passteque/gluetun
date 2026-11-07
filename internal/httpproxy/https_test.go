@@ -8,6 +8,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -104,6 +105,50 @@ func Test_handleHTTPS_tunnelPayloadForwardedRepeatedConnections(t *testing.T) {
 	// the tunnel. The check would be vacuous without a minimum number of verified probes though.
 	require.GreaterOrEqual(t, verifiedCount, minimumVerifiedCount,
 		"too few probes went through the tunnel to conclude anything, %d errored", erroredCount)
+}
+
+// Test_handleHTTPS_hijackingUnsupported checks the destination connection is closed when the
+// response writer cannot be hijacked, since nothing can forward it to the client then.
+func Test_handleHTTPS_hijackingUnsupported(t *testing.T) {
+	t.Parallel()
+
+	ctx := t.Context()
+
+	listenConfig := net.ListenConfig{}
+	destinationListener, err := listenConfig.Listen(ctx, "tcp", "127.0.0.1:0")
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = destinationListener.Close() })
+	acceptedConnection := make(chan net.Conn, 1)
+	go func() {
+		destinationConnection, err := destinationListener.Accept()
+		if err != nil {
+			return
+		}
+		acceptedConnection <- destinationConnection
+	}()
+
+	logger := NewMockLogger(gomock.NewController(t))
+	proxyHandler, ok := newHandler(ctx, &sync.WaitGroup{}, logger, false, false, "", "").(*handler)
+	require.Truef(t, ok, "the proxy handler should be a *handler")
+
+	request := &http.Request{
+		Method:     http.MethodConnect,
+		Host:       destinationListener.Addr().String(),
+		RemoteAddr: "127.0.0.1:1234",
+	}
+	// Unlike the response writer of a listening server, a recorder cannot be hijacked.
+	proxyHandler.handleHTTPS(httptest.NewRecorder(), request)
+
+	select {
+	case destinationConnection := <-acceptedConnection:
+		defer func() { _ = destinationConnection.Close() }()
+		err := destinationConnection.SetReadDeadline(time.Now().Add(probeDeadline))
+		require.NoError(t, err)
+		_, err = destinationConnection.Read(make([]byte, 1))
+		require.ErrorIs(t, err, io.EOF, "the proxy left the destination connection open")
+	case <-ctx.Done():
+		t.Fatal("the proxy never connected to the destination")
+	}
 }
 
 // probeOutcome tells what happened to the tunnel payload of a single CONNECT request.

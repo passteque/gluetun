@@ -19,6 +19,9 @@ func (h *handler) handleHTTPS(responseWriter http.ResponseWriter, request *http.
 	hijacker, ok := responseWriter.(http.Hijacker)
 	if !ok {
 		http.Error(responseWriter, "Hijacking not supported", http.StatusInternalServerError)
+		if err := destinationConn.Close(); err != nil {
+			h.logger.Error("closing destination connection: " + err.Error())
+		}
 		return
 	}
 	clientConnection, clientBuffer, err := hijacker.Hijack()
