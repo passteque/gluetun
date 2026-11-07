@@ -110,14 +110,14 @@ func (r *ResilientFetcher) FetchInfo(ctx context.Context, ip netip.Addr) (
 	defer r.mutex.RUnlock()
 
 	type resultData struct {
-		i      int
-		result models.PublicIP
-		err    error
+		i       int
+		fetcher Fetcher
+		result  models.PublicIP
+		err     error
 	}
 	resultsCh := make(chan resultData)
 	fetchersStarted := 0
-	for range r.fetchers {
-		fetcher := r.fetchers[fetchersStarted]
+	for _, fetcher := range r.fetchers {
 		if r.isBanned(fetcher) ||
 			(ip.IsValid() && !fetcher.CanFetchAnyIP()) {
 			continue
@@ -126,12 +126,21 @@ func (r *ResilientFetcher) FetchInfo(ctx context.Context, ip netip.Addr) (
 		go func(i int, fetcher Fetcher) {
 			result, err := fetcher.FetchInfo(ctx, ip)
 			resultsCh <- resultData{
-				i:      i,
-				result: result,
-				err:    err,
+				i:       i,
+				fetcher: fetcher,
+				result:  result,
+				err:     err,
 			}
 		}(fetchersStarted, fetcher)
 		fetchersStarted++
+	}
+
+	if fetchersStarted == 0 {
+		if ip.IsValid() {
+			return models.PublicIP{}, fmt.Errorf("no fetcher available for ip address %s: "+
+				"all fetchers are banned or can only fetch their own public ip address", ip)
+		}
+		return models.PublicIP{}, errors.New("no fetcher available: all fetchers are banned")
 	}
 
 	// Collect resultDatas from goroutines first, which takes I/O time
@@ -146,7 +155,7 @@ func (r *ResilientFetcher) FetchInfo(ctx context.Context, ip netip.Addr) (
 	results := make([]models.PublicIP, 0, fetchersStarted)
 	errs := make([]error, 0, fetchersStarted)
 	for _, data := range resultDatas {
-		fetcher := r.fetchers[data.i]
+		fetcher := data.fetcher
 		if data.err != nil {
 			if errors.Is(data.err, ErrTooManyRequests) {
 				r.setBanned(fetcher)
