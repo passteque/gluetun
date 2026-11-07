@@ -48,9 +48,6 @@ func Test_handleHTTPS_tunnelPayloadForwarded(t *testing.T) {
 		t.Run(testName, func(t *testing.T) {
 			t.Parallel()
 
-			ctx, cancel := context.WithTimeout(t.Context(), testTimeout)
-			defer cancel()
-
 			destinationAddress := startEchoServer(t)
 			logger := NewMockLogger(gomock.NewController(t))
 			proxyAddress := startProxyServer(t, logger, testCase.holdConnectResponseWrite)
@@ -59,7 +56,7 @@ func Test_handleHTTPS_tunnelPayloadForwarded(t *testing.T) {
 				payload = bytes.Repeat(payload, bulkPayloadRepeatCount)
 			}
 
-			outcome, err := runTunnelProbe(ctx, proxyAddress, destinationAddress,
+			outcome, err := runTunnelProbe(t.Context(), proxyAddress, destinationAddress,
 				payload, testCase.payloadWithRequest)
 			require.Equal(t, probeOutcomeVerified, outcome, "%s", err)
 			require.NoError(t, err)
@@ -79,9 +76,6 @@ func Test_handleHTTPS_tunnelPayloadForwardedRepeatedConnections(t *testing.T) {
 		minimumVerifiedCount = connectionCount * 90 / 100
 	)
 
-	ctx, cancel := context.WithTimeout(t.Context(), testTimeout)
-	defer cancel()
-
 	destinationAddress := startEchoServer(t)
 	logger := NewMockLogger(gomock.NewController(t))
 	proxyAddress := startProxyServer(t, logger, false)
@@ -89,7 +83,7 @@ func Test_handleHTTPS_tunnelPayloadForwardedRepeatedConnections(t *testing.T) {
 
 	var verifiedCount, alteredPayloadCount, erroredCount int
 	for probeNumber := range connectionCount {
-		outcome, err := runTunnelProbe(ctx, proxyAddress, destinationAddress, payload, false)
+		outcome, err := runTunnelProbe(t.Context(), proxyAddress, destinationAddress, payload, false)
 		switch outcome {
 		case probeOutcomeVerified:
 			verifiedCount++
@@ -152,7 +146,7 @@ func Test_handleHTTPS_hijackingUnsupported(t *testing.T) {
 		require.NoError(t, err)
 		_, err = destinationConnection.Read(make([]byte, 1))
 		require.ErrorIs(t, err, io.EOF, "the proxy left the destination connection open")
-	case <-ctx.Done():
+	case <-time.After(probeDeadline):
 		t.Fatal("the proxy never connected to the destination")
 	}
 }
@@ -172,14 +166,10 @@ const (
 )
 
 const (
-	// testTimeout bounds the whole duration of a test, from the connection to the proxy to the
-	// data coming back from the destination.
-	testTimeout = 30 * time.Second
-	// probeDeadline bounds a single probe, so that a proxy losing bytes is reported as a
-	// failure rather than as a test running forever.
+	// probeDeadline bounds a single probe, so that a proxy losing bytes, or never connecting to
+	// the destination, is reported as a failure rather than as a test running until the go test
+	// timeout kills it. The connection to the proxy and the CONNECT request read share it.
 	probeDeadline = 10 * time.Second
-	// readHeaderTimeout bounds the CONNECT request read by the proxy HTTP server.
-	readHeaderTimeout = 5 * time.Second
 	// holdConnectResponseTimeout bounds the artificial delay applied to the CONNECT response
 	// write. It is only reached if net/http stops reading from the client connection in the
 	// background before Hijack returns, in which case the test degrades to a plain one.
@@ -332,7 +322,7 @@ func startProxyServer(t *testing.T, logger Logger, holdConnectResponseWrite bool
 
 	server := &http.Server{
 		Handler:           newHandler(ctx, &sync.WaitGroup{}, logger, false, false, "", ""),
-		ReadHeaderTimeout: readHeaderTimeout,
+		ReadHeaderTimeout: probeDeadline,
 	}
 	if holdConnectResponseWrite {
 		listener = &hijackRaceListener{Listener: listener}
