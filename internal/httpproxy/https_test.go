@@ -105,13 +105,12 @@ func Test_handleHTTPS_tunnelPayloadForwardedRepeatedConnections(t *testing.T) {
 		}
 	}
 
-	t.Logf("connections=%d verified=%d alteredPayloads=%d errored=%d",
-		connectionCount, verifiedCount, alteredPayloadCount, erroredCount)
 	require.Zero(t, alteredPayloadCount, "tunnel payload altered by the proxy")
 	// A few probes can fail to connect on a heavily loaded machine, which says nothing about
 	// the tunnel. The check would be vacuous without a minimum number of verified probes though.
 	require.GreaterOrEqual(t, verifiedCount, minimumVerifiedCount,
-		"too few probes went through the tunnel to conclude anything, %d errored", erroredCount)
+		"too few of the %d probes went through the tunnel to conclude anything, %d errored",
+		connectionCount, erroredCount)
 }
 
 // Test_handleHTTPS_hijackingUnsupported checks the destination connection is closed when the
