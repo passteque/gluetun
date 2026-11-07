@@ -30,6 +30,8 @@ type Loop struct {
 	cmder       Cmder
 	// Fixed parameters
 	uid, gid int
+	// Mock functions
+	newTimer func(duration time.Duration) timer
 	// Internal channels and locks
 	// runCtx is used to detect when the loop has exited
 	// when performing an update
@@ -63,6 +65,9 @@ func NewLoop(settings settings.PortForwarding, routing Routing,
 		cmder:       cmder,
 		uid:         uid,
 		gid:         gid,
+		newTimer: func(duration time.Duration) timer {
+			return &timeTimer{timer: time.NewTimer(duration)}
+		},
 	}
 }
 
@@ -98,6 +103,10 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 	defer close(runDone)
 
 	var serviceRunError <-chan error
+	// A retry is pending when retryTimer is not nil. Both it and its channel
+	// are set and cleared together, the channel being nil when there is no
+	// pending retry, so the select below ignores that case.
+	var retryTimer timer
 	var retryAfter <-chan time.Time
 	const retryDelay = 5 * time.Second
 	for {
@@ -119,9 +128,16 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 		case err := <-serviceRunError:
 			l.logger.Error(err.Error())
 		case <-retryAfter:
+			// The pending retry is over, the timer has nothing left to stop
+			retryTimer, retryAfter = nil, nil
 		}
-		// Any pending retry is superseded by the restart below
-		retryAfter = nil
+		if retryTimer != nil {
+			// Any pending retry is superseded by the restart below. Stopping it
+			// prevents a later restart of a working service, remapping the port
+			// forwarded for the failure it was scheduled for.
+			retryTimer.Stop()
+			retryTimer, retryAfter = nil, nil
+		}
 
 		previousService := l.currentService()
 		if previousService != nil {
@@ -144,7 +160,8 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 		serviceRunError, err = newService.Start(runCtx)
 		if err != nil {
 			err = fmt.Errorf("starting port forwarding service: %w - retrying in %s", err, retryDelay)
-			retryAfter = time.After(retryDelay)
+			retryTimer = l.newTimer(retryDelay)
+			retryAfter = retryTimer.C()
 			if !updateReceived {
 				// Otherwise the error is sent back to the update caller,
 				// which logs it.
@@ -223,6 +240,16 @@ func (l *Loop) setService(newService Service) {
 	defer l.serviceMutex.Unlock()
 	l.service = newService
 }
+
+// timeTimer is the time.Timer implementation of the timer interface.
+type timeTimer struct {
+	timer *time.Timer
+}
+
+func (t *timeTimer) C() <-chan time.Time { return t.timer.C }
+
+// Stop stops the timer, without consuming a timeout event already delivered.
+func (t *timeTimer) Stop() { t.timer.Stop() }
 
 func ptrTo[T any](value T) *T {
 	return &value
