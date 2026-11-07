@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -50,6 +51,9 @@ func leakCheck(ctx context.Context, client *http.Client) (report string, err err
 
 	if err != nil {
 		return "", err
+	} else if len(dnsToCount) == 0 {
+		// ipleak.net does not see every resolver, Google Public DNS for example.
+		return "", errors.New("no DNS resolver detected")
 	}
 
 	return formatPercentages(dnsToCount), nil
