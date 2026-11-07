@@ -60,7 +60,7 @@ func Test_ResilientFetcher_FetchInfo(t *testing.T) {
 			bannedAfter:  []int{1},
 		},
 		"all_fetchers_banned": {
-			makeFetchers: func(ctx context.Context, ctrl *gomock.Controller) []Fetcher {
+			makeFetchers: func(_ context.Context, ctrl *gomock.Controller) []Fetcher {
 				fetcherA := NewMockFetcher(ctrl)
 				fetcherB := NewMockFetcher(ctrl)
 				return []Fetcher{fetcherA, fetcherB}
@@ -70,7 +70,7 @@ func Test_ResilientFetcher_FetchInfo(t *testing.T) {
 			bannedAfter:  []int{0, 1},
 		},
 		"specific_ip_without_capable_fetcher": {
-			makeFetchers: func(ctx context.Context, ctrl *gomock.Controller) []Fetcher {
+			makeFetchers: func(_ context.Context, ctrl *gomock.Controller) []Fetcher {
 				fetcherA := NewMockFetcher(ctrl)
 				fetcherA.EXPECT().CanFetchAnyIP().Return(false)
 				return []Fetcher{fetcherA}
