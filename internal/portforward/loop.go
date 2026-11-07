@@ -108,7 +108,14 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 	// pending retry, so the select below ignores that case.
 	var retryTimer timer
 	var retryAfter <-chan time.Time
-	const retryDelay = 5 * time.Second
+	// A failed service start is retried after a doubling delay, capped so a
+	// server which will never support port forwarding does not fill the logs
+	// and call the provider API every few seconds for the whole tunnel
+	// session. The delay goes back to its default once the service starts, and
+	// when an update asks for a new service.
+	const defaultRetryDelay = 5 * time.Second
+	const maxRetryDelay = 5 * time.Minute
+	retryDelay := defaultRetryDelay
 	for {
 		updateReceived := false
 		select {
@@ -122,6 +129,9 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 				continue
 			}
 			updateReceived = true
+			// New settings are a reason to try again right away, whatever the
+			// previous failures were.
+			retryDelay = defaultRetryDelay
 			l.settingsMutex.Lock()
 			l.settings = updatedSettings
 			l.settingsMutex.Unlock()
@@ -162,11 +172,17 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			err = fmt.Errorf("starting port forwarding service: %w - retrying in %s", err, retryDelay)
 			retryTimer = l.newTimer(retryDelay)
 			retryAfter = retryTimer.C()
+			retryDelay *= 2
+			retryDelay = min(retryDelay, maxRetryDelay)
 			if !updateReceived {
 				// Otherwise the error is sent back to the update caller,
 				// which logs it.
 				l.logger.Error(err.Error())
 			}
+		} else {
+			// Reset the delay on success, so a later failure of an otherwise
+			// working service does not inherit a backoff of minutes.
+			retryDelay = defaultRetryDelay
 		}
 		if updateReceived {
 			// Signal to the Update call that the service has started,
