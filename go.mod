@@ -11,7 +11,7 @@ require (
 	github.com/klauspost/compress v1.20.3
 	github.com/klauspost/pgzip v1.3.0
 	github.com/mdlayher/genetlink v1.4.0
-	github.com/mdlayher/netlink v1.9.0
+	github.com/mdlayher/netlink v1.11.2
 	github.com/miekg/dns v1.1.62
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/pquerna/otp v1.5.0
