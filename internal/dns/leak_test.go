@@ -37,17 +37,17 @@ func Test_leakCheck_noResolver(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {
-		ip     string // "ip" field of every response
-		report string
-		errIs  error
+		ip         string // "ip" field of every response
+		report     string
+		errMessage string
 	}{
 		"resolvers_detected": {
 			ip:     `{"1.2.3.4":2,"5.6.7.8":1}`,
 			report: "1.2.3.4 (67%), 5.6.7.8 (34%)",
 		},
 		"no_resolver_detected": {
-			ip:    `[]`,
-			errIs: ErrNoResolverDetected,
+			ip:         `[]`,
+			errMessage: "no DNS resolver detected",
 		},
 	}
 
@@ -71,7 +71,11 @@ func Test_leakCheck_noResolver(t *testing.T) {
 			report, err := leakCheck(t.Context(), client)
 
 			assert.Equal(t, int64(5), requests.Load())
-			assert.ErrorIs(t, err, testCase.errIs)
+			if testCase.errMessage != "" {
+				assert.EqualError(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
+			}
 			assert.Equal(t, testCase.report, report)
 		})
 	}

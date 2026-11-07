@@ -14,8 +14,6 @@ import (
 	"strings"
 )
 
-var ErrNoResolverDetected = errors.New("no DNS resolver detected")
-
 func leakCheck(ctx context.Context, client *http.Client) (report string, err error) {
 	const sessionLength = 40
 	session := generateRandomString(sessionLength)
@@ -55,7 +53,7 @@ func leakCheck(ctx context.Context, client *http.Client) (report string, err err
 		return "", err
 	} else if len(dnsToCount) == 0 {
 		// ipleak.net does not see every resolver, Google Public DNS for example.
-		return "", fmt.Errorf("%w", ErrNoResolverDetected)
+		return "", errors.New("no DNS resolver detected")
 	}
 
 	return formatPercentages(dnsToCount), nil
