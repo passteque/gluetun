@@ -1,8 +1,10 @@
 package api
 
 import (
+	"context"
 	"errors"
 	"net/netip"
+	"slices"
 	"testing"
 
 	"github.com/qdm12/gluetun/internal/models"
@@ -17,97 +19,102 @@ func Test_ResilientFetcher_FetchInfo(t *testing.T) {
 	errTest := errors.New("test error")
 
 	testCases := map[string]struct {
-		// makeFetchers returns the fetchers to use and which of
-		// them are banned before the call.
-		makeFetchers func(t *testing.T) (fetchers, banned []Fetcher)
+		makeFetchers func(ctx context.Context, ctrl *gomock.Controller) []Fetcher
+		bannedBefore []int // indexes of the fetchers banned before the call
 		ip           netip.Addr
 		result       models.PublicIP
 		errMessage   string
+		bannedAfter  []int // indexes of the fetchers banned after the call
 	}{
 		"first_fetcher_banned": {
-			makeFetchers: func(t *testing.T) (fetchers, banned []Fetcher) {
-				t.Helper()
-				ctrl := gomock.NewController(t)
+			makeFetchers: func(ctx context.Context, ctrl *gomock.Controller) []Fetcher {
 				fetcherA := NewMockFetcher(ctrl)
 				fetcherB := NewMockFetcher(ctrl)
-				fetcherB.EXPECT().FetchInfo(t.Context(), netip.Addr{}).
-					Return(models.PublicIP{Country: "Germany"}, nil).Times(1)
+				fetcherB.EXPECT().FetchInfo(ctx, netip.Addr{}).
+					Return(models.PublicIP{Country: "Germany"}, nil)
 				fetcherC := NewMockFetcher(ctrl)
-				fetcherC.EXPECT().FetchInfo(t.Context(), netip.Addr{}).
-					Return(models.PublicIP{Country: "Italy"}, nil).Times(1)
-				return []Fetcher{fetcherA, fetcherB, fetcherC}, []Fetcher{fetcherA}
+				fetcherC.EXPECT().FetchInfo(ctx, netip.Addr{}).
+					Return(models.PublicIP{Country: "Italy"}, nil)
+				return []Fetcher{fetcherA, fetcherB, fetcherC}
 			},
-			result: models.PublicIP{Country: "Germany"},
+			bannedBefore: []int{0},
+			result:       models.PublicIP{Country: "Germany"},
+			bannedAfter:  []int{0},
 		},
 		"middle_fetcher_banned": {
-			makeFetchers: func(t *testing.T) (fetchers, banned []Fetcher) {
-				t.Helper()
-				ctrl := gomock.NewController(t)
+			makeFetchers: func(ctx context.Context, ctrl *gomock.Controller) []Fetcher {
 				fetcherA := NewMockFetcher(ctrl)
-				fetcherA.EXPECT().FetchInfo(t.Context(), netip.Addr{}).
-					Return(models.PublicIP{Country: "France"}, nil).Times(1)
+				fetcherA.EXPECT().FetchInfo(ctx, netip.Addr{}).
+					Return(models.PublicIP{Country: "France"}, nil)
 				fetcherB := NewMockFetcher(ctrl)
 				fetcherC := NewMockFetcher(ctrl)
-				fetcherC.EXPECT().FetchInfo(t.Context(), netip.Addr{}).
-					Return(models.PublicIP{Country: "Italy"}, nil).Times(1)
+				fetcherC.EXPECT().FetchInfo(ctx, netip.Addr{}).
+					Return(models.PublicIP{Country: "Italy"}, nil)
 				fetcherD := NewMockFetcher(ctrl)
-				fetcherD.EXPECT().FetchInfo(t.Context(), netip.Addr{}).
-					Return(models.PublicIP{Country: "Italy"}, nil).Times(1)
-				return []Fetcher{fetcherA, fetcherB, fetcherC, fetcherD}, []Fetcher{fetcherB}
+				fetcherD.EXPECT().FetchInfo(ctx, netip.Addr{}).
+					Return(models.PublicIP{Country: "Italy"}, nil)
+				return []Fetcher{fetcherA, fetcherB, fetcherC, fetcherD}
 			},
-			result: models.PublicIP{Country: "Italy"},
+			bannedBefore: []int{1},
+			result:       models.PublicIP{Country: "Italy"},
+			bannedAfter:  []int{1},
 		},
 		"all_fetchers_banned": {
-			makeFetchers: func(t *testing.T) (fetchers, banned []Fetcher) {
-				t.Helper()
-				ctrl := gomock.NewController(t)
+			makeFetchers: func(ctx context.Context, ctrl *gomock.Controller) []Fetcher {
 				fetcherA := NewMockFetcher(ctrl)
 				fetcherB := NewMockFetcher(ctrl)
-				return []Fetcher{fetcherA, fetcherB}, []Fetcher{fetcherA, fetcherB}
+				return []Fetcher{fetcherA, fetcherB}
 			},
-			errMessage: "all fetchers are banned",
+			bannedBefore: []int{0, 1},
+			errMessage:   "all fetchers are banned",
+			bannedAfter:  []int{0, 1},
 		},
 		"specific_ip_without_capable_fetcher": {
-			makeFetchers: func(t *testing.T) (fetchers, banned []Fetcher) {
-				t.Helper()
-				ctrl := gomock.NewController(t)
+			makeFetchers: func(ctx context.Context, ctrl *gomock.Controller) []Fetcher {
 				fetcherA := NewMockFetcher(ctrl)
-				fetcherA.EXPECT().CanFetchAnyIP().Return(false).Times(1)
-				return []Fetcher{fetcherA}, nil
+				fetcherA.EXPECT().CanFetchAnyIP().Return(false)
+				return []Fetcher{fetcherA}
 			},
 			ip:         netip.MustParseAddr("1.2.3.4"),
 			errMessage: "no fetcher available for ip address 1.2.3.4",
 		},
 		"all_fetchers_fail": {
-			makeFetchers: func(t *testing.T) (fetchers, banned []Fetcher) {
-				t.Helper()
-				ctrl := gomock.NewController(t)
+			makeFetchers: func(ctx context.Context, ctrl *gomock.Controller) []Fetcher {
 				fetcherA := NewMockFetcher(ctrl)
-				fetcherA.EXPECT().FetchInfo(t.Context(), netip.Addr{}).
-					Return(models.PublicIP{}, errTest).Times(1)
-				fetcherA.EXPECT().String().Return("a").Times(1)
+				fetcherA.EXPECT().FetchInfo(ctx, netip.Addr{}).
+					Return(models.PublicIP{}, errTest)
+				fetcherA.EXPECT().String().Return("a")
 				fetcherB := NewMockFetcher(ctrl)
-				fetcherB.EXPECT().FetchInfo(t.Context(), netip.Addr{}).
-					Return(models.PublicIP{}, errTest).Times(1)
-				fetcherB.EXPECT().String().Return("b").Times(1)
-				return []Fetcher{fetcherA, fetcherB}, nil
+				fetcherB.EXPECT().FetchInfo(ctx, netip.Addr{}).
+					Return(models.PublicIP{}, errTest)
+				fetcherB.EXPECT().String().Return("b")
+				return []Fetcher{fetcherA, fetcherB}
 			},
 			errMessage: "all fetchers failed: a: test error\nb: test error",
 		},
 		"one_fetcher_fails": {
-			makeFetchers: func(t *testing.T) (fetchers, banned []Fetcher) {
-				t.Helper()
-				ctrl := gomock.NewController(t)
+			makeFetchers: func(ctx context.Context, ctrl *gomock.Controller) []Fetcher {
 				fetcherA := NewMockFetcher(ctrl)
-				fetcherA.EXPECT().FetchInfo(t.Context(), netip.Addr{}).
-					Return(models.PublicIP{}, errTest).Times(1)
-				fetcherA.EXPECT().String().Return("a").Times(1)
+				fetcherA.EXPECT().FetchInfo(ctx, netip.Addr{}).
+					Return(models.PublicIP{}, errTest)
+				fetcherA.EXPECT().String().Return("a")
 				fetcherB := NewMockFetcher(ctrl)
-				fetcherB.EXPECT().FetchInfo(t.Context(), netip.Addr{}).
-					Return(models.PublicIP{Country: "Germany"}, nil).Times(1)
-				return []Fetcher{fetcherA, fetcherB}, nil
+				fetcherB.EXPECT().FetchInfo(ctx, netip.Addr{}).
+					Return(models.PublicIP{Country: "Germany"}, nil)
+				return []Fetcher{fetcherA, fetcherB}
 			},
 			result: models.PublicIP{Country: "Germany"},
+		},
+		"too_many_requests_bans_fetcher": {
+			makeFetchers: func(ctx context.Context, ctrl *gomock.Controller) []Fetcher {
+				fetcher := NewMockFetcher(ctrl)
+				fetcher.EXPECT().FetchInfo(ctx, netip.Addr{}).
+					Return(models.PublicIP{}, ErrTooManyRequests)
+				fetcher.EXPECT().String().Return("a")
+				return []Fetcher{fetcher}
+			},
+			errMessage:  "all fetchers failed: a: too many requests sent for this month",
+			bannedAfter: []int{0},
 		},
 	}
 
@@ -115,13 +122,15 @@ func Test_ResilientFetcher_FetchInfo(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			fetchers, banned := testCase.makeFetchers(t)
+			ctx := t.Context()
+			ctrl := gomock.NewController(t)
+			fetchers := testCase.makeFetchers(ctx, ctrl)
 			resilient := NewResilient(fetchers, nil)
-			for _, fetcher := range banned {
-				resilient.setBanned(fetcher)
+			for _, i := range testCase.bannedBefore {
+				resilient.setBanned(fetchers[i])
 			}
 
-			result, err := resilient.FetchInfo(t.Context(), testCase.ip)
+			result, err := resilient.FetchInfo(ctx, testCase.ip)
 
 			if testCase.errMessage != "" {
 				require.ErrorContains(t, err, testCase.errMessage)
@@ -129,26 +138,12 @@ func Test_ResilientFetcher_FetchInfo(t *testing.T) {
 				require.NoError(t, err)
 			}
 			assert.Equal(t, testCase.result, result)
+			for i, fetcher := range fetchers {
+				assert.Equal(t, slices.Contains(testCase.bannedAfter, i),
+					resilient.isBanned(fetcher), "banned state of fetcher %d", i)
+			}
 		})
 	}
-}
-
-func Test_ResilientFetcher_FetchInfo_bansFetcher(t *testing.T) {
-	t.Parallel()
-
-	ctrl := gomock.NewController(t)
-	fetcher := NewMockFetcher(ctrl)
-	fetcher.EXPECT().FetchInfo(t.Context(), netip.Addr{}).
-		Return(models.PublicIP{}, ErrTooManyRequests).Times(1)
-	fetcher.EXPECT().String().Return("a").Times(1)
-	resilient := NewResilient([]Fetcher{fetcher}, nil)
-
-	_, err := resilient.FetchInfo(t.Context(), netip.Addr{})
-	require.ErrorContains(t, err, "all fetchers failed: a: too many requests sent for this month")
-	assert.True(t, resilient.isBanned(fetcher))
-
-	_, err = resilient.FetchInfo(t.Context(), netip.Addr{})
-	require.ErrorContains(t, err, "all fetchers are banned")
 }
 
 func Test_GetMostPopularResult(t *testing.T) {
