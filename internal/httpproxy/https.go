@@ -1,6 +1,7 @@
 package httpproxy
 
 import (
+	"bufio"
 	"io"
 	"net"
 	"net/http"
@@ -66,8 +67,9 @@ func (h *handler) handleHTTPS(responseWriter http.ResponseWriter, request *http.
 }
 
 // bufferedClientConn reads from the buffered reader net/http hands back from Hijack(), while
-// closing the underlying connection. A *bufio.Reader is not an io.ReadCloser, so the two halves
-// are combined here.
+// closing the underlying connection. The buffer is embedded as a *bufio.Reader, and not as a bare
+// io.Reader, so io.Copy keeps the WriteTo method that lets it drain the buffered bytes and carry
+// on reading from the connection underneath.
 //
 // This exists because net/http keeps a background read running on the connection while a
 // body-less handler (such as CONNECT) executes, and Hijack() flushes the already-written 200
@@ -78,7 +80,7 @@ func (h *handler) handleHTTPS(responseWriter http.ResponseWriter, request *http.
 // byte, and the destination server receives a stream that is off by one: a TLS ClientHello
 // missing its 0x16 record-type prefix, which the peer rejects as not-TLS.
 type bufferedClientConn struct {
-	io.Reader
+	*bufio.Reader
 	io.Closer
 }
 
