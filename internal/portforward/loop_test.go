@@ -266,7 +266,15 @@ func Test_Loop_failedPortForwardRetryBackoff(t *testing.T) {
 		ListeningPorts: []uint16{0},
 		PortsCount:     1,
 	}, routing, client, portAllower, logger, nil, os.Getuid(), os.Getgid())
-	loop.newTimer = func(_ time.Duration) timer { return retryTimer }
+	// The delay the timer is armed with is not the one the loop logs, and a
+	// mismatch would leave the test on the announced ladder while the loop
+	// waits on another one. The loop is the only writer of the slice, and Stop
+	// waits for the run goroutine to end before the test reads it back.
+	var armedDelays []time.Duration
+	loop.newTimer = func(delay time.Duration) timer {
+		armedDelays = append(armedDelays, delay)
+		return retryTimer
+	}
 	_, err := loop.Start(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = loop.Stop() })
@@ -288,6 +296,7 @@ func Test_Loop_failedPortForwardRetryBackoff(t *testing.T) {
 
 	err = loop.Stop()
 	require.NoError(t, err)
+	assert.Equal(t, retryDelays, armedDelays)
 }
 
 // Test_Loop_failedPortForwardRetryDelayReset checks the retry delay goes back
