@@ -76,7 +76,12 @@ func (l *Loop) Start(_ context.Context) (runError <-chan error, _ error) {
 	l.updatedResult = updateResult
 	runErrorCh := make(chan error)
 
-	go l.run(l.runCtx, runDone, runErrorCh, updateTrigger, updateResult)
+	go func() {
+		// Canceled when the loop is over, whatever the reason, so a caller
+		// waiting in UpdateWith is released instead of blocked forever.
+		defer l.runCancel()
+		l.run(l.runCtx, runDone, runErrorCh, updateTrigger, updateResult)
+	}()
 
 	return runErrorCh, nil
 }
