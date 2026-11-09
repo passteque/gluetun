@@ -71,7 +71,7 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 	) {
 		defer close(doneCh)
 		close(readyCh)
-		err = portForwarder.KeepPortForward(ctx, obj)
+		err := portForwarder.KeepPortForward(ctx, obj)
 		crashed := ctx.Err() == nil
 		if !crashed { // stopped by Stop call
 			return
