@@ -20,22 +20,13 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-// hangContext returns a context canceled shortly before the test binary
-// timeout, so a loop wedged by a bug fails with a clear message instead of a
-// package-wide timeout panic. No assertion depends on its value or on machine
-// speed: each step of a test waits for the next event to actually happen.
+// hangContext returns a context canceled shortly after a wait started, so a
+// loop wedged by a bug fails with a clear message instead of hanging the whole
+// package until the go test timeout.
 func hangContext(t *testing.T) context.Context {
 	t.Helper()
-	if deadline, ok := t.Deadline(); ok {
-		// Time out 10% before the test binary does
-		ctx, cancel := context.WithDeadline(t.Context(), deadline.Add(-time.Until(deadline)/10))
-		t.Cleanup(cancel)
-		return ctx
-	}
-	// The test binary runs with no timeout, so guard a wedged loop with a
-	// fixed duration, still canceled along with the test itself
-	const guardTimeout = 30 * time.Second
-	ctx, cancel := context.WithTimeout(t.Context(), guardTimeout)
+	const hangTimeout = 10 * time.Second
+	ctx, cancel := context.WithTimeout(t.Context(), hangTimeout)
 	t.Cleanup(cancel)
 	return ctx
 }
@@ -46,6 +37,18 @@ func expectWait(t *testing.T, signal <-chan struct{}, description string) {
 	case <-signal:
 	case <-hangContext(t).Done():
 		t.Fatalf("timed out waiting for %s", description)
+	}
+}
+
+// expectTick makes a retry of the loop fire. The loop waits on the channel of
+// a mock timer, so the send only succeeds once the loop is parked on it, and
+// the retry is ordered by the test rather than by the clock.
+func expectTick(t *testing.T, ticks chan<- time.Time) {
+	t.Helper()
+	select {
+	case ticks <- time.Now():
+	case <-hangContext(t).Done():
+		t.Fatal("timed out waiting for the loop to wait on the retry timer")
 	}
 }
 
@@ -168,13 +171,7 @@ func Test_Loop_failedPortForwardRetry(t *testing.T) {
 			assert.ErrorContains(t, err, "retrying in "+retryDelay.String())
 
 			if testCase.retryByTimer {
-				// Makes the pending retry fire. The loop is blocked on the timer,
-				// so the send only succeeds once the loop waits for it.
-				select {
-				case ticks <- time.Now():
-				case <-hangContext(t).Done():
-					t.Fatal("timed out waiting for the loop to wait on the retry timer")
-				}
+				expectTick(t, ticks)
 			} else {
 				// Arrives while the retry timer is still pending
 				portForwarder.EXPECT().Name().Return(providers.Protonvpn) // settings validation
@@ -284,14 +281,9 @@ func Test_Loop_failedPortForwardRetryBackoff(t *testing.T) {
 	err = loop.UpdateWith(vpnUp)
 	require.ErrorContains(t, err, retryError(retryDelays[0]))
 
-	// Each send only succeeds once the loop waits for the retry to fire, so
-	// every attempt is driven by an event and the test never sleeps.
+	// Every attempt is driven by an event and the test never sleeps.
 	for range retryDelays[1:] {
-		select {
-		case ticks <- time.Now():
-		case <-hangContext(t).Done():
-			t.Fatal("timed out waiting for the loop to wait on the retry timer")
-		}
+		expectTick(t, ticks)
 	}
 
 	err = loop.Stop()
@@ -419,21 +411,13 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 
 	// Attempts 2 and 3, the later one succeeding
 	for range 2 {
-		select {
-		case ticks <- time.Now():
-		case <-hangContext(t).Done():
-			t.Fatal("timed out waiting for the loop to wait on the retry timer")
-		}
+		expectTick(t, ticks)
 	}
 
 	// The crash of the attempt 3 schedules the retry driving the attempt 4,
 	// instead of restarting the service right away.
 	expectWait(t, crashLogged, "the keep alive failure to be logged")
-	select {
-	case ticks <- time.Now():
-	case <-hangContext(t).Done():
-		t.Fatal("timed out waiting for the loop to wait on the retry timer")
-	}
+	expectTick(t, ticks)
 
 	// The update arrives while the retry of the attempt 4 is pending, and the
 	// error of the attempt 5 it triggers is sent back to the caller: it announces
