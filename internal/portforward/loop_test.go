@@ -327,7 +327,8 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 	// 1 fails, sending the default delay back to the update caller,
 	// 2 fails, announcing twice the default delay,
 	// 3 succeeds, which resets the delay, and its keep alive call fails,
-	// 4 fails, announcing the default delay and not the 20s due,
+	// 4 fails after the delay the crash took, announcing twice the default
+	// delay rather than the 20s the backoff had reached before the success,
 	// 5 fails, announced with the default delay as well, since a new update
 	// reset the delay before it and sent the retry of the attempt 4 back.
 	const attempts = 5
@@ -360,14 +361,19 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 		Return(nil, errPortForward)
 
 	logger.EXPECT().Error(errorContaining{substring: retryError(2 * defaultRetryDelay)})
-	// Logged by the loop when it receives the keep alive failure, and waited for
-	// before sending a new update, so the update is not taken for the crash and
-	// the attempts order is left to the scheduler.
+	// Logged by the loop when it receives the keep alive failure of the attempt
+	// 3, and waited for before driving the retry it schedules, so the crash is
+	// not mistaken for the attempt 4 and their order is not left to the
+	// scheduler.
 	crashLogged := make(chan struct{})
-	logger.EXPECT().Error(errKeepPort.Error()).DoAndReturn(func(_ string) {
-		close(crashLogged)
-	})
-	logger.EXPECT().Error(errorContaining{substring: retryError(defaultRetryDelay)})
+	logger.EXPECT().Error(errorContaining{substring: errKeepPort.Error() +
+		" - retrying in " + defaultRetryDelay.String()}).
+		DoAndReturn(func(_ string) {
+			close(crashLogged)
+		})
+	// The crash of the attempt 3 has taken the default delay slot, so the
+	// attempt 4 announces twice the default delay.
+	logger.EXPECT().Error(errorContaining{substring: retryError(2 * defaultRetryDelay)})
 
 	// What the successful attempt 3 does, and cleans up after when the keep
 	// alive call fails
@@ -381,8 +387,9 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 
 	retryTimer := NewMocktimer(ctrl)
 	ticks := make(chan time.Time)
-	// Armed by the attempts 1, 2, 4 and 5, the attempt 3 having succeeded
-	retryTimer.EXPECT().C().Return(ticks).Times(4)
+	// Armed by the attempts 1, 2, 4 and 5, and by the crash of the attempt 3,
+	// which succeeded and so reset the delay back to its default.
+	retryTimer.EXPECT().C().Return(ticks).Times(5)
 	// Registered before the update below: the update supersedes the retry
 	// pending from the attempt 4, which is why its timer is stopped
 	retryTimer.EXPECT().Stop()
@@ -419,12 +426,18 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 		}
 	}
 
-	// The failed keep alive call of the attempt 3 drives the attempt 4
+	// The crash of the attempt 3 schedules the retry driving the attempt 4,
+	// instead of restarting the service right away.
 	expectWait(t, crashLogged, "the keep alive failure to be logged")
+	select {
+	case ticks <- time.Now():
+	case <-hangContext(t).Done():
+		t.Fatal("timed out waiting for the loop to wait on the retry timer")
+	}
 
 	// The update arrives while the retry of the attempt 4 is pending, and the
 	// error of the attempt 5 it triggers is sent back to the caller: it announces
-	// the default delay, and not the 10s the backoff had reached
+	// the default delay, and not the 20s the backoff had reached
 	portForwarder.EXPECT().Name().Return(providers.Protonvpn) // settings validation
 	err = loop.UpdateWith(vpnUp)
 	require.ErrorContains(t, err, retryError(defaultRetryDelay))

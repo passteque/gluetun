@@ -116,6 +116,14 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 	const defaultRetryDelay = 5 * time.Second
 	const maxRetryDelay = 5 * time.Minute
 	retryDelay := defaultRetryDelay
+	// armRetry schedules the next service start with the current retry delay,
+	// and doubles that delay for the next failure, capped at the maximum.
+	armRetry := func() {
+		retryTimer = l.newTimer(retryDelay)
+		retryAfter = retryTimer.C()
+		retryDelay *= 2
+		retryDelay = min(retryDelay, maxRetryDelay)
+	}
 	for {
 		updateReceived := false
 		select {
@@ -136,7 +144,14 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			l.settings = updatedSettings
 			l.settingsMutex.Unlock()
 		case err := <-serviceRunError:
+			// Restarting right away would call the provider API as fast as the
+			// service keeps crashing, so a crash waits for a retry delay too,
+			// like a failed start. An accepted update still restarts the service
+			// right away, whatever the delay reached.
+			err = fmt.Errorf("keeping port forwarded: %w - retrying in %s", err, retryDelay)
+			armRetry()
 			l.logger.Error(err.Error())
+			continue
 		case <-retryAfter:
 			// The pending retry is over, the timer has nothing left to stop
 			retryTimer, retryAfter = nil, nil
@@ -170,10 +185,7 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 		serviceRunError, err = newService.Start(runCtx)
 		if err != nil {
 			err = fmt.Errorf("starting port forwarding service: %w - retrying in %s", err, retryDelay)
-			retryTimer = l.newTimer(retryDelay)
-			retryAfter = retryTimer.C()
-			retryDelay *= 2
-			retryDelay = min(retryDelay, maxRetryDelay)
+			armRetry()
 			if !updateReceived {
 				// Otherwise the error is sent back to the update caller,
 				// which logs it.
