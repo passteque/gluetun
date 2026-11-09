@@ -16,7 +16,12 @@ type Loop struct {
 	// State
 	settings      Settings
 	settingsMutex sync.RWMutex
-	service       Service
+	// service is replaced by the run goroutine on every update, and called by
+	// the API methods from the HTTP handler goroutines. The mutex is held for
+	// the whole execution of those methods, so a service is never replaced nor
+	// stopped while one of its calls is in progress.
+	service      Service
+	serviceMutex sync.Mutex
 	// Fixed injected objects
 	routing     Routing
 	client      *http.Client
@@ -118,8 +123,9 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			retryAfter = nil
 		}
 
-		if l.service != nil {
-			err := l.service.Stop()
+		previousService := l.currentService()
+		if previousService != nil {
+			err := previousService.Stop()
 			if err != nil {
 				runErrorCh <- fmt.Errorf("stopping previous service: %w", err)
 				return
@@ -130,11 +136,12 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 		// Only enable port forward if the VPN tunnel is up
 		*serviceSettings.Enabled = *serviceSettings.Enabled && *l.settings.VPNIsUp
 
-		l.service = service.New(serviceSettings, l.routing, l.client,
+		newService := service.New(serviceSettings, l.routing, l.client,
 			l.portAllower, l.logger, l.cmder, l.uid, l.gid)
+		l.setService(newService)
 
 		var err error
-		serviceRunError, err = l.service.Start(runCtx)
+		serviceRunError, err = newService.Start(runCtx)
 		if updateReceived {
 			// Signal to the Update call that the service has started
 			// and if it failed to start.
@@ -169,13 +176,19 @@ func (l *Loop) Stop() (err error) {
 	l.runCancel()
 	<-l.runDone
 
-	if l.service != nil {
-		return l.service.Stop()
+	l.serviceMutex.Lock()
+	defer l.serviceMutex.Unlock()
+
+	if l.service == nil {
+		return nil
 	}
-	return nil
+	return l.service.Stop()
 }
 
 func (l *Loop) GetPortsForwarded() (ports []uint16) {
+	l.serviceMutex.Lock()
+	defer l.serviceMutex.Unlock()
+
 	if l.service == nil {
 		return nil
 	}
@@ -183,11 +196,30 @@ func (l *Loop) GetPortsForwarded() (ports []uint16) {
 }
 
 func (l *Loop) SetPortsForwarded(ports []uint16) (err error) {
+	l.serviceMutex.Lock()
+	defer l.serviceMutex.Unlock()
+
 	if l.service == nil {
 		return errors.New("port forwarding service not started")
 	}
-
 	return l.service.SetPortsForwarded(l.runCtx, ports)
+}
+
+// currentService returns the service of the current run. It is nil as long as
+// the loop has not started one, and stays the stopped one once the loop has
+// stopped, since the Stop call does not clear the field.
+func (l *Loop) currentService() Service { //nolint:ireturn
+	l.serviceMutex.Lock()
+	defer l.serviceMutex.Unlock()
+	return l.service
+}
+
+// setService replaces the service of the current run, the run goroutine being
+// the only one to call it once the previous service has been stopped.
+func (l *Loop) setService(newService Service) {
+	l.serviceMutex.Lock()
+	defer l.serviceMutex.Unlock()
+	l.service = newService
 }
 
 func ptrTo[T any](value T) *T {
