@@ -146,9 +146,12 @@ func Test_Loop_failedPortForwardRetry(t *testing.T) {
 				ListeningPorts: []uint16{0},
 				PortsCount:     1,
 			}, routing, client, portAllower, logger, nil, os.Getuid(), os.Getgid())
+			// The factory runs on the loop goroutine, so the delay it is called
+			// with is recorded here and compared once the loop is stopped,
+			// rather than asserted from a goroutine the test does not control.
+			var armedDelay time.Duration
 			loop.newTimer = func(duration time.Duration) timer {
-				// The first failure is retried after the default delay
-				assert.Equal(t, retryDelay, duration)
+				armedDelay = duration
 				return retryTimer
 			}
 			_, err := loop.Start(t.Context())
@@ -186,6 +189,8 @@ func Test_Loop_failedPortForwardRetry(t *testing.T) {
 			// only the test can make the retry timer fire
 			err = loop.Stop()
 			require.NoError(t, err)
+			// The only failure of the test is retried after the default delay
+			assert.Equal(t, retryDelay, armedDelay)
 		})
 	}
 }
