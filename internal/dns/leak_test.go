@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -87,7 +88,9 @@ func Test_ipLeakData_UnmarshalJSON(t *testing.T) {
 	testCases := map[string]struct {
 		data   string
 		parsed ipLeakData
-		errMsg string
+		// errValue is the expected json.UnmarshalTypeError.Value, set when
+		// the input data is expected to fail decoding.
+		errValue string
 	}{
 		"detected_resolvers": {
 			data: `{"session":"abc","ip":{"1.2.3.4":2,"5.6.7.8":1}}`,
@@ -105,8 +108,8 @@ func Test_ipLeakData_UnmarshalJSON(t *testing.T) {
 			parsed: ipLeakData{Session: "abc", IP: dnsCounters{}},
 		},
 		"non_empty_array": {
-			data:   `{"session":"abc","ip":["1.2.3.4"]}`,
-			errMsg: "json: cannot unmarshal array into Go struct field ipLeakData.ip of type map[string]uint",
+			data:     `{"session":"abc","ip":["1.2.3.4"]}`,
+			errValue: "array",
 		},
 	}
 
@@ -117,8 +120,11 @@ func Test_ipLeakData_UnmarshalJSON(t *testing.T) {
 			var parsed ipLeakData
 			err := json.Unmarshal([]byte(testCase.data), &parsed)
 
-			if testCase.errMsg != "" {
-				require.EqualError(t, err, testCase.errMsg)
+			if testCase.errValue != "" {
+				var typeErr *json.UnmarshalTypeError
+				require.ErrorAs(t, err, &typeErr)
+				assert.Equal(t, testCase.errValue, typeErr.Value)
+				assert.Equal(t, reflect.TypeFor[map[string]uint](), typeErr.Type)
 				return
 			}
 			require.NoError(t, err)
