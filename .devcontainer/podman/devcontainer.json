@@ -44,10 +44,22 @@
         // belongs to the host user, and files bind-mounted from the host keep working
         // permissions instead of landing in the subuid range. No effect on the files
         // the image owns, and podman-only: the Docker engine rejects this flag.
-        "--userns=keep-id"
+        "--userns=keep-id",
+        // The TUN character device, required to create a tunnel interface: the
+        // internal/wireguard userspace test, and any run bringing up a tunnel. The host
+        // needs the `tun` module loaded (`modprobe tun`, or `podman machine ssh sudo
+        // modprobe tun` for a Podman machine). Comment the line out if it is unavailable
+        // - the container then starts as before, and only tunnel-bound code fails, with
+        // `creating TUN device: mkdir /dev/net: permission denied`.
+        "--device=/dev/net/tun:/dev/net/tun"
     ],
+    // The engine also places these in the ambient set of the container's init process,
+    // so the unprivileged remoteUser holds them without sudo, even under `--userns=keep-id`.
+    // See the README section "TUN device and raw sockets".
     "capAdd": [
-        "NET_ADMIN", "SYS_PTRACE" // NET_ADMIN for tun/WireGuard, SYS_PTRACE for dlv Go debugging
+        "NET_ADMIN", // tunnel interfaces: WireGuard TUN setup, netlink route/rule work
+        "NET_RAW", // raw sockets: PMTU/MSS discovery (internal/pmtud/tcp), tcpdump
+        "SYS_PTRACE" // dlv Go debugging
     ],
     "securityOpt": [
         "seccomp=unconfined" // for dlv Go debugging

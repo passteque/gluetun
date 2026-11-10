@@ -268,3 +268,18 @@ Right after `podman run`, the Dev Containers CLI waits for the container `start`
 It mounts the host's `${XDG_RUNTIME_DIR}/podman/podman.sock` at the canonical `/var/run/docker.sock` inside the container. If your editor server does not export the environment variable `XDG_RUNTIME_DIR`, hardcode it in the [devcontainer.json](podman/devcontainer.json) mounts to the value given by running `echo "/run/user/$(id -u)"`. That way all `docker`, `docker compose` (default docker socket path) and `podman` (using `CONTAINER_HOST`) all work using the same socket path.
 
 The Docker buildx plugin is not supported by a Podman host, so `DOCKER_BUILDKIT=0` is set. Cross building is still possible.
+
+## TUN device and raw sockets
+
+The test suite is pure user space, bar two packages that talk to the kernel networking stack:
+
+| Package | What it does | Needs |
+| --- | --- | --- |
+| [internal/wireguard](../internal/wireguard) | brings up a userspace TUN interface (`Test_Wireguard_Run_teardown/userspace`) | `NET_ADMIN`, and the `/dev/net/tun` device |
+| [internal/pmtud/tcp](../internal/pmtud/tcp) | sends raw TCP probes to discover the PMTU/MSS | `NET_RAW`, for `AF_INET` and `AF_INET6` alike |
+
+All configurations grant them: `NET_ADMIN`, `NET_RAW` and `SYS_PTRACE` under `capAdd` (the last for `dlv`), and `--device=/dev/net/tun:/dev/net/tun` under `runArgs`.
+
+⚠️ The device node comes from the machine running the engine, so the `tun` module has to be loaded ther with `modprobe tun`.
+
+⚠️ On rootless Podman, `NET_RAW` gets you the socket, not the packets. Podman's networking stack **pasta** is a userspace stack that carries TCP and UDP for ordinary sockets and nothing for raw ones: in one of those, `ping 1.1.1.1` loses every packet. The tests of [internal/pmtud/tcp](../internal/pmtud/tcp) notice, and skip themselves rather than time out, in case the pasta stack is in se.

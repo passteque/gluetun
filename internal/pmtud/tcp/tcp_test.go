@@ -18,6 +18,8 @@ import (
 func Test_runTest(t *testing.T) {
 	t.Parallel()
 
+	skipUnlessRawNetworking(t)
+
 	localNonListenPort := reserveClosedPort(t)
 
 	noopLogger := &noopLogger{}

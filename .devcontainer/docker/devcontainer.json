@@ -31,7 +31,13 @@
         // without Docker desktop using dockerd only.
         "--add-host=host.docker.internal:host-gateway",
         // Set `host.containers.internal` to match Podman setups to simplify cross engine configuration
-        "--add-host=host.containers.internal:host-gateway"
+        "--add-host=host.containers.internal:host-gateway",
+        // The TUN character device, required to create a tunnel interface: the
+        // internal/wireguard userspace test, and any run bringing up a tunnel. The host
+        // needs the `tun` module loaded (`modprobe tun`). Comment the line out if it is
+        // unavailable - the container then starts as before, and only tunnel-bound code
+        // fails, with `creating TUN device: mkdir /dev/net: permission denied`.
+        "--device=/dev/net/tun:/dev/net/tun"
         // A rootful dockerd socket belongs to root:docker, so the unprivileged user needs
         // its group to reach it. Grant it without rebuilding the image by uncommenting
         // and adapting this line to the group ID of the socket
@@ -39,8 +45,13 @@
         // argument. Docker Desktop sockets are world-writable and need nothing.
         // "--group-add=1001",
     ],
+    // The engine also places these in the ambient set of the container's init process,
+    // so the unprivileged remoteUser holds them without sudo. See the README section
+    // "TUN device and raw sockets".
     "capAdd": [
-        "NET_ADMIN", "SYS_PTRACE" // NET_ADMIN for tun/WireGuard, SYS_PTRACE for dlv Go debugging
+        "NET_ADMIN", // tunnel interfaces: WireGuard TUN setup, netlink route/rule work
+        "NET_RAW", // raw sockets: PMTU/MSS discovery (internal/pmtud/tcp), tcpdump
+        "SYS_PTRACE" // dlv Go debugging
     ],
     "securityOpt": [
         "seccomp=unconfined" // for dlv Go debugging

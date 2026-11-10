@@ -47,6 +47,37 @@ func getFirewall(t *testing.T) *firewall.Config {
 	return testFirewall
 }
 
+// skipUnlessRawNetworking skips the calling test when the environment cannot carry
+// the raw TCP packets path MTU discovery depends on. There are two distinct reasons:
+// the process lacks the CAP_NET_RAW capability, or the network path is not Ethernet -
+// a userspace stack such as pasta or slirp4netns advertises an MTU far above an
+// Ethernet frame and does not route raw IP packets, so discovery yields a nonsensical
+// MSS or never receives a reply.
+func skipUnlessRawNetworking(t *testing.T) {
+	t.Helper()
+
+	fd, err := socket(constants.AF_INET, constants.SOCK_RAW, constants.IPPROTO_TCP)
+	switch {
+	case errors.Is(err, unix.EPERM):
+		t.Skip("skipping test: creating a raw socket requires the CAP_NET_RAW capability")
+	case err != nil:
+		t.Skipf("skipping test: creating a raw socket: %s", err)
+	}
+	err = closeSocket(fd)
+	assert.NoError(t, err, "closing the raw socket used to probe the capability")
+
+	netlinker := netlink.New(&noopLogger{})
+	defaultMTU, err := findDefaultRouteMTU(netlinker)
+	if err != nil {
+		t.Skipf("skipping test: finding the default route MTU: %s", err)
+	}
+	if defaultMTU > constants.MaxEthernetFrameSize {
+		t.Skipf("skipping test: default route MTU is %d, above the maximum Ethernet frame size of %d: "+
+			"raw packets are not routed by a userspace network stack (pasta, slirp4netns)",
+			defaultMTU, constants.MaxEthernetFrameSize)
+	}
+}
+
 type noopLogger struct{}
 
 func (l *noopLogger) Patch(_ ...log.Option)     {}
