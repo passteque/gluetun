@@ -11,6 +11,26 @@ Guidance for coding agents working in this repository.
   - If a compatibility break seems beneficial, stop and ask for confirmation before implementing it.
 - Update or add tests when behavior changes.
 
+## Coding practices
+
+- Always prefer event driven programming (tests notably) rather than time driven programming.
+- Update or add tests when behavior changes.
+- Use explicit, descriptive variable names by default.
+- Breaking changes:
+  - Do not introduce breaking usage behavior (cli flags, environment variables, etc.) unless explicitly agreed.
+  - Do not introduce breaking changes for the Go API in the `pkg/` directory.
+  - If a compatibility break seems beneficial, stop and ask for confirmation before implementing it.
+- If an expected-to-be-available command is unavailable in the current environment, report it clearly and provide the exact command needed once available.
+
+## Markdown coding conventions
+
+If a Markdown file is modified and `markdownlint-cli2` is available, run `markdownlint-cli2 "**/*.md"`
+
+## Dockerfile coding conventions
+
+- To chain multiple commands in a single `RUN` instruction, use `&& \` to chain the commands instead of `; \`
+  - For more than 3 commands chained, also set `set -eux` to have better visibility at what command fails
+
 ## Go coding conventions
 
 ### General guidelines
@@ -35,7 +55,7 @@ Guidance for coding agents working in this repository.
   - Do not define constants when constants exist in other packages, for example `http.StatusBadRequest` or `log.LevelDebug`.
 - Structs
   - Prefer defining them inline in a function if it's only used in that function, rather than at the package level.
-- Do not use the short if form, prefer the longer one
+- Do not use the short if form `if err := ...; err != nil { ... }` - prefer the longer one on two lines
 - Follow modern Go, according to the Go version defined in go.mod. Prefer modern constructs when equivalent:
   - Example: use `for i := range 5` rather than `for i := 0; i < 5; i++`.
   - Example: use `new("string")` rather than helper wrappers such as `stringPtr("string")`.
@@ -52,9 +72,13 @@ Guidance for coding agents working in this repository.
 - Use constants instead of variables whenever possible, especially function-local inline constants.
 - Prefer using pure functions over methods when possible. Especially if the method does not need any fields from the receiving struct, it should be a pure function.
 - Do not use `time.Sleep`, prefer using a `time.Timer` with a `select` statement also listening on a context cancelation
+- Prefer not adding comments when code is clear, unless it's for exported members. Only add comments when code is obscure to understand.
 - `panic`:
   - should only be used when a programming error is encountered and you should NOT return errors for programming errors (such as passing nil objects)
   - Its counterpart `recover` should not really be used, except for testing a panic in test code (or use `assert.PanicsWithValue`).
+- Always prefer using unbuffered channels, unless absolutely required. Buffered channels are usually a sign of a design flaw, and usually just push back the problem somewhere else.
+- Aim at having either write-only or read-only channel arguments, to avoid deadlocks and make the code more readable. For example, prefer `chan<- string` or `<-chan string` instead of `chan string`.
+- Always prefer having named fields instead of embedded fields in structs.
 
 ### Directory structure and file naming
 
@@ -83,7 +107,7 @@ Guidance for coding agents working in this repository.
 
 The linter is `golangci-lint` with the configuration defined in `.golangci.yml`.
 
-To exclude code from linting, prefer using, when absolutely necessary, command comments `//nolint:<linter>`.
+To exclude code from linting, prefer using, when absolutely necessary, command comments `//nolint:<linter>`. Never pre-emptively set `//nolint` comments, first ensure the linter reports them as an error. If you add `//nolint` comments, add a comment next to it like `//nolint:gosec // The overflow is on purpose`.
 This allows the `nolintlint` linter to detect and report unnecessary `//nolint` comments later.
 You can notably use `//nolint:lll` and, for good valid reasons, `//nolint:gosec`. Sometimes `//nolint:mnd` when it just doesn't make sense to extract a constant such as `n = n << 4`
 Always prefer placing `//nolint` comments on the same code line where the error comes from, and not above a code block.
@@ -112,11 +136,13 @@ Mocking works with the `go.uber.org/mock` library, and the `mockgen` tool.
 
 - Generated mocks usage in tests:
   - Define mocks in the subtest, not in the parent test. You can also have a function returning the mocks as a field of the test case struct, which takes in the subtest `*testing.T` as argument, and call it in the subtest to get the mocks.
-  - **Never** use `gomock.Any()` as argument. Always use concrete, precise arguments. You might need to define a custom GoMock matcher for your argument in some very niche and corner cases.
-  - **Never** use `.AnyTimes()` on mocks. Always define the number of times a certain mock call should be called, with `.Times(3)` for example.
+  - **Never** use `gomock.Any()` as argument. Always use concrete, precise arguments. You might need to define a custom `gomock.Matcher` for your argument in some very niche and corner cases. If you use `DoAndReturn`, still do not use `gomock.Any()`.
+  - **Never** use `.AnyTimes()` on mocks. Always define the number of times a certain mock call should be called, with `.Times(3)` for example. If it's just once, do not specify `Times(1)`, since it's the default.
   - **Always** set the `.Return(...)` on the mock if the function returns something.
   - Avoid using **mock helpers** functions, prefer a bit of repetition than tight coupling and dependency
   - Always define the gomock controller `ctrl` in the subtest and not in the parent test, or a subtest mock failing will crash all the other subtests.
+  - Avoid using a mock if a function takes an interface argument, but does not actually use the injected argument. This is especially true for constructors for which a method is being tested, not all injected arguments are always used.
+  - If an injected interface is injected but not used in a test, inject `nil` instead of a mock.
 
 ### main.go
 
@@ -170,6 +196,10 @@ The Go formatter used is gofumpt.
 - Run all tests in parallel:
   - call `t.Parallel()` in the top-level test
   - call `t.Parallel()` in each subtest
+- Use `t.Context()` instead of `context.Background()` in tests
+- Instead of hardcoding a timeout in tests, extract the timeout from `t.Deadline()`, and, if not available, use `t.Context()`
+- Name your tests as `Test_StructName_MethodName` for methods, and `Test_FunctionName` for functions.
+- Always extend the method/function test to have more test cases/subtests rather than adding more tests for a special case such as `Test_FunctionName_Case1` (bad).
 
 ### Libraries to use
 
@@ -185,7 +215,7 @@ The Go formatter used is gofumpt.
 - Prefer using a `switch { case ...}` statement over multiple consecutive `if` statements to have shorter code.
 - Prefer using `[...]T` instead of `[]T` when the length is fixed and known at compile time, to avoid unnecessary allocations.
 
-## Validation checklist
+### Validation checklist
 
 Run the following before finishing changes:
 
@@ -195,6 +225,6 @@ Run the following before finishing changes:
 1. If a module is added or modified, run `go mod tidy`
 1. If an interface or mock command is modified, run `go generate -run mockgen ./...`
 
-If a Markdown file is modified and `markdownlint-cli2` is available, run `markdownlint-cli2 "**/*.md"`
+---
 
 If a command is unavailable in the current environment, report it clearly and provide the exact command needed once available.
