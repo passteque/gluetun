@@ -12,6 +12,12 @@ import (
 	"github.com/qdm12/gluetun/internal/portforward/service"
 )
 
+// ErrServiceNotRunning is given back to a [Loop.SetPortsForwarded] call asking for
+// ports while no port forwarding service runs, which happens in the short time
+// before the run loop starts the first one. The loop starts one on its own,
+// so the caller can try again later.
+var ErrServiceNotRunning = errors.New("port forwarding service is not running, try again later")
+
 type Loop struct {
 	// State
 	settings      Settings
@@ -247,7 +253,7 @@ func (l *Loop) SetPortsForwarded(ports []uint16) (err error) {
 	defer l.serviceMutex.Unlock()
 
 	if l.service == nil {
-		return errors.New("port forwarding service not started")
+		return fmt.Errorf("%w", ErrServiceNotRunning)
 	}
 	return l.service.SetPortsForwarded(l.runCtx, ports)
 }
@@ -276,7 +282,6 @@ type timeTimer struct {
 
 func (t *timeTimer) C() <-chan time.Time { return t.timer.C }
 
-// Stop stops the timer, without consuming a timeout event already delivered.
 func (t *timeTimer) Stop() { t.timer.Stop() }
 
 func ptrTo[T any](value T) *T {

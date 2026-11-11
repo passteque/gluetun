@@ -443,3 +443,36 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 	err = loop.Stop()
 	require.NoError(t, err)
 }
+
+func Test_Loop_SetPortsForwarded(t *testing.T) {
+	t.Parallel()
+
+	const forwardedPort = uint16(45066)
+
+	t.Run("no_service_running", func(t *testing.T) {
+		t.Parallel()
+
+		loop := &Loop{}
+
+		err := loop.SetPortsForwarded([]uint16{forwardedPort})
+
+		assert.ErrorIs(t, err, ErrServiceNotRunning)
+	})
+
+	t.Run("service_running", func(t *testing.T) {
+		t.Parallel()
+
+		ctrl := gomock.NewController(t)
+		runCtx := t.Context()
+		runningService := NewMockService(ctrl)
+		runningService.EXPECT().SetPortsForwarded(runCtx, []uint16{forwardedPort}).Return(nil)
+
+		loop := &Loop{}
+		loop.runCtx = runCtx
+		loop.setService(runningService)
+
+		err := loop.SetPortsForwarded([]uint16{forwardedPort})
+
+		require.NoError(t, err)
+	})
+}
