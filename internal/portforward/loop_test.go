@@ -66,6 +66,10 @@ func Test_Loop_failedPortForwardRetry(t *testing.T) {
 		// updateRejected is true when an update the loop refuses arrives while
 		// the retry timer is pending, and must leave it armed.
 		updateRejected bool
+		// vpnDownWhilePending is true when the VPN goes down while the retry
+		// timer is pending, which supersedes the retry and leaves the loop with
+		// a service disabled for as long as the tunnel is down.
+		vpnDownWhilePending bool
 	}{
 		"retried_when_timer_fires": {
 			retryByTimer: true,
@@ -76,6 +80,9 @@ func Test_Loop_failedPortForwardRetry(t *testing.T) {
 		"retried_when_timer_fires_after_a_rejected_update": {
 			retryByTimer:   true,
 			updateRejected: true,
+		},
+		"retried_by_update_following_the_vpn_going_down": {
+			vpnDownWhilePending: true,
 		},
 	}
 
@@ -182,6 +189,29 @@ func Test_Loop_failedPortForwardRetry(t *testing.T) {
 			assert.ErrorContains(t, err, "retrying in "+retryDelay.String())
 
 			switch {
+			case testCase.vpnDownWhilePending:
+				// The VPN going down arrives while the retry timer is still
+				// pending, so the loop gives up on that retry (the stop is the
+				// expectation declared above, since this case is superseded by an
+				// update) and restarts the service right away, disabled since the
+				// tunnel is down: a disabled service forwards no port and does not
+				// call the provider at all, which no expectation covers.
+				portForwarder.EXPECT().Name().Return(providers.Protonvpn) // settings validation
+				downUpdate := Settings{
+					VPNIsUp: new(false),
+					Service: service.Settings{
+						PortForwarder: portForwarder,
+						Interface:     vpnInterface,
+					},
+				}
+				err = loop.UpdateWith(downUpdate)
+				require.NoError(t, err)
+				// Back up, the service starts for real this time, and the
+				// disabled service in between is stopped on its way out. The VPN
+				// was down, so this update is validated as if the program was
+				// starting, and the port forwarder name is not asked for.
+				err = loop.UpdateWith(vpnUp)
+				require.NoError(t, err)
 			case testCase.updateRejected:
 				// Arrives while the retry timer is still pending, and is refused
 				// by the settings validation of the loop. No service restart
