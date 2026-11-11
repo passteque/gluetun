@@ -633,3 +633,34 @@ func Test_Loop_SetPortsForwarded(t *testing.T) {
 		require.NoError(t, err)
 	})
 }
+
+// Test_Loop_UpdateWith checks an update asked once the loop has stopped is
+// answered at once, instead of waiting for a run which is over: stopping the
+// loop cancels the context every waiting UpdateWith call listens on.
+func Test_Loop_UpdateWith(t *testing.T) {
+	t.Parallel()
+
+	portFilepath := filepath.Join(t.TempDir(), "forwarded_port")
+	// The loop starts with the VPN down, so the port forwarding service is
+	// never enabled and none of the injected objects is ever used.
+	loop := NewLoop(settings.PortForwarding{
+		Enabled:        new(true),
+		Filepath:       &portFilepath,
+		UpCommand:      new(""),
+		DownCommand:    new(""),
+		ListeningPorts: []uint16{0},
+		PortsCount:     1,
+	}, nil, nil, nil, nil, nil, os.Getuid(), os.Getgid())
+
+	_, err := loop.Start(t.Context())
+	require.NoError(t, err)
+	// Stopped even if an assertion below fails this goroutine and leaves the
+	// run context alive. A second stop is a no-op.
+	t.Cleanup(func() { _ = loop.Stop() })
+
+	err = loop.Stop()
+	require.NoError(t, err)
+
+	err = loop.UpdateWith(Settings{VPNIsUp: new(true)})
+	assert.ErrorIs(t, err, context.Canceled)
+}
