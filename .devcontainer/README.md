@@ -83,17 +83,17 @@ WantedBy=default.target
 
 💁 this also works on WSL2 with Ubuntu
 
-By default, the devcontainer mounts files to be able to use GPG SSH git commit signing with an `id_ed25519`-named key:
+By default, the devcontainer mounts files to be able to use GPG SSH git commit signing with an `signingkey`-named key:
 
 - `~/.ssh/allowed_signers` <-> `/home/user/.ssh/allowed_signers`
-- `~/.ssh/id_ed25519.pub` <-> `/home/user/.ssh/id_ed25519.pub` - `id_ed25519.pub` may need to be adapted to match your key filename
+- `~/.ssh/signingkey.pub` <-> `/home/user/.ssh/signingkey.pub` - `signingkey.pub` may need to be adapted to match your key filename
 
 If you do not want to use GPG SSH git commit signing, comment out the mounts in `devcontainer.json`:
 
 ```jsonc
 {
-    "source": "${localEnv:HOME}/.ssh/id_ed25519.pub",
-    "target": "/home/user/.ssh/id_ed25519.pub",
+    "source": "${localEnv:HOME}/.ssh/signingkey.pub",
+    "target": "/home/user/.ssh/signingkey.pub",
     "type": "bind,readonly"
 },
 {
@@ -122,8 +122,8 @@ This is **not the default** so `devcontainer.json` needs the following changes:
         "type": "bind"
     },
     {
-        "source": "${localEnv:HOME}/.ssh/id_ed25519.pub",
-        "target": "/home/user/.ssh/id_ed25519.pub",
+        "source": "${localEnv:HOME}/.ssh/signingkey.pub",
+        "target": "/home/user/.ssh/signingkey.pub",
         "type": "bind,readonly"
     },
     {
@@ -165,8 +165,8 @@ and all the ssh mounts in `devcontainer.json`:
     "type": "bind"
 },
 {
-    "source": "${localEnv:HOME}/.ssh/id_ed25519.pub",
-    "target": "/home/user/.ssh/id_ed25519.pub",
+    "source": "${localEnv:HOME}/.ssh/signingkey.pub",
+    "target": "/home/user/.ssh/signingkey.pub",
     "type": "bind,readonly"
 },
 {

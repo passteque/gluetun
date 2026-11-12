@@ -1,4 +1,4 @@
-FROM ghcr.io/qdm12/godevcontainer:v0.23.0-alpine
+FROM ghcr.io/qdm12/godevcontainer:v0.24.0-alpine
 RUN apk add wireguard-tools htop openssl tcpdump iptables
 RUN apk add nodejs npm && npm install markdownlint-cli2 --global && apk del npm
 USER root

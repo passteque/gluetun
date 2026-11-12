@@ -110,10 +110,10 @@
         // With gpg.format=ssh git resolves user.signingkey to the public key file
         // to learn which identity to use, then asks the SSH agent for the signature.
         // Adapt the public key filename to your public key filename in case it's not
-        // id_ed25519.pub. Comment out if ~/.ssh/id_ed25519.pub does not exist.
+        // signingkey.pub. Comment out if ~/.ssh/signingkey.pub does not exist.
         {
-            "source": "${localEnv:HOME}/.ssh/id_ed25519.pub",
-            "target": "/home/user/.ssh/id_ed25519.pub",
+            "source": "${localEnv:HOME}/.ssh/signingkey.pub",
+            "target": "/home/user/.ssh/signingkey.pub",
             "type": "bind,readonly"
         },
         // Commit signatures display: allowed_signers is consulted by `git log`
@@ -164,8 +164,7 @@
                 "github.vscode-pull-request-github", // Github interaction
                 "redhat.vscode-yaml", // Kubernetes, Drone syntax highlighting
                 "bajdzis.vscode-database", // Supports connections to mysql or postgres, over SSL, socked
-                "IBM.output-colorizer", // Colorize your output/test logs
-                "github.copilot" // AI code completion
+                "IBM.output-colorizer" // Colorize your output/test logs
                 // "mohsen1.prettify-json", // Prettify JSON data
                 // "zxh404.vscode-proto3", // Supports Proto syntax
                 // "jrebocho.vscode-random", // Generates random values
@@ -174,10 +173,12 @@
                 // "spikespaz.vscode-smoothtype", // smooth cursor animation
             ],
             "settings": {
-                // General settings
                 "files.eol": "\n",
                 "editor.formatOnSave": true,
-    "go.buildTags": "linux",
+                "terminal.integrated.env.linux": {
+                    "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
+                },
+                "go.buildTags": "linux",
                 "go.toolsEnvVars": {
                     "CGO_ENABLED": "0"
                 },
