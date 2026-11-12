@@ -70,3 +70,102 @@ func Test_Wireguard_validate(t *testing.T) {
 		})
 	}
 }
+
+func Test_Wireguard_setDefaults(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		settings    Wireguard
+		vpnProvider string
+		expected    Wireguard
+	}{
+		"nordvpn_default_address": {
+			vpnProvider: providers.Nordvpn,
+			expected: Wireguard{
+				PrivateKey:   new(""),
+				PreSharedKey: new(""),
+				Addresses:    []netip.Prefix{netip.MustParsePrefix("10.5.0.2/32")},
+				AllowedIPs: []netip.Prefix{
+					netip.MustParsePrefix("0.0.0.0/0"),
+					netip.MustParsePrefix("::/0"),
+				},
+				Interface:                   "wg0",
+				PersistentKeepaliveInterval: new(time.Duration(0)),
+				MTU:                         new(uint32(0)),
+				Implementation:              "auto",
+				GSO:                         new(true),
+			},
+		},
+		"nordvpn_user_addresses_kept": {
+			settings: Wireguard{
+				Addresses: []netip.Prefix{netip.MustParsePrefix("1.2.3.4/32")},
+			},
+			vpnProvider: providers.Nordvpn,
+			expected: Wireguard{
+				PrivateKey:   new(""),
+				PreSharedKey: new(""),
+				Addresses:    []netip.Prefix{netip.MustParsePrefix("1.2.3.4/32")},
+				AllowedIPs: []netip.Prefix{
+					netip.MustParsePrefix("0.0.0.0/0"),
+					netip.MustParsePrefix("::/0"),
+				},
+				Interface:                   "wg0",
+				PersistentKeepaliveInterval: new(time.Duration(0)),
+				MTU:                         new(uint32(0)),
+				Implementation:              "auto",
+				GSO:                         new(true),
+			},
+		},
+		"protonvpn_default_addresses": {
+			vpnProvider: providers.Protonvpn,
+			expected: Wireguard{
+				PrivateKey:   new(""),
+				PreSharedKey: new(""),
+				Addresses: []netip.Prefix{
+					netip.MustParsePrefix("10.2.0.2/32"),
+					netip.MustParsePrefix("2a07:b944::2:2/128"),
+				},
+				AllowedIPs: []netip.Prefix{
+					netip.MustParsePrefix("0.0.0.0/0"),
+					netip.MustParsePrefix("::/0"),
+				},
+				Interface:                   "wg0",
+				PersistentKeepaliveInterval: new(time.Duration(0)),
+				MTU:                         new(uint32(0)),
+				Implementation:              "auto",
+				GSO:                         new(true),
+			},
+		},
+		"protonvpn_user_addresses_kept": {
+			settings: Wireguard{
+				Addresses: []netip.Prefix{netip.MustParsePrefix("1.2.3.4/32")},
+			},
+			vpnProvider: providers.Protonvpn,
+			expected: Wireguard{
+				PrivateKey:   new(""),
+				PreSharedKey: new(""),
+				Addresses:    []netip.Prefix{netip.MustParsePrefix("1.2.3.4/32")},
+				AllowedIPs: []netip.Prefix{
+					netip.MustParsePrefix("0.0.0.0/0"),
+					netip.MustParsePrefix("::/0"),
+				},
+				Interface:                   "wg0",
+				PersistentKeepaliveInterval: new(time.Duration(0)),
+				MTU:                         new(uint32(0)),
+				Implementation:              "auto",
+				GSO:                         new(true),
+			},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			settings := testCase.settings
+			settings.setDefaults(testCase.vpnProvider)
+
+			assert.Equal(t, testCase.expected, settings)
+		})
+	}
+}
