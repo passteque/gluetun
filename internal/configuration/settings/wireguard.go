@@ -175,8 +175,11 @@ func (w *Wireguard) setDefaults(vpnProvider string) {
 		w.Addresses = gosettings.DefaultSlice(w.Addresses, []netip.Prefix{defaultNordVPNPrefix})
 	case providers.Protonvpn:
 		defaultAddresses := []netip.Prefix{
-			netip.MustParsePrefix("10.2.0.2/32"),
-			netip.MustParsePrefix("2a07:b944::2:2/128"),
+			netip.PrefixFrom(netip.AddrFrom4([4]byte{10, 2, 0, 2}), netip.IPv4Unspecified().BitLen()),
+			// 2a07:b944::2:2/128
+			netip.PrefixFrom(
+				netip.AddrFrom16([16]byte{0x2a, 0x07, 0xb9, 0x44, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x02}), //nolint:lll
+				netip.IPv6LinkLocalAllNodes().BitLen()),
 		}
 		w.Addresses = gosettings.DefaultSlice(w.Addresses, defaultAddresses)
 	}
