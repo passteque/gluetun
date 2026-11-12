@@ -70,3 +70,43 @@ func Test_Wireguard_validate(t *testing.T) {
 		})
 	}
 }
+
+func Test_Wireguard_setDefaults(t *testing.T) {
+	t.Parallel()
+
+	testCases := map[string]struct {
+		settings          Wireguard
+		vpnProvider       string
+		expectedAddresses []netip.Prefix
+	}{
+		"nordvpn_default_address": {
+			vpnProvider:       providers.Nordvpn,
+			expectedAddresses: []netip.Prefix{netip.MustParsePrefix("10.5.0.2/32")},
+		},
+		"protonvpn_default_addresses": {
+			vpnProvider: providers.Protonvpn,
+			expectedAddresses: []netip.Prefix{
+				netip.MustParsePrefix("10.2.0.2/32"),
+				netip.MustParsePrefix("2a07:b944::2:2/128"),
+			},
+		},
+		"protonvpn_user_addresses_kept": {
+			settings: Wireguard{
+				Addresses: []netip.Prefix{netip.MustParsePrefix("10.2.0.2/32")},
+			},
+			vpnProvider:       providers.Protonvpn,
+			expectedAddresses: []netip.Prefix{netip.MustParsePrefix("10.2.0.2/32")},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			wireguard := testCase.settings
+			wireguard.setDefaults(testCase.vpnProvider)
+
+			assert.Equal(t, testCase.expectedAddresses, wireguard.Addresses)
+		})
+	}
+}
