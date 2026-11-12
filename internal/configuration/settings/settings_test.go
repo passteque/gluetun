@@ -82,7 +82,9 @@ func Test_Settings_String(t *testing.T) {
 |   |   └── ICMP target IPs:
 |   |       ├── 1.1.1.1
 |   |       └── 8.8.8.8
-|   └── Restart VPN on healthcheck failure: yes
+|   ├── Restart VPN on healthcheck failure: yes
+|   ├── Restart delay initial: 15s
+|   └── Restart delay max: 5m0s
 ├── SOCKS5 proxy server settings:
 |   └── Enabled: no
 ├── Shadowsocks server settings:

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"time"
 
 	"github.com/qdm12/gosettings"
 	"github.com/qdm12/gosettings/reader"
@@ -36,6 +37,15 @@ type Health struct {
 	// RestartVPN indicates whether to restart the VPN connection
 	// when the healthcheck fails.
 	RestartVPN *bool
+	// RestartDelayInitial is the initial duration to wait before
+	// restarting the VPN connection when the healthcheck fails.
+	RestartDelayInitial *time.Duration
+	// RestartDelayMax is the maximum duration to wait before
+	// restarting the VPN connection when the healthcheck fails.
+	RestartDelayMax *time.Duration
+	// StartupDelay is the duration to wait after VPN connection setup
+	// before running the initial healthcheck.
+	StartupDelay *time.Duration
 }
 
 func (h Health) Validate() (err error) {
@@ -59,16 +69,32 @@ func (h Health) Validate() (err error) {
 		return fmt.Errorf("small check type is not valid: %w", err)
 	}
 
+	if h.RestartDelayInitial != nil && *h.RestartDelayInitial <= 0 {
+		return errors.New("restart delay initial must be positive")
+	}
+
+	if h.RestartDelayInitial != nil && h.RestartDelayMax != nil &&
+		*h.RestartDelayMax < *h.RestartDelayInitial {
+		return errors.New("restart delay max cannot be less than restart delay initial")
+	}
+
+	if h.StartupDelay != nil && *h.StartupDelay < 0 {
+		return errors.New("startup delay cannot be negative")
+	}
+
 	return nil
 }
 
 func (h *Health) copy() (copied Health) {
 	return Health{
-		ServerAddress:   h.ServerAddress,
-		TargetAddresses: h.TargetAddresses,
-		ICMPTargetIPs:   gosettings.CopySlice(h.ICMPTargetIPs),
-		SmallCheckType:  h.SmallCheckType,
-		RestartVPN:      gosettings.CopyPointer(h.RestartVPN),
+		ServerAddress:       h.ServerAddress,
+		TargetAddresses:     h.TargetAddresses,
+		ICMPTargetIPs:       gosettings.CopySlice(h.ICMPTargetIPs),
+		SmallCheckType:      h.SmallCheckType,
+		RestartVPN:          gosettings.CopyPointer(h.RestartVPN),
+		RestartDelayInitial: gosettings.CopyPointer(h.RestartDelayInitial),
+		RestartDelayMax:     gosettings.CopyPointer(h.RestartDelayMax),
+		StartupDelay:        gosettings.CopyPointer(h.StartupDelay),
 	}
 }
 
@@ -81,6 +107,9 @@ func (h *Health) OverrideWith(other Health) {
 	h.ICMPTargetIPs = gosettings.OverrideWithSlice(h.ICMPTargetIPs, other.ICMPTargetIPs)
 	h.SmallCheckType = gosettings.OverrideWithComparable(h.SmallCheckType, other.SmallCheckType)
 	h.RestartVPN = gosettings.OverrideWithPointer(h.RestartVPN, other.RestartVPN)
+	h.RestartDelayInitial = gosettings.OverrideWithPointer(h.RestartDelayInitial, other.RestartDelayInitial)
+	h.RestartDelayMax = gosettings.OverrideWithPointer(h.RestartDelayMax, other.RestartDelayMax)
+	h.StartupDelay = gosettings.OverrideWithPointer(h.StartupDelay, other.StartupDelay)
 }
 
 func (h *Health) SetDefaults() {
@@ -92,6 +121,12 @@ func (h *Health) SetDefaults() {
 	})
 	h.SmallCheckType = gosettings.DefaultComparable(h.SmallCheckType, "icmp")
 	h.RestartVPN = gosettings.DefaultPointer(h.RestartVPN, true)
+	const defaultRestartDelayInitial = 15 * time.Second
+	const defaultRestartDelayMax = 5 * time.Minute
+	const defaultStartupDelay = 0 * time.Second
+	h.RestartDelayInitial = gosettings.DefaultPointer(h.RestartDelayInitial, defaultRestartDelayInitial)
+	h.RestartDelayMax = gosettings.DefaultPointer(h.RestartDelayMax, defaultRestartDelayMax)
+	h.StartupDelay = gosettings.DefaultPointer(h.StartupDelay, defaultStartupDelay)
 }
 
 func (h Health) String() string {
@@ -120,6 +155,15 @@ func (h Health) toLinesNode() (node *gotree.Node) {
 		node.Appendf("Small health check type: Plain DNS lookup over UDP")
 	}
 	node.Appendf("Restart VPN on healthcheck failure: %s", gosettings.BoolToYesNo(h.RestartVPN))
+	if h.RestartDelayInitial != nil {
+		node.Appendf("Restart delay initial: %s", *h.RestartDelayInitial)
+	}
+	if h.RestartDelayMax != nil {
+		node.Appendf("Restart delay max: %s", *h.RestartDelayMax)
+	}
+	if h.StartupDelay != nil && *h.StartupDelay > 0 {
+		node.Appendf("Startup delay: %s", *h.StartupDelay)
+	}
 	return node
 }
 
@@ -133,6 +177,18 @@ func (h *Health) Read(r *reader.Reader) (err error) {
 	}
 	h.SmallCheckType = r.String("HEALTH_SMALL_CHECK_TYPE")
 	h.RestartVPN, err = r.BoolPtr("HEALTH_RESTART_VPN")
+	if err != nil {
+		return err
+	}
+	h.RestartDelayInitial, err = r.DurationPtr("HEALTH_RESTART_DELAY_INITIAL")
+	if err != nil {
+		return err
+	}
+	h.RestartDelayMax, err = r.DurationPtr("HEALTH_RESTART_DELAY_MAX")
+	if err != nil {
+		return err
+	}
+	h.StartupDelay, err = r.DurationPtr("HEALTH_STARTUP_DELAY")
 	if err != nil {
 		return err
 	}

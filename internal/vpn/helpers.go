@@ -54,9 +54,9 @@ func (l *Loop) logAndWait(ctx context.Context, err error) {
 	if err != nil {
 		l.logger.Error(err.Error())
 	}
-	l.logger.Info("retrying in " + l.backoffTime.String())
-	timer := time.NewTimer(l.backoffTime)
-	l.backoffTime *= 2
+	backoff := l.getAndAdvanceBackoff()
+	l.logger.Info("retrying in " + backoff.String())
+	timer := time.NewTimer(backoff)
 	select {
 	case <-timer.C:
 	case <-ctx.Done():
