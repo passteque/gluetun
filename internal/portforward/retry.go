@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"github.com/qdm12/gluetun/internal/backoff"
 )
 
 // Delay before the next try at running a port forwarding service following a
@@ -20,9 +22,9 @@ const maxRetryDelay = 5 * time.Minute
 // which is close to two hours of waiting once the delay reached its maximum.
 // Only consecutive failures add up, since an accepted update and a stable
 // service run reset the count. The run ends because only a restart of the
-// program asks the provider for another VPN server. This and the two delays are
-// not local to the code booking a failure, since the test declares one
-// expectation per attempt and announces the delay of each one.
+// program asks the provider for another VPN server. The three of them are given
+// to the backoff of the run loop, and are not local to it since the test
+// declares one expectation per attempt and announces the delay of each one.
 const maxRetryAttempts = 30
 
 // Uptime after which a crashed port forwarding service is considered to have
@@ -31,29 +33,29 @@ const maxRetryAttempts = 30
 // retry delay until the run gives up.
 const stableServiceRunTime = 5 * time.Minute
 
-// retryState is the backoff of the run loop: the delay to wait before the next
-// service start, the timer it is armed with, the count of consecutive failures
-// which decides when the run has to end, and the timer factory. A pending retry
-// is held by the timer, and its channel is nil when there is nothing pending,
-// so the select of the run loop ignores that case.
+// retryState is where the run loop books the failures at running a port
+// forwarding service: a [backoff.State] holds the delays and the count of
+// consecutive failures, and the timer of the loop holds the retry pending. The
+// channel of that timer is nil when there is nothing pending, so the select of
+// the run loop ignores that case.
 type retryState struct {
 	timer    timer
 	after    <-chan time.Time
-	delay    time.Duration
-	attempts int
+	backoff  *backoff.State
 	newTimer func(duration time.Duration) timer
 }
 
 func newRetryState(newTimer func(duration time.Duration) timer) retryState {
 	return retryState{
-		delay:    defaultRetryDelay,
+		backoff:  backoff.New(defaultRetryDelay, maxRetryDelay, maxRetryAttempts),
 		newTimer: newTimer,
 	}
 }
 
+// reset forgets the failures booked so far, which an update asking for a new
+// service does, and a service which ran for [stableServiceRunTime] did.
 func (s *retryState) reset() {
-	s.delay = defaultRetryDelay
-	s.attempts = 0
+	s.backoff.Reset()
 }
 
 // stop drops a pending retry, which both a restart of the service and the end
@@ -66,23 +68,22 @@ func (s *retryState) stop() {
 }
 
 // failure books one consecutive failure, arms the next service start with the
-// current delay and doubles that delay, and gives back the error to report.
-// Once too many failures piled up nothing is armed, and giveUp tells the run
-// loop to end.
+// delay the backoff finds it worth, and gives back the error to report. Once the
+// failures tolerated piled up nothing is armed, and giveUp tells the run loop to
+// end.
 func (s *retryState) failure(failed error) (giveUp bool, reported error) {
 	// Whatever this failure is worth, the attempt pending is off: a new one is
 	// armed below, or the run gives up and no attempt should ever come.
 	s.stop()
-	s.attempts++
-	if s.attempts >= maxRetryAttempts {
-		return true, fmt.Errorf("%w - giving up after %d consecutive failed attempts", failed, s.attempts)
+	booked := s.backoff.Failure()
+	if booked.GiveUp {
+		return true, fmt.Errorf("%w - giving up after %d consecutive failed attempts",
+			failed, booked.Attempts)
 	}
 	reported = fmt.Errorf("%w - retrying in %s (attempt %d/%d)",
-		failed, s.delay, s.attempts, maxRetryAttempts)
-	s.timer = s.newTimer(s.delay)
+		failed, booked.Delay, booked.Attempts, booked.Max)
+	s.timer = s.newTimer(booked.Delay)
 	s.after = s.timer.C()
-	const delayFactor = 2
-	s.delay = min(s.delay*delayFactor, maxRetryDelay)
 	return false, reported
 }
 
