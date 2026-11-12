@@ -10,6 +10,7 @@ Guidance for coding agents working in this repository.
   - Do not introduce breaking changes for the Go API in the `pkg/` directory.
   - If a compatibility break seems beneficial, stop and ask for confirmation before implementing it.
 - Update or add tests when behavior changes.
+- If interacting with a PR, update its description when something an end user can see changes.
 
 ## Coding practices
 
@@ -21,6 +22,9 @@ Guidance for coding agents working in this repository.
   - Do not introduce breaking changes for the Go API in the `pkg/` directory.
   - If a compatibility break seems beneficial, stop and ask for confirmation before implementing it.
 - If an expected-to-be-available command is unavailable in the current environment, report it clearly and provide the exact command needed once available.
+- A retry states three things beside its delay: the maximum delay, how many consecutive failures are tolerated before giving up, and what resets the count. A doubling delay with no cap and no give-up is a bug, not a policy.
+- A failure count is reset on a condition, never on an event. "The attempt started" is not evidence of health; only "it worked, and kept working" is.
+- A test which stops the code under test waits for the work it counted on before stopping it.
 
 ## Markdown coding conventions
 
@@ -77,8 +81,10 @@ If a Markdown file is modified and `markdownlint-cli2` is available, run `markdo
   - should only be used when a programming error is encountered and you should NOT return errors for programming errors (such as passing nil objects)
   - Its counterpart `recover` should not really be used, except for testing a panic in test code (or use `assert.PanicsWithValue`).
 - Always prefer using unbuffered channels, unless absolutely required. Buffered channels are usually a sign of a design flaw, and usually just push back the problem somewhere else.
+- A send on a channel whose reader may have moved on must select against the lifetime of the run, or say in a comment why it cannot block.
 - Aim at having either write-only or read-only channel arguments, to avoid deadlocks and make the code more readable. For example, prefer `chan<- string` or `<-chan string` instead of `chan string`.
 - Always prefer having named fields instead of embedded fields in structs.
+- For function arguments, prefer having multiple arguments per line than a single argument per line
 
 ### Directory structure and file naming
 
@@ -156,6 +162,7 @@ The Go formatter used is gofumpt.
 
 - Always prefer wrapping errors with some context with `fmt.Errorf("doing this: %w", err)`
 - Use `errors.New("error message")` when creating a 'bottom' constant string error without additional context, instead of `fmt.Errorf`
+- If a sentinel error needs to be used (for the caller) but does not need context, return it as `fmt.Errorf("%w", ErrSentinel)` to enforce the caller to use `errors.Is` instead of `==`. This also allows to add context later without breaking the caller.
 - In rare cases, you can just use `return err` notably:
   - If the function is called **recursively**, since we don't wrap the wrapping multiple times for each recursion
   - If the current function only statement is the call to another function, for example:
@@ -200,6 +207,9 @@ The Go formatter used is gofumpt.
 - Instead of hardcoding a timeout in tests, extract the timeout from `t.Deadline()`, and, if not available, use `t.Context()`
 - Name your tests as `Test_StructName_MethodName` for methods, and `Test_FunctionName` for functions.
 - Always extend the method/function test to have more test cases/subtests rather than adding more tests for a special case such as `Test_FunctionName_Case1` (bad).
+- To have an event-driven testing, time should be injected, never called directly. For example with a field `func() time.Time` or `func(period time.Duration) timer`.
+- Near-duplicate fixtures either share their assertions or comment the single place where they legitimately differ.
+- Never shadow a package-level name in a test, constants included.
 
 ### Libraries to use
 
