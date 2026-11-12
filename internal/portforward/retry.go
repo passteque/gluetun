@@ -6,8 +6,9 @@ import (
 )
 
 // Delay before the next try at running a port forwarding service following a
-// failure. It doubles up to [maxRetryDelay], and goes back to this default once
-// the service starts, and when an update asks for a new service.
+// failure. It doubles up to [maxRetryDelay], and goes back to this default when
+// an update asks for a new service, and when a crashed service had run for
+// [stableServiceRunTime].
 const defaultRetryDelay = 5 * time.Second
 
 // Delay the doubling of [defaultRetryDelay] stops at, so a server which will
@@ -16,12 +17,18 @@ const maxRetryDelay = 5 * time.Minute
 
 // Consecutive failures tolerated before the run gives up on port forwarding,
 // which is close to two hours of waiting once the delay reached its maximum.
-// Only consecutive failures add up, since a successful start and an accepted
-// update reset the count. The run ends because only a restart of the program
-// asks the provider for another VPN server. This and the two delays are not
-// local to the code booking a failure, since the test declares one expectation
-// per attempt and announces the delay of each one.
+// Only consecutive failures add up, since an accepted update and a stable
+// service run reset the count. The run ends because only a restart of the
+// program asks the provider for another VPN server. This and the two delays are
+// not local to the code booking a failure, since the test declares one
+// expectation per attempt and announces the delay of each one.
 const maxRetryAttempts = 30
+
+// Uptime after which a crashed port forwarding service is considered to have
+// run well enough for the failures it survived to be forgotten. A service which
+// crashes as fast as it started does not reach it, and keeps escalating its
+// retry delay until the run gives up.
+const stableServiceRunTime = 5 * time.Minute
 
 // retryState is the backoff of the run loop: the delay to wait before the next
 // service start, the timer it is armed with, the count of consecutive failures
@@ -34,6 +41,13 @@ type retryState struct {
 	delay    time.Duration
 	attempts int
 	newTimer func(duration time.Duration) timer
+}
+
+func newRetryState(newTimer func(duration time.Duration) timer) retryState {
+	return retryState{
+		delay:    defaultRetryDelay,
+		newTimer: newTimer,
+	}
 }
 
 func (s *retryState) reset() {

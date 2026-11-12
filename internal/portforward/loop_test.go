@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
@@ -30,6 +31,31 @@ func hangContext(t *testing.T) context.Context {
 	ctx, cancel := context.WithTimeout(t.Context(), hangTimeout)
 	t.Cleanup(cancel)
 	return ctx
+}
+
+// fakeClock is a clock the test advances by hand, so the uptime of a service
+// reaching minutes is simulated without waiting for them. The loop reads it on
+// its own goroutine while the test advances it from a mock call running on the
+// service goroutine, hence the mutex.
+type fakeClock struct {
+	nowMutex sync.Mutex
+	now      time.Time
+}
+
+func newFakeClock() *fakeClock {
+	return &fakeClock{now: time.Now()}
+}
+
+func (c *fakeClock) Now() (now time.Time) {
+	c.nowMutex.Lock()
+	defer c.nowMutex.Unlock()
+	return c.now
+}
+
+func (c *fakeClock) Advance(by time.Duration) {
+	c.nowMutex.Lock()
+	defer c.nowMutex.Unlock()
+	c.now = c.now.Add(by)
 }
 
 func expectWait(t *testing.T, signal <-chan struct{}, description string) {
@@ -457,144 +483,202 @@ func Test_Loop_failedPortForwardRetryGivesUp(t *testing.T) {
 	require.NoError(t, err)
 }
 
-// Test_Loop_failedPortForwardRetryDelayReset checks the retry delay goes back
-// to its default delay once the service has started, and when an update asks
-// for a new service, so a failing port forwarding of an otherwise working
-// service is retried without waiting for minutes.
+// Test_Loop_failedPortForwardRetryDelayReset checks when the retry delay and
+// the consecutive failure count go back to their start, so a failing port
+// forwarding is retried at the default delay when there is a reason to be, and
+// is not when a service crashes as fast as it started. Five attempts run, the
+// update asking for the first one and the retry timer for the four others:
+// 1 and 2 fail and double the delay,
+// 3 succeeds, runs for a while and crashes,
+// 4 fails, with a delay depending on how long the service of the attempt 3 ran,
+// 5 fails as well, since an update reset the delay before asking for it, and
+// sent back the retry the attempt 4 had scheduled.
 func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 	t.Parallel()
 
-	ctrl := gomock.NewController(t)
-
-	const vpnInterface = "tun0"
-	const forwardedPort = uint16(45066)
-	const defaultRetryDelay = 5 * time.Second
-	gateway := netip.MustParseAddr("10.2.0.1")
-	internalIP := netip.MustParseAddr("10.2.0.2")
-	portFilepath := filepath.Join(t.TempDir(), "forwarded_port")
-	client := &http.Client{}
-	errPortForward := errors.New("TCP and UDP external ports differ: 45066 and 60808")
-	errKeepPort := errors.New("port mapping expired")
-	// Part of the error logged with the retry delay, whatever wrapped it on the
-	// way from the port forwarder up to the loop
-	retryError := func(retryDelay time.Duration) string {
-		return errPortForward.Error() + " - retrying in " + retryDelay.String()
-	}
-
-	routing := NewMockRouting(ctrl)
-	// Five service starts:
-	// 1 fails, sending the default delay back to the update caller,
-	// 2 fails, announcing twice the default delay,
-	// 3 succeeds, which resets the delay, and its keep alive call fails,
-	// 4 fails after the delay the crash took, announcing twice the default
-	// delay rather than the 20s the backoff had reached before the success,
-	// 5 fails, announced with the default delay as well, since a new update
-	// reset the delay before it and sent the retry of the attempt 4 back.
-	const attempts = 5
-	routing.EXPECT().VPNLocalGatewayIP(vpnInterface).Return(gateway, nil).Times(attempts)
-	routing.EXPECT().AssignedIP(vpnInterface, netlink.FamilyV4).Return(internalIP, nil).Times(attempts)
-	logger := NewMockLogger(ctrl)
-	portAllower := NewMockPortAllower(ctrl)
-	portForwarder := NewMockPortForwarder(ctrl)
-	objects := utils.PortForwardObjects{
-		Logger:     logger,
-		Gateway:    gateway,
-		InternalIP: internalIP,
-		Client:     client,
-		PortsCount: 1,
-	}
-	anyContext := gomock.Any()
-
-	logger.EXPECT().Info("starting").Times(attempts)
-	// One expectation per attempt, in the order they run: gomock consumes the
-	// expectations of identical arguments in declaration order.
-	portForwarder.EXPECT().PortForward(anyContext, objects).
-		Return(nil, errPortForward)
-	portForwarder.EXPECT().PortForward(anyContext, objects).
-		Return(nil, errPortForward)
-	portForwarder.EXPECT().PortForward(anyContext, objects).
-		Return(map[uint16]uint16{forwardedPort: forwardedPort}, nil)
-	portForwarder.EXPECT().PortForward(anyContext, objects).
-		Return(nil, errPortForward)
-	portForwarder.EXPECT().PortForward(anyContext, objects).
-		Return(nil, errPortForward)
-
-	logger.EXPECT().Error(errorContaining{substring: retryError(2 * defaultRetryDelay)})
-	// Logged by the loop when it receives the keep alive failure of the attempt
-	// 3, and waited for before driving the retry it schedules, so the crash is
-	// not mistaken for the attempt 4 and their order is not left to the
-	// scheduler.
-	crashLogged := make(chan struct{})
-	logger.EXPECT().Error(errorContaining{substring: errKeepPort.Error() +
-		" - retrying in " + defaultRetryDelay.String()}).
-		DoAndReturn(func(_ string) {
-			close(crashLogged)
-		})
-	// The crash of the attempt 3 has taken the default delay slot, so the
-	// attempt 4 announces twice the default delay.
-	logger.EXPECT().Error(errorContaining{substring: retryError(2 * defaultRetryDelay)})
-
-	// What the successful attempt 3 does, and cleans up after when the keep
-	// alive call fails
-	logger.EXPECT().Info("port forwarded is 45066")
-	portAllower.EXPECT().SetAllowedPort(anyContext, forwardedPort, vpnInterface).Return(nil)
-	logger.EXPECT().Info("writing port file " + portFilepath)
-	portForwarder.EXPECT().KeepPortForward(anyContext, objects).
-		Return(errKeepPort)
-	portAllower.EXPECT().RemoveAllowedPort(context.Background(), forwardedPort).Return(nil)
-	logger.EXPECT().Info("clearing port file " + portFilepath)
-
-	retryTimer := NewMocktimer(ctrl)
-	ticks := make(chan time.Time)
-	// Armed by the attempts 1, 2, 4 and 5, and by the crash of the attempt 3,
-	// which succeeded and so reset the delay back to its default.
-	retryTimer.EXPECT().C().Return(ticks).Times(5)
-	// Registered before the update below: the update supersedes the retry
-	// pending from the attempt 4, which is why its timer is stopped.
-	retryTimer.EXPECT().Stop()
-
-	loop := NewLoop(settings.PortForwarding{
-		Enabled:        new(true),
-		Filepath:       &portFilepath,
-		UpCommand:      new(""),
-		DownCommand:    new(""),
-		ListeningPorts: []uint16{0},
-		PortsCount:     1,
-	}, routing, client, portAllower, logger, nil, os.Getuid(), os.Getgid())
-	loop.newTimer = func(_ time.Duration) timer { return retryTimer }
-	_, err := loop.Start(t.Context())
-	require.NoError(t, err)
-	t.Cleanup(func() { _ = loop.Stop() })
-
-	vpnUp := Settings{
-		VPNIsUp: new(true),
-		Service: service.Settings{
-			PortForwarder: portForwarder,
-			Interface:     vpnInterface,
+	testCases := map[string]struct {
+		// stableRun is true when the service of the attempt 3 reaches
+		// [stableServiceRunTime] before its keep alive call fails, which makes
+		// the loop forget the failures of the attempts 1 and 2. The fake clock
+		// of the test advances the run time, so no test waits for minutes.
+		stableRun bool
+		// delays are the retry delays announced and armed for each of the five
+		// failures. The crash of the attempt 3 is the third entry: it keeps
+		// doubling after an immediate crash, and goes back to the default delay
+		// once the service has run for long enough.
+		delays []time.Duration
+	}{
+		"crash_asap_keeps_the_backoff": {
+			stableRun: false,
+			delays: []time.Duration{
+				5 * time.Second, 10 * time.Second, // attempts 1 and 2
+				20 * time.Second, // crash of the attempt 3
+				40 * time.Second, // attempt 4
+				5 * time.Second,  // attempt 5, after the update reset
+			},
+		},
+		"crash_after_a_stable_run_resets_the_backoff": {
+			stableRun: true,
+			delays: []time.Duration{
+				5 * time.Second, 10 * time.Second, // attempts 1 and 2
+				5 * time.Second,  // crash of the attempt 3, stable run
+				10 * time.Second, // attempt 4, counting from the crash again
+				5 * time.Second,  // attempt 5, after the update reset
+			},
 		},
 	}
-	err = loop.UpdateWith(vpnUp)
-	require.ErrorContains(t, err, retryError(defaultRetryDelay))
 
-	// Attempts 2 and 3, the later one succeeding
-	for range 2 {
-		expectTick(t, ticks)
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+
+			const vpnInterface = "tun0"
+			const forwardedPort = uint16(45066)
+			gateway := netip.MustParseAddr("10.2.0.1")
+			internalIP := netip.MustParseAddr("10.2.0.2")
+			portFilepath := filepath.Join(t.TempDir(), "forwarded_port")
+			client := &http.Client{}
+			errPortForward := errors.New("TCP and UDP external ports differ: 45066 and 60808")
+			errKeepPort := errors.New("port mapping expired")
+			// Part of the error logged with the retry delay, whatever wrapped it
+			// on the way from the port forwarder up to the loop. The attempt
+			// count is not part of it, the give up test checking it instead.
+			retryError := func(failed error, retryDelay time.Duration) string {
+				return failed.Error() + " - retrying in " + retryDelay.String()
+			}
+
+			// The run time of a service is measured on a clock the test
+			// advances by hand, so the stable run of one case is simulated
+			// without either case waiting for anything.
+			clock := newFakeClock()
+
+			const attempts = 5
+			routing := NewMockRouting(ctrl)
+			routing.EXPECT().VPNLocalGatewayIP(vpnInterface).Return(gateway, nil).Times(attempts)
+			routing.EXPECT().AssignedIP(vpnInterface, netlink.FamilyV4).Return(internalIP, nil).Times(attempts)
+			logger := NewMockLogger(ctrl)
+			portAllower := NewMockPortAllower(ctrl)
+			portForwarder := NewMockPortForwarder(ctrl)
+			objects := utils.PortForwardObjects{
+				Logger:     logger,
+				Gateway:    gateway,
+				InternalIP: internalIP,
+				Client:     client,
+				PortsCount: 1,
+			}
+			// The service runs with the context of the loop, which the test does
+			// not have access to
+			anyContext := gomock.Any()
+
+			logger.EXPECT().Info("starting").Times(attempts)
+			// One expectation per attempt, in the order they run: gomock consumes
+			// the expectations of identical arguments in declaration order.
+			portForwarder.EXPECT().PortForward(anyContext, objects).
+				Return(nil, errPortForward)
+			portForwarder.EXPECT().PortForward(anyContext, objects).
+				Return(nil, errPortForward)
+			portForwarder.EXPECT().PortForward(anyContext, objects).
+				Return(map[uint16]uint16{forwardedPort: forwardedPort}, nil)
+			portForwarder.EXPECT().PortForward(anyContext, objects).
+				Return(nil, errPortForward)
+			portForwarder.EXPECT().PortForward(anyContext, objects).
+				Return(nil, errPortForward)
+
+			// The failure of the attempt 1 goes back to the update caller, which
+			// logs it, so the loop logs the failure of the attempt 2.
+			logger.EXPECT().Error(errorContaining{substring: retryError(errPortForward, testCase.delays[1])})
+			// Logged by the loop when it receives the keep alive failure of the
+			// attempt 3, and waited for before driving the retry it schedules, so
+			// the crash is not mistaken for the attempt 4 and their order is not
+			// left to the scheduler.
+			crashLogged := make(chan struct{})
+			logger.EXPECT().Error(errorContaining{substring: retryError(errKeepPort, testCase.delays[2])}).
+				DoAndReturn(func(_ string) {
+					close(crashLogged)
+				})
+			logger.EXPECT().Error(errorContaining{substring: retryError(errPortForward, testCase.delays[3])})
+
+			// What the successful attempt 3 does, and cleans up after when the
+			// keep alive call fails. The clock is advanced in that call, the
+			// latest point where the run time of the service can still be told
+			// from the time the loop measured when the service started.
+			logger.EXPECT().Info("port forwarded is 45066")
+			portAllower.EXPECT().SetAllowedPort(anyContext, forwardedPort, vpnInterface).Return(nil)
+			logger.EXPECT().Info("writing port file " + portFilepath)
+			portForwarder.EXPECT().KeepPortForward(anyContext, objects).
+				DoAndReturn(func(_ context.Context, _ utils.PortForwardObjects) error {
+					if testCase.stableRun {
+						clock.Advance(stableServiceRunTime)
+					}
+					return errKeepPort
+				})
+			portAllower.EXPECT().RemoveAllowedPort(context.Background(), forwardedPort).Return(nil)
+			logger.EXPECT().Info("clearing port file " + portFilepath)
+
+			retryTimer := NewMocktimer(ctrl)
+			ticks := make(chan time.Time)
+			// Armed by each of the five failures.
+			retryTimer.EXPECT().C().Return(ticks).Times(attempts)
+			// Registered before the update below: the update supersedes the retry
+			// pending from the attempt 4, which is why its timer is stopped.
+			retryTimer.EXPECT().Stop()
+
+			loop := NewLoop(settings.PortForwarding{
+				Enabled:        new(true),
+				Filepath:       &portFilepath,
+				UpCommand:      new(""),
+				DownCommand:    new(""),
+				ListeningPorts: []uint16{0},
+				PortsCount:     1,
+			}, routing, client, portAllower, logger, nil, os.Getuid(), os.Getgid())
+			loop.now = clock.Now
+			// The delay the timer is armed with is not the one the loop logs, and
+			// a mismatch would leave the test on the announced ladder while the
+			// loop waits on another one. The loop is the only writer of the slice,
+			// and Stop waits for the run goroutine to end before the test reads it
+			// back.
+			var armedDelays []time.Duration
+			loop.newTimer = func(duration time.Duration) timer {
+				armedDelays = append(armedDelays, duration)
+				return retryTimer
+			}
+			_, err := loop.Start(t.Context())
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = loop.Stop() })
+
+			vpnUp := Settings{
+				VPNIsUp: new(true),
+				Service: service.Settings{
+					PortForwarder: portForwarder,
+					Interface:     vpnInterface,
+				},
+			}
+			err = loop.UpdateWith(vpnUp)
+			require.ErrorContains(t, err, retryError(errPortForward, testCase.delays[0]))
+
+			// Attempts 2 and 3, the later one succeeding and then crashing.
+			for range 2 {
+				expectTick(t, ticks)
+			}
+
+			// The crash of the attempt 3 schedules the retry driving the attempt
+			// 4, instead of restarting the service right away.
+			expectWait(t, crashLogged, "the keep alive failure to be logged")
+			expectTick(t, ticks)
+
+			// The update arrives while the retry of the attempt 4 is pending, and
+			// the error of the attempt 5 it triggers goes back to the caller.
+			portForwarder.EXPECT().Name().Return(providers.Protonvpn) // settings validation
+			err = loop.UpdateWith(vpnUp)
+			require.ErrorContains(t, err, retryError(errPortForward, testCase.delays[4]))
+
+			err = loop.Stop()
+			require.NoError(t, err)
+			assert.Equal(t, testCase.delays, armedDelays)
+		})
 	}
-
-	// The crash of the attempt 3 schedules the retry driving the attempt 4,
-	// instead of restarting the service right away.
-	expectWait(t, crashLogged, "the keep alive failure to be logged")
-	expectTick(t, ticks)
-
-	// The update arrives while the retry of the attempt 4 is pending, and the
-	// error of the attempt 5 it triggers is sent back to the caller: it announces
-	// the default delay, and not the 20s the backoff had reached
-	portForwarder.EXPECT().Name().Return(providers.Protonvpn) // settings validation
-	err = loop.UpdateWith(vpnUp)
-	require.ErrorContains(t, err, retryError(defaultRetryDelay))
-
-	err = loop.Stop()
-	require.NoError(t, err)
 }
 
 // Test_Loop_SetPortsForwarded checks the ports of the running service are

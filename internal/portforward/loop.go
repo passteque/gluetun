@@ -38,6 +38,7 @@ type Loop struct {
 	uid, gid int
 	// Mock functions
 	newTimer func(duration time.Duration) timer
+	now      func() time.Time
 	// Internal channels and locks
 	// runCtx is used to detect when the loop has exited
 	// when performing an update
@@ -74,6 +75,7 @@ func NewLoop(settings settings.PortForwarding, routing Routing,
 		newTimer: func(duration time.Duration) timer {
 			return &timeTimer{timer: time.NewTimer(duration)}
 		},
+		now: time.Now,
 	}
 }
 
@@ -126,9 +128,13 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 	defer close(runDone)
 
 	var serviceRunError <-chan error
+	// When the service of the current run started, to tell a service which ran
+	// for long enough from one which crashed right away. Unused while no service
+	// has started, since only a running service reports a crash.
+	var serviceStartedAt time.Time
 	// A retry is pending when retries.after is not nil, the channel being nil
 	// when there is no pending retry, so the select below ignores that case.
-	retries := retryState{delay: defaultRetryDelay, newTimer: l.newTimer}
+	retries := newRetryState(l.newTimer)
 	for {
 		updateReceived := false
 		select {
@@ -151,6 +157,15 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			// would call the provider API as fast as it keeps crashing, so a crash
 			// waits for a retry delay too, like a failed start. An accepted update
 			// still restarts the service right away, whatever the delay reached.
+			// A service which ran for long enough did well enough to forget the
+			// failures it survived, so a later failure of an otherwise working
+			// service is retried at the default delay. A service which crashed as
+			// fast as it started does not: it would otherwise restart the delay and
+			// the count on every crash, and be retried at the default delay forever
+			// without ever giving up.
+			if runTime := l.now().Sub(serviceStartedAt); runTime >= stableServiceRunTime {
+				retries.reset()
+			}
 			if l.reportFailure(&retries, fmt.Errorf("keeping port forwarded: %w", err),
 				false, updateResult, runErrorCh) {
 				return
@@ -179,6 +194,10 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			l.portAllower, l.logger, l.cmder, l.uid, l.gid)
 		l.setService(newService)
 
+		// Taken before the start call, so the time it takes to start a service
+		// counts in its run time, which is what tells a service crashing as fast
+		// as it started from one which ran for a while.
+		serviceStartedAt = l.now()
 		serviceRunError, err = newService.Start(runCtx)
 		if err != nil {
 			if l.reportFailure(&retries,
@@ -189,10 +208,10 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			continue
 		}
 
-		// Reset the delay and the count on success, so a later failure of an
-		// otherwise working service does not inherit a backoff of minutes nor a
-		// count close to the maximum.
-		retries.reset()
+		// The delay and the count are not reset here: a service which crashes as
+		// fast as it started would go back to the default delay and an empty count
+		// on every crash. They are reset once the service has run for long enough,
+		// which the crash above and an accepted update tell about.
 		if updateReceived {
 			// Signal to the Update call that the service has started.
 			updateResult <- nil
