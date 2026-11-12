@@ -170,7 +170,8 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			if runTime := l.now().Sub(serviceStartedAt); runTime >= stableServiceRunTime {
 				retries.reset()
 			}
-			if l.reportFailure(runCtx, &retries, fmt.Errorf("keeping port forwarded: %w", err),
+			if reportFailure(runCtx, l.logger, &retries,
+				fmt.Errorf("keeping port forwarded: %w", err),
 				false, updateResult, runErrorCh) {
 				return
 			}
@@ -204,7 +205,7 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 		serviceStartedAt = l.now()
 		serviceRunError, err = newService.Start(runCtx)
 		if err != nil {
-			if l.reportFailure(runCtx, &retries,
+			if reportFailure(runCtx, l.logger, &retries,
 				fmt.Errorf("starting port forwarding service: %w", err),
 				updateReceived, updateResult, runErrorCh) {
 				return

@@ -70,6 +70,9 @@ func (s *retryState) stop() {
 // Once too many failures piled up nothing is armed, and giveUp tells the run
 // loop to end.
 func (s *retryState) failure(failed error) (giveUp bool, reported error) {
+	// Whatever this failure is worth, the attempt pending is off: a new one is
+	// armed below, or the run gives up and no attempt should ever come.
+	s.stop()
 	s.attempts++
 	if s.attempts >= maxRetryAttempts {
 		return true, fmt.Errorf("%w - giving up after %d consecutive failed attempts", failed, s.attempts)
@@ -89,7 +92,7 @@ func (s *retryState) failure(failed error) (giveUp bool, reported error) {
 // armed and the error goes back to the program, which has to restart the whole
 // thing: only a new VPN session asks the provider for another server, which is
 // what a server refusing to forward a port needs. The run loop is told to end.
-func (l *Loop) reportFailure(runCtx context.Context, retries *retryState, failed error,
+func reportFailure(runCtx context.Context, logger Logger, retries *retryState, failed error,
 	updateReceived bool, updateResult chan<- error, runErrorCh chan<- error,
 ) (endRun bool) {
 	giveUp, reported := retries.failure(failed)
@@ -99,7 +102,7 @@ func (l *Loop) reportFailure(runCtx context.Context, retries *retryState, failed
 		// the run does next.
 		sendUnlessRunOver(runCtx, updateResult, reported)
 	case !giveUp:
-		l.logger.Error(reported.Error())
+		logger.Error(reported.Error())
 	}
 	if !giveUp {
 		return false
