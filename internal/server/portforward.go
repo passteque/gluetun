@@ -3,8 +3,11 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
+
+	"github.com/qdm12/gluetun/internal/portforward"
 )
 
 func newPortForwardHandler(ctx context.Context,
@@ -63,7 +66,14 @@ func (h *portForwardHandler) setPortForwarded(w http.ResponseWriter, r *http.Req
 
 	err = h.portForward.SetPortsForwarded(data.Ports)
 	if err != nil {
-		h.warner.Warn(fmt.Sprintf("failed setting forwarded ports: %s", err))
+		err = fmt.Errorf("setting forwarded ports: %w", err)
+		h.warner.Warn(err.Error())
+		if errors.Is(err, portforward.ErrServiceNotRunning) {
+			// The run loop starts a service by itself, so the ports can be asked
+			// for again once it has done so, which the status says.
+			http.Error(w, err.Error(), http.StatusServiceUnavailable)
+			return
+		}
 		http.Error(w, "failed setting forwarded ports", http.StatusInternalServerError)
 		return
 	}
