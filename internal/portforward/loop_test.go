@@ -139,25 +139,22 @@ func Test_Loop_failedPortForwardRetry(t *testing.T) {
 				Client:     client,
 				PortsCount: 1,
 			}
-			// The service runs with the context of the loop, which the test
-			// does not have access to
-			anyContext := gomock.Any()
 
 			// The first port forwarding fails, the second one succeeds and is
 			// kept until the loop stops
 			logger.EXPECT().Info("starting").Times(2)
-			failed := portForwarder.EXPECT().PortForward(anyContext, objects).
+			failed := portForwarder.EXPECT().PortForward(runningContext{}, objects).
 				Return(nil, errors.New("TCP and UDP external ports differ: 45066 and 60808"))
 			// Closed once the service is fully started a second time: the
 			// keep port call happens after the port has been forwarded,
 			// allowed in the firewall and written to file
 			started := make(chan struct{})
-			portForwarder.EXPECT().PortForward(anyContext, objects).After(failed).
+			portForwarder.EXPECT().PortForward(runningContext{}, objects).After(failed).
 				Return(map[uint16]uint16{forwardedPort: forwardedPort}, nil)
 			logger.EXPECT().Info("port forwarded is 45066")
-			portAllower.EXPECT().SetAllowedPort(anyContext, forwardedPort, vpnInterface).Return(nil)
+			portAllower.EXPECT().SetAllowedPort(runningContext{}, forwardedPort, vpnInterface).Return(nil)
 			logger.EXPECT().Info("writing port file " + portFilepath)
-			portForwarder.EXPECT().KeepPortForward(anyContext, objects).
+			portForwarder.EXPECT().KeepPortForward(runningContext{}, objects).
 				DoAndReturn(func(ctx context.Context, _ utils.PortForwardObjects) error {
 					close(started)
 					<-ctx.Done()
@@ -317,20 +314,26 @@ func Test_Loop_failedPortForwardRetryBackoff(t *testing.T) {
 		Client:     client,
 		PortsCount: 1,
 	}
-	// The service runs with the context of the loop, which the test does not
-	// have access to
-	anyContext := gomock.Any()
 
+	// The last attempt is the one arming the retry never consumed, and the test
+	// stops the loop right after it. Without a signal that the attempt has been
+	// logged, the stop cancels the context the service of that attempt starts
+	// with, and the runningContext matcher turns it down.
+	lastAttemptLogged := make(chan struct{})
 	logger.EXPECT().Info("starting").Times(len(retryDelays))
 	for i, retryDelay := range retryDelays {
-		portForwarder.EXPECT().PortForward(anyContext, objects).
+		portForwarder.EXPECT().PortForward(runningContext{}, objects).
 			Return(nil, errPortForward)
-		if i == 0 {
-			// The first failure is sent back to the update caller, which logs
-			// it. The following ones are logged by the loop itself.
-			continue
+		switch i {
+		case 0:
+			// The first failure is sent back to the update caller, which logs it.
+			// The following ones are logged by the loop itself.
+		case len(retryDelays) - 1:
+			logger.EXPECT().Error(errorContaining{substring: retryError(retryDelay)}).
+				DoAndReturn(func(string) { close(lastAttemptLogged) })
+		default:
+			logger.EXPECT().Error(errorContaining{substring: retryError(retryDelay)})
 		}
-		logger.EXPECT().Error(errorContaining{substring: retryError(retryDelay)})
 	}
 
 	retryTimer := NewMocktimer(ctrl)
@@ -374,6 +377,11 @@ func Test_Loop_failedPortForwardRetryBackoff(t *testing.T) {
 	// Every attempt is driven by an event and the test never sleeps.
 	for range retryDelays[1:] {
 		expectTick(t, ticks)
+	}
+	select {
+	case <-lastAttemptLogged:
+	case <-hangContext(t).Done():
+		t.Fatal("last attempt was never logged")
 	}
 
 	err = loop.Stop()
@@ -425,10 +433,9 @@ func Test_Loop_failedPortForwardRetryGivesUp(t *testing.T) {
 		Client:     client,
 		PortsCount: 1,
 	}
-	anyContext := gomock.Any()
 
 	logger.EXPECT().Info("starting").Times(maxRetryAttempts)
-	portForwarder.EXPECT().PortForward(anyContext, objects).
+	portForwarder.EXPECT().PortForward(runningContext{}, objects).
 		Return(nil, errPortForward).Times(maxRetryAttempts)
 	// The first failure is sent back to the update caller, which logs it, and
 	// the last one ends the run, so the loop logs the attempts in between.
@@ -451,7 +458,15 @@ func Test_Loop_failedPortForwardRetryGivesUp(t *testing.T) {
 		ListeningPorts: []uint16{0},
 		PortsCount:     1,
 	}, routing, client, portAllower, logger, nil, os.Getuid(), os.Getgid())
-	loop.newTimer = func(_ time.Duration) timer { return retryTimer }
+	// The delay the timer is armed with is not the one the loop logs, and a
+	// mismatch would leave the test on the announced ladder while the loop waits
+	// on another one. The loop is the only writer of the slice, and Stop waits for
+	// the run goroutine to end before the test reads it back.
+	var armedDelays []time.Duration
+	loop.newTimer = func(delay time.Duration) timer {
+		armedDelays = append(armedDelays, delay)
+		return retryTimer
+	}
 	runError, err := loop.Start(t.Context())
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = loop.Stop() })
@@ -484,6 +499,9 @@ func Test_Loop_failedPortForwardRetryGivesUp(t *testing.T) {
 
 	err = loop.Stop()
 	require.NoError(t, err)
+	// The last failure gives up rather than wait, so the ladder stops one entry
+	// before the attempts do.
+	assert.Equal(t, retryDelays, armedDelays)
 }
 
 // Test_Loop_failedPortForwardGiveUpWithoutReader stops the loop of the give up
@@ -515,11 +533,20 @@ func Test_Loop_failedPortForwardGiveUpWithoutReader(t *testing.T) {
 		Client:     client,
 		PortsCount: 1,
 	}
-	anyContext := gomock.Any()
 
+	// The last attempt is the one giving up, and the error it ends the run with
+	// is dropped for want of a reader: nothing else tells the test the attempt has
+	// been made, and stopping the loop then would cancel the context of that
+	// attempt while it is on its way to the forwarder.
+	lastAttempt := make(chan struct{})
 	logger.EXPECT().Info("starting").Times(maxRetryAttempts)
-	portForwarder.EXPECT().PortForward(anyContext, objects).
-		Return(nil, errPortForward).Times(maxRetryAttempts)
+	portForwarder.EXPECT().PortForward(runningContext{}, objects).
+		Return(nil, errPortForward).Times(maxRetryAttempts - 1)
+	portForwarder.EXPECT().PortForward(runningContext{}, objects).
+		DoAndReturn(func(_ context.Context, _ utils.PortForwardObjects) (map[uint16]uint16, error) {
+			close(lastAttempt)
+			return nil, errPortForward
+		})
 	// What the loop logs for each attempt is checked by the sibling tests, only
 	// the count matters here: the first failure goes back to the update caller
 	// and the last one is dropped with the give up.
@@ -553,6 +580,11 @@ func Test_Loop_failedPortForwardGiveUpWithoutReader(t *testing.T) {
 
 	for range maxRetryAttempts - 1 {
 		expectTick(t, ticks)
+	}
+	select {
+	case <-lastAttempt:
+	case <-hangContext(t).Done():
+		t.Fatal("last attempt was never made")
 	}
 
 	// The run goroutine has given up and no one reads its error, so stopping the
@@ -654,22 +686,19 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 				Client:     client,
 				PortsCount: 1,
 			}
-			// The service runs with the context of the loop, which the test does
-			// not have access to
-			anyContext := gomock.Any()
 
 			logger.EXPECT().Info("starting").Times(attempts)
 			// One expectation per attempt, in the order they run: gomock consumes
 			// the expectations of identical arguments in declaration order.
-			portForwarder.EXPECT().PortForward(anyContext, objects).
+			portForwarder.EXPECT().PortForward(runningContext{}, objects).
 				Return(nil, errPortForward)
-			portForwarder.EXPECT().PortForward(anyContext, objects).
+			portForwarder.EXPECT().PortForward(runningContext{}, objects).
 				Return(nil, errPortForward)
-			portForwarder.EXPECT().PortForward(anyContext, objects).
+			portForwarder.EXPECT().PortForward(runningContext{}, objects).
 				Return(map[uint16]uint16{forwardedPort: forwardedPort}, nil)
-			portForwarder.EXPECT().PortForward(anyContext, objects).
+			portForwarder.EXPECT().PortForward(runningContext{}, objects).
 				Return(nil, errPortForward)
-			portForwarder.EXPECT().PortForward(anyContext, objects).
+			portForwarder.EXPECT().PortForward(runningContext{}, objects).
 				Return(nil, errPortForward)
 
 			// The failure of the attempt 1 goes back to the update caller, which
@@ -691,9 +720,9 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 			// latest point where the run time of the service can still be told
 			// from the time the loop measured when the service started.
 			logger.EXPECT().Info("port forwarded is 45066")
-			portAllower.EXPECT().SetAllowedPort(anyContext, forwardedPort, vpnInterface).Return(nil)
+			portAllower.EXPECT().SetAllowedPort(runningContext{}, forwardedPort, vpnInterface).Return(nil)
 			logger.EXPECT().Info("writing port file " + portFilepath)
-			portForwarder.EXPECT().KeepPortForward(anyContext, objects).
+			portForwarder.EXPECT().KeepPortForward(runningContext{}, objects).
 				DoAndReturn(func(_ context.Context, _ utils.PortForwardObjects) error {
 					if testCase.stableRun {
 						clock.Advance(stableServiceRunTime)
