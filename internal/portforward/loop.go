@@ -135,6 +135,10 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 	// A retry is pending when retries.after is not nil, the channel being nil
 	// when there is no pending retry, so the select below ignores that case.
 	retries := newRetryState(l.newTimer)
+	// Whatever ends the run, no timer is left armed for a failure the run has
+	// already dealt with, since nobody stops it once the run goroutine is gone.
+	defer retries.stop()
+
 	for {
 		updateReceived := false
 		select {
@@ -144,7 +148,7 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 		case partialUpdate := <-updateTrigger:
 			updatedSettings, err := l.settings.updateWith(partialUpdate, *l.settings.VPNIsUp)
 			if err != nil {
-				updateResult <- err
+				sendUnlessRunOver(runCtx, updateResult, err)
 				continue
 			}
 			updateReceived = true
@@ -166,7 +170,7 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 			if runTime := l.now().Sub(serviceStartedAt); runTime >= stableServiceRunTime {
 				retries.reset()
 			}
-			if l.reportFailure(&retries, fmt.Errorf("keeping port forwarded: %w", err),
+			if l.reportFailure(runCtx, &retries, fmt.Errorf("keeping port forwarded: %w", err),
 				false, updateResult, runErrorCh) {
 				return
 			}
@@ -182,7 +186,7 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 
 		err := l.stopPreviousService()
 		if err != nil {
-			runErrorCh <- err
+			sendUnlessRunOver(runCtx, runErrorCh, err)
 			return
 		}
 
@@ -200,7 +204,7 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 		serviceStartedAt = l.now()
 		serviceRunError, err = newService.Start(runCtx)
 		if err != nil {
-			if l.reportFailure(&retries,
+			if l.reportFailure(runCtx, &retries,
 				fmt.Errorf("starting port forwarding service: %w", err),
 				updateReceived, updateResult, runErrorCh) {
 				return
@@ -214,8 +218,20 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 		// which the crash above and an accepted update tell about.
 		if updateReceived {
 			// Signal to the Update call that the service has started.
-			updateResult <- nil
+			sendUnlessRunOver(runCtx, updateResult, nil)
 		}
+	}
+}
+
+// sendUnlessRunOver hands a message to an unbuffered channel of the run loop,
+// unless the run is over before a reader takes it. A caller waiting in
+// [Loop.UpdateWith] listens on the same context and the stop of the loop
+// releases it, and the run goroutine cannot stay parked on a send nobody is
+// left to answer: [Loop.Stop] waits for that goroutine to end.
+func sendUnlessRunOver(runCtx context.Context, messageCh chan<- error, message error) {
+	select {
+	case messageCh <- message:
+	case <-runCtx.Done():
 	}
 }
 

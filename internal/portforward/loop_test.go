@@ -336,6 +336,9 @@ func Test_Loop_failedPortForwardRetryBackoff(t *testing.T) {
 	retryTimer := NewMocktimer(ctrl)
 	ticks := make(chan time.Time)
 	retryTimer.EXPECT().C().Return(ticks).Times(len(retryDelays))
+	// The loop is stopped while a retry is pending, and stops the timer with it,
+	// so the run goroutine never leaves a timer armed behind it.
+	retryTimer.EXPECT().Stop()
 
 	loop := NewLoop(settings.PortForwarding{
 		Enabled:        new(true),
@@ -483,6 +486,89 @@ func Test_Loop_failedPortForwardRetryGivesUp(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// Test_Loop_failedPortForwardGiveUpWithoutReader stops the loop of the give up
+// test when nobody reads the error, as happens once the program took another
+// shutdown path. The error is dropped rather than sent, so the run goroutine is
+// not left wedged on a channel no one reads, which would stop waiting for it.
+func Test_Loop_failedPortForwardGiveUpWithoutReader(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+
+	const vpnInterface = "tun0"
+	gateway := netip.MustParseAddr("10.2.0.1")
+	internalIP := netip.MustParseAddr("10.2.0.2")
+	portFilepath := filepath.Join(t.TempDir(), "forwarded_port")
+	client := &http.Client{}
+	errPortForward := errors.New("TCP and UDP external ports differ: 45066 and 60808")
+
+	routing := NewMockRouting(ctrl)
+	routing.EXPECT().VPNLocalGatewayIP(vpnInterface).Return(gateway, nil).Times(maxRetryAttempts)
+	routing.EXPECT().AssignedIP(vpnInterface, netlink.FamilyV4).Return(internalIP, nil).Times(maxRetryAttempts)
+	logger := NewMockLogger(ctrl)
+	portAllower := NewMockPortAllower(ctrl)
+	portForwarder := NewMockPortForwarder(ctrl)
+	objects := utils.PortForwardObjects{
+		Logger:     logger,
+		Gateway:    gateway,
+		InternalIP: internalIP,
+		Client:     client,
+		PortsCount: 1,
+	}
+	anyContext := gomock.Any()
+
+	logger.EXPECT().Info("starting").Times(maxRetryAttempts)
+	portForwarder.EXPECT().PortForward(anyContext, objects).
+		Return(nil, errPortForward).Times(maxRetryAttempts)
+	// What the loop logs for each attempt is checked by the sibling tests, only
+	// the count matters here: the first failure goes back to the update caller
+	// and the last one is dropped with the give up.
+	logger.EXPECT().Error(errorContaining{substring: errPortForward.Error()}).
+		Times(maxRetryAttempts - 2)
+
+	retryTimer := NewMocktimer(ctrl)
+	ticks := make(chan time.Time)
+	retryTimer.EXPECT().C().Return(ticks).Times(maxRetryAttempts - 1)
+
+	loop := NewLoop(settings.PortForwarding{
+		Enabled:        new(true),
+		Filepath:       &portFilepath,
+		UpCommand:      new(""),
+		DownCommand:    new(""),
+		ListeningPorts: []uint16{0},
+		PortsCount:     1,
+	}, routing, client, portAllower, logger, nil, os.Getuid(), os.Getgid())
+	loop.newTimer = func(_ time.Duration) timer { return retryTimer }
+	runErrorCh, err := loop.Start(t.Context())
+	require.NoError(t, err)
+
+	err = loop.UpdateWith(Settings{
+		VPNIsUp: new(true),
+		Service: service.Settings{
+			PortForwarder: portForwarder,
+			Interface:     vpnInterface,
+		},
+	})
+	require.ErrorIs(t, err, errPortForward)
+
+	for range maxRetryAttempts - 1 {
+		expectTick(t, ticks)
+	}
+
+	// The run goroutine has given up and no one reads its error, so stopping the
+	// loop can only return if the send was not blocking.
+	stopped := make(chan error)
+	go func() { stopped <- loop.Stop() }()
+	select {
+	case err := <-stopped:
+		require.NoError(t, err)
+	case <-hangContext(t).Done():
+		t.Fatal("timed out stopping a loop which gave up with no reader for its error")
+	}
+	// Given up errors are dropped, none is left waiting for a reader.
+	assert.Zero(t, len(runErrorCh))
+}
+
 // Test_Loop_failedPortForwardRetryDelayReset checks when the retry delay and
 // the consecutive failure count go back to their start, so a failing port
 // forwarding is retried at the default delay when there is a reason to be, and
@@ -621,9 +707,10 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 			ticks := make(chan time.Time)
 			// Armed by each of the five failures.
 			retryTimer.EXPECT().C().Return(ticks).Times(attempts)
-			// Registered before the update below: the update supersedes the retry
-			// pending from the attempt 4, which is why its timer is stopped.
-			retryTimer.EXPECT().Stop()
+			// Twice: the update below supersedes the retry pending from the attempt 4
+			// (registered before it, which is what makes the order deterministic), and
+			// the loop is stopped with the retry of the attempt 5 still pending.
+			retryTimer.EXPECT().Stop().Times(2)
 
 			loop := NewLoop(settings.PortForwarding{
 				Enabled:        new(true),

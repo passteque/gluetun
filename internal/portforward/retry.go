@@ -1,6 +1,7 @@
 package portforward
 
 import (
+	"context"
 	"fmt"
 	"time"
 )
@@ -88,22 +89,28 @@ func (s *retryState) failure(failed error) (giveUp bool, reported error) {
 // armed and the error goes back to the program, which has to restart the whole
 // thing: only a new VPN session asks the provider for another server, which is
 // what a server refusing to forward a port needs. The run loop is told to end.
-func (l *Loop) reportFailure(retries *retryState, failed error, updateReceived bool,
-	updateResult chan<- error, runErrorCh chan<- error,
+func (l *Loop) reportFailure(runCtx context.Context, retries *retryState, failed error,
+	updateReceived bool, updateResult chan<- error, runErrorCh chan<- error,
 ) (endRun bool) {
 	giveUp, reported := retries.failure(failed)
 	switch {
 	case updateReceived:
 		// The caller waits for the outcome of the update it asked for, whatever
 		// the run does next.
-		updateResult <- reported
+		sendUnlessRunOver(runCtx, updateResult, reported)
 	case !giveUp:
 		l.logger.Error(reported.Error())
 	}
-	if giveUp {
-		runErrorCh <- reported
+	if !giveUp {
+		return false
 	}
-	return giveUp
+	// The program is told to restart everything, which is what a server refusing
+	// to forward a port needs. Nothing makes the run wait for whoever reads the
+	// error: the shutdown of another loop, or of a signal, leaves the send behind
+	// and the run goroutine would stay parked there for as long as the stop of
+	// the loop waits for it.
+	sendUnlessRunOver(runCtx, runErrorCh, reported)
+	return true
 }
 
 // timeTimer is the [time.Timer] implementation of the [timer] interface.
