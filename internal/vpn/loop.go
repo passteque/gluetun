@@ -35,6 +35,7 @@ type Loop struct {
 	publicip    PublicIPLoop
 	dnsLooper   DNSLoop
 	boringPoll  Service
+	resolver    Resolver
 	// Other objects
 	cmder  Cmder // for OpenVPN and up/down commands
 	logger log.LoggerInterface
@@ -62,6 +63,7 @@ func NewLoop(vpnSettings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel
 	publicip PublicIPLoop, dnsLooper DNSLoop,
 	logger log.LoggerInterface, client *http.Client,
 	buildInfo models.BuildInformation, versionInfo bool,
+	resolver Resolver,
 ) *Loop {
 	start := make(chan struct{})
 	running := make(chan models.LoopStatus)
@@ -99,6 +101,7 @@ func NewLoop(vpnSettings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel
 		cmder:            cmder,
 		logger:           logger,
 		client:           client,
+		resolver:         resolver,
 		start:            start,
 		running:          running,
 		stop:             stop,

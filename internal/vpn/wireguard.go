@@ -17,10 +17,24 @@ import (
 // It returns a serverName for port forwarding (PIA) and an error if it fails.
 func setupWireguard(ctx context.Context, netlinker NetLinker,
 	fw Firewall, providerConf provider.Provider,
-	settings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel, logger wireguard.Logger) (
+	settings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel, logger wireguard.Logger,
+	resolver Resolver,
+) (
 	wireguarder *wireguard.Wireguard, connection models.Connection, err error,
 ) {
 	ipv6Internet := ipv6SupportLevel == netlink.IPv6Internet
+
+	// Resolve the endpoint hostname from settings, if set.
+	selection := &settings.Provider.ServerSelection
+	if selection.Wireguard.EndpointHostname != nil && *selection.Wireguard.EndpointHostname != "" {
+		ip, err := resolveEndpoint(ctx, resolver, *selection.Wireguard.EndpointHostname,
+			ipv6SupportLevel.IsSupported(), logger)
+		if err != nil {
+			return nil, models.Connection{}, err
+		}
+		selection.Wireguard.EndpointIP = ip
+	}
+
 	connection, err = providerConf.GetConnection(settings.Provider.ServerSelection, ipv6Internet)
 	if err != nil {
 		return nil, models.Connection{}, fmt.Errorf("finding a VPN server: %w", err)

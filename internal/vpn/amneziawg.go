@@ -17,7 +17,9 @@ import (
 // setupAmneziaWg sets AmneziaWG up using the configurators and settings given.
 func setupAmneziaWg(ctx context.Context, netlinker NetLinker,
 	fw Firewall, providerConf provider.Provider,
-	settings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel, logger wireguard.Logger) (
+	settings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel, logger wireguard.Logger,
+	resolver Resolver,
+) (
 	amneziawger *amneziawg.Amneziawg, connection models.Connection, err error,
 ) {
 	err = tun.Setup()
@@ -26,6 +28,18 @@ func setupAmneziaWg(ctx context.Context, netlinker NetLinker,
 	}
 
 	ipv6Internet := ipv6SupportLevel == netlink.IPv6Internet
+
+	// Resolve the endpoint hostname from settings, if set.
+	selection := &settings.Provider.ServerSelection
+	if selection.Wireguard.EndpointHostname != nil && *selection.Wireguard.EndpointHostname != "" {
+		ip, err := resolveEndpoint(ctx, resolver, *selection.Wireguard.EndpointHostname,
+			ipv6SupportLevel.IsSupported(), logger)
+		if err != nil {
+			return nil, models.Connection{}, err
+		}
+		selection.Wireguard.EndpointIP = ip
+	}
+
 	connection, err = providerConf.GetConnection(settings.Provider.ServerSelection, ipv6Internet)
 	if err != nil {
 		return nil, models.Connection{}, fmt.Errorf("finding a VPN server: %w", err)

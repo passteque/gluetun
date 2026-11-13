@@ -147,12 +147,20 @@ func noServerFoundError(selection settings.ServerSelection) (err error) {
 	}
 
 	targetIP := selection.OpenVPN.EndpointIP
+	var targetHostname *string
 	if selection.VPN == vpn.Wireguard {
 		targetIP = selection.Wireguard.EndpointIP
+		targetHostname = selection.Wireguard.EndpointHostname
+	} else {
+		targetHostname = selection.OpenVPN.EndpointHostname
 	}
 	if targetIP.IsValid() {
 		messageParts = append(messageParts,
 			"target ip address "+targetIP.String())
+	}
+	if targetHostname != nil && *targetHostname != "" {
+		messageParts = append(messageParts,
+			"target hostname "+*targetHostname)
 	}
 
 	message := "for " + strings.Join(messageParts, "; ")
