@@ -13,10 +13,11 @@ import (
 type Provider string
 
 const (
-	Cloudflare  Provider = "cloudflare"
-	IfConfigCo  Provider = "ifconfigco"
-	IPInfo      Provider = "ipinfo"
-	IP2Location Provider = "ip2location"
+	Cloudflare   Provider = "cloudflare"
+	IfConfigCo   Provider = "ifconfigco"
+	InternetData Provider = "internetdata"
+	IPInfo       Provider = "ipinfo"
+	IP2Location  Provider = "ip2location"
 )
 
 const echoipPrefix = "echoip#"
@@ -45,6 +46,8 @@ func New(nameTokenPairs []NameToken, client *http.Client) (
 			fetchers[i] = newIPInfo(client, nameTokenPair.Token)
 		case provider == IP2Location:
 			fetchers[i] = newIP2Location(client, nameTokenPair.Token)
+		case provider == InternetData:
+			fetchers[i] = newInternetData(client, nameTokenPair.Token)
 		case strings.HasPrefix(string(provider), echoipPrefix):
 			url := strings.TrimPrefix(string(provider), echoipPrefix)
 			fetchers[i] = newEchoip(client, url)
@@ -61,6 +64,7 @@ func ParseProvider(s string) (provider Provider, err error) {
 	possibleProviders := []Provider{
 		Cloudflare,
 		IfConfigCo,
+		InternetData,
 		IP2Location,
 		IPInfo,
 	}

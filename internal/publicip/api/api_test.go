@@ -16,12 +16,12 @@ func Test_ParseProvider(t *testing.T) {
 	}{
 		"empty": {
 			errMessage: `API name is not valid: "" can only be ` +
-				`"cloudflare", "ifconfigco", "ip2location", "ipinfo" or a custom echoip# url`,
+				`"cloudflare", "ifconfigco", "internetdata", "ip2location", "ipinfo" or a custom echoip# url`,
 		},
 		"invalid": {
 			s: "xyz",
 			errMessage: `API name is not valid: "xyz" can only be ` +
-				`"cloudflare", "ifconfigco", "ip2location", "ipinfo" or a custom echoip# url`,
+				`"cloudflare", "ifconfigco", "internetdata", "ip2location", "ipinfo" or a custom echoip# url`,
 		},
 		"ipinfo": {
 			s:        "ipinfo",
