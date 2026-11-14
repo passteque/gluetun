@@ -302,4 +302,5 @@ RUN apk add --no-cache --update -l wget && \
     rm -rf /var/cache/apk/* /etc/openvpn/*.sh /usr/lib/openvpn/plugins/openvpn-plugin-down-root.so && \
     deluser openvpn && \
     mkdir /gluetun
+COPY extras/scripts/amule-port-update.sh /scripts/amule-port-update.sh
 COPY --from=build /tmp/gobuild/entrypoint /gluetun-entrypoint
