@@ -97,6 +97,7 @@ func validateWireguardCredentials(provider string, creds *wireguardCredentials) 
 
 	if creds.Addresses != "" {
 		for addr := range strings.SplitSeq(creds.Addresses, ",") {
+			addr = strings.TrimSpace(addr)
 			if _, err := netip.ParsePrefix(addr); err != nil {
 				return fmt.Errorf("provider %q wireguard credentials have an invalid address %q: %w", provider, addr, err)
 			}

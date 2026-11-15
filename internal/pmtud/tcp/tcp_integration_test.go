@@ -20,6 +20,8 @@ import (
 func Test_PathMTUDiscover(t *testing.T) {
 	t.Parallel()
 
+	skipUnlessRawNetworking(t)
+
 	const tryTimeout = time.Second
 	deadline, ok := t.Deadline()
 	if ok {

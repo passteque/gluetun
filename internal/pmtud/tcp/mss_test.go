@@ -17,6 +17,8 @@ import (
 func Test_findHighestMSSDestination(t *testing.T) {
 	t.Parallel()
 
+	skipUnlessRawNetworking(t)
+
 	netlinker := netlink.New(&noopLogger{})
 	defaultMTU, err := findDefaultRouteMTU(netlinker)
 	require.NoError(t, err, "finding default route MTU")
