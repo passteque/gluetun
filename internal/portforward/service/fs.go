@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -24,9 +25,13 @@ func (s *Service) writePortForwardedFile(ports []uint16) (err error) {
 	// TODO v4: is it necessary/desirable to chown to PUID?
 	// Once owned by PUID, gluetun needs CAP_DAC_OVERRIDE to update the
 	// file and CAP_FOWNER to chmod it if its permissions changed, and
-	// PGID already has read/write access after the chmod, unless the
-	// chmod was skipped due to a permission error. To keep the
-	// file UID unchanged, use os.Chown(filepath, -1, s.pgid), that is
-	// statusfile.Write(filepath, fileData, -1, s.pgid).
-	return statusfile.Write(filepath, fileData, s.puid, s.pgid)
+	// PGID already has read/write access after the chmod. To keep the
+	// file UID unchanged, use statusfile.Write(filepath, fileData, -1, s.pgid).
+	err = statusfile.Write(filepath, fileData, s.puid, s.pgid)
+	if errors.Is(err, statusfile.ErrChmod) || errors.Is(err, statusfile.ErrChown) {
+		// The ports are written at this point.
+		s.logger.Warn(err.Error())
+		return nil
+	}
+	return err
 }

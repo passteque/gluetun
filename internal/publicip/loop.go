@@ -136,7 +136,7 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 		l.ipDataMutex.Unlock()
 
 		filepath := *l.settings.IPFilepath
-		err = persistPublicIP(filepath, result.IP.String(), l.puid, l.pgid)
+		err = l.writeIPFile(filepath, result.IP.String())
 		if err != nil {
 			err = fmt.Errorf("persisting public ip address: %w", err)
 		}

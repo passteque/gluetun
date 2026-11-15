@@ -1,9 +1,14 @@
+//go:build linux || darwin
+
 package statusfile
 
 import (
+	"errors"
 	"io/fs"
 	"os"
 	"path/filepath"
+	"slices"
+	"syscall"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -13,74 +18,139 @@ import (
 func Test_Write(t *testing.T) {
 	t.Parallel()
 
-	const root = 0
+	type owner struct{ uid, gid int }
+	type file struct {
+		content string
+		mode    fs.FileMode
+		owner   owner
+	}
+
+	self := owner{uid: os.Getuid(), gid: os.Getgid()}
+	// other and third are users other than the one running the test.
+	other := owner{uid: self.uid + 1, gid: self.gid + 1}
+	third := owner{uid: self.uid + 2, gid: self.gid + 2}
 
 	testCases := map[string]struct {
-		missingParent   bool
-		existingContent string
-		existingMode    fs.FileMode // 0 means no existing file
-		content         string
-		chownToRoot     bool
-		// nonRootOnly is set for cases relying on permission checks,
+		// rootOnly is set for cases changing the ownership of a file to
+		// another user, which needs root.
+		rootOnly bool
+		// nonRootOnly is set for cases relying on file permission checks,
 		// which root bypasses.
-		nonRootOnly     bool
-		errMessage      string
-		expectedContent string
-		expectedMode    fs.FileMode
+		nonRootOnly bool
+		// withoutChown and withoutFowner are set for cases running without
+		// CAP_CHOWN and CAP_FOWNER, which are dropped when running as root.
+		withoutChown  bool
+		withoutFowner bool
+		missingParent bool
+		existing      *file // nil means no existing file
+		content       string
+		owner         owner
+		errs          []error
+		expected      *file // nil means no file
 	}{
-		"create_new_file": {
-			content:         "1.2.3.4",
-			expectedContent: "1.2.3.4",
-			expectedMode:    0o664,
+		"create_file": {
+			content:  "1.2.3.4",
+			owner:    self,
+			expected: &file{content: "1.2.3.4", mode: 0o664, owner: self},
 		},
-		"overwrite_existing_file": {
-			existingContent: "1.2.3.4",
-			existingMode:    0o664,
-			content:         "5.6",
-			expectedContent: "5.6",
-			expectedMode:    0o664,
+		"overwrite_file": {
+			existing: &file{content: "1.2.3.4", mode: 0o664, owner: self},
+			content:  "5.6",
+			owner:    self,
+			expected: &file{content: "5.6", mode: 0o664, owner: self},
 		},
-		"clear_existing_file": {
-			existingContent: "1.2.3.4",
-			existingMode:    0o664,
-			expectedContent: "",
-			expectedMode:    0o664,
+		"clear_file": {
+			existing: &file{content: "1.2.3.4", mode: 0o664, owner: self},
+			owner:    self,
+			expected: &file{mode: 0o664, owner: self},
 		},
-		"existing_file_with_mode_0600": {
-			existingContent: "1.2.3.4",
-			existingMode:    0o600,
-			content:         "5.6.7.8",
-			expectedContent: "5.6.7.8",
-			expectedMode:    0o664,
+		"file_with_mode_0600": {
+			existing: &file{content: "1.2.3.4", mode: 0o600, owner: self},
+			content:  "5.6.7.8",
+			owner:    self,
+			expected: &file{content: "5.6.7.8", mode: 0o664, owner: self},
 		},
-		"existing_file_with_mode_0644": {
-			existingContent: "1.2.3.4",
-			existingMode:    0o644,
-			content:         "5.6.7.8",
-			expectedContent: "5.6.7.8",
-			expectedMode:    0o664,
-		},
-		"existing_read_only_file": {
-			existingContent: "1.2.3.4",
-			existingMode:    0o444,
-			content:         "5.6.7.8",
-			nonRootOnly:     true,
-			errMessage:      "opening file: open ",
-			expectedContent: "1.2.3.4",
-			expectedMode:    0o444,
-		},
-		"chown_failure_keeps_content": {
-			content:         "1.2.3.4",
-			chownToRoot:     true,
-			nonRootOnly:     true,
-			errMessage:      "chowning file: chown ",
-			expectedContent: "1.2.3.4",
-			expectedMode:    0o664,
+		"file_with_mode_0644": {
+			existing: &file{content: "1.2.3.4", mode: 0o644, owner: self},
+			content:  "5.6.7.8",
+			owner:    self,
+			expected: &file{content: "5.6.7.8", mode: 0o664, owner: self},
 		},
 		"missing_parent_directory": {
 			missingParent: true,
 			content:       "1.2.3.4",
-			errMessage:    "opening file: open ",
+			owner:         self,
+			errs:          []error{fs.ErrNotExist},
+		},
+		"read_only_file": {
+			nonRootOnly: true,
+			existing:    &file{content: "1.2.3.4", mode: 0o444, owner: self},
+			content:     "5.6.7.8",
+			owner:       self,
+			errs:        []error{fs.ErrPermission},
+			expected:    &file{content: "1.2.3.4", mode: 0o444, owner: self},
+		},
+		"chown_to_other_user": {
+			rootOnly: true,
+			content:  "1.2.3.4",
+			owner:    other,
+			expected: &file{content: "1.2.3.4", mode: 0o664, owner: other},
+		},
+		// File left by v3.41.0, which wrote it with mode 0644.
+		"file_of_other_user_with_mode_0644": {
+			rootOnly: true,
+			existing: &file{content: "1.2.3.4", mode: 0o644, owner: other},
+			content:  "5.6.7.8",
+			owner:    other,
+			expected: &file{content: "5.6.7.8", mode: 0o664, owner: other},
+		},
+		// The chmod and the chown are not needed, hence not done,
+		// since they would fail without the capabilities.
+		"file_of_other_user_without_capabilities": {
+			rootOnly:      true,
+			withoutChown:  true,
+			withoutFowner: true,
+			existing:      &file{content: "1.2.3.4", mode: 0o664, owner: other},
+			content:       "5.6.7.8",
+			owner:         other,
+			expected:      &file{content: "5.6.7.8", mode: 0o664, owner: other},
+		},
+		// The chmod is done before the chown, since it would fail
+		// without CAP_FOWNER once the file is owned by another user.
+		"chmod_then_chown_without_fowner": {
+			rootOnly:      true,
+			withoutFowner: true,
+			existing:      &file{content: "1.2.3.4", mode: 0o644, owner: self},
+			content:       "5.6.7.8",
+			owner:         other,
+			expected:      &file{content: "5.6.7.8", mode: 0o664, owner: other},
+		},
+		"chmod_not_permitted": {
+			rootOnly:      true,
+			withoutFowner: true,
+			existing:      &file{content: "1.2.3.4", mode: 0o644, owner: other},
+			content:       "5.6.7.8",
+			owner:         other,
+			errs:          []error{ErrChmod, fs.ErrPermission},
+			expected:      &file{content: "5.6.7.8", mode: 0o644, owner: other},
+		},
+		"chown_not_permitted": {
+			withoutChown: true,
+			existing:     &file{content: "1.2.3.4", mode: 0o644, owner: self},
+			content:      "5.6.7.8",
+			owner:        other,
+			errs:         []error{ErrChown, fs.ErrPermission},
+			expected:     &file{content: "5.6.7.8", mode: 0o664, owner: self},
+		},
+		"chmod_and_chown_not_permitted": {
+			rootOnly:      true,
+			withoutChown:  true,
+			withoutFowner: true,
+			existing:      &file{content: "1.2.3.4", mode: 0o644, owner: other},
+			content:       "5.6.7.8",
+			owner:         third,
+			errs:          []error{ErrChmod, ErrChown, fs.ErrPermission},
+			expected:      &file{content: "5.6.7.8", mode: 0o644, owner: other},
 		},
 	}
 
@@ -88,8 +158,13 @@ func Test_Write(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			if testCase.nonRootOnly && os.Geteuid() == root {
-				t.Skip("root bypasses permission checks")
+			const root = 0
+			isRoot := os.Geteuid() == root
+			switch {
+			case testCase.rootOnly && !isRoot:
+				t.Skip("root is needed to change the ownership of a file to another user")
+			case testCase.nonRootOnly && isRoot:
+				t.Skip("root bypasses file permission checks")
 			}
 
 			path := filepath.Join(t.TempDir(), "file")
@@ -97,28 +172,32 @@ func Test_Write(t *testing.T) {
 				path = filepath.Join(t.TempDir(), "missing", "file")
 			}
 
-			if testCase.existingMode != 0 {
-				err := os.WriteFile(path, []byte(testCase.existingContent), testCase.existingMode)
+			if testCase.existing != nil {
+				existing := *testCase.existing
+				err := os.WriteFile(path, []byte(existing.content), existing.mode)
 				require.NoError(t, err)
 				// chmod explicitly since WriteFile is subject to the umask
-				err = os.Chmod(path, testCase.existingMode)
+				err = os.Chmod(path, existing.mode)
+				require.NoError(t, err)
+				err = os.Chown(path, existing.owner.uid, existing.owner.gid)
 				require.NoError(t, err)
 			}
 
-			puid, pgid := os.Getuid(), os.Getgid()
-			if testCase.chownToRoot {
-				puid, pgid = root, root
+			if isRoot && (testCase.withoutChown || testCase.withoutFowner) {
+				dropCapabilities(t, testCase.withoutChown, testCase.withoutFowner)
 			}
 
-			err := Write(path, []byte(testCase.content), puid, pgid)
+			err := Write(path, []byte(testCase.content), testCase.owner.uid, testCase.owner.gid)
 
-			if testCase.errMessage != "" {
-				assert.ErrorContains(t, err, testCase.errMessage)
-			} else {
+			if len(testCase.errs) == 0 {
 				assert.NoError(t, err)
 			}
+			for _, sentinelErr := range [...]error{ErrChmod, ErrChown, fs.ErrPermission, fs.ErrNotExist} {
+				expected := slices.Contains(testCase.errs, sentinelErr)
+				assert.Equal(t, expected, errors.Is(err, sentinelErr), "wrapping %q", sentinelErr)
+			}
 
-			if testCase.missingParent {
+			if testCase.expected == nil {
 				_, err = os.Stat(path)
 				assert.ErrorIs(t, err, fs.ErrNotExist)
 				return
@@ -126,11 +205,16 @@ func Test_Write(t *testing.T) {
 
 			data, err := os.ReadFile(path)
 			require.NoError(t, err)
-			assert.Equal(t, testCase.expectedContent, string(data))
-
 			info, err := os.Stat(path)
 			require.NoError(t, err)
-			assert.Equal(t, testCase.expectedMode, info.Mode().Perm())
+			stat, ok := info.Sys().(*syscall.Stat_t)
+			require.True(t, ok)
+			actual := file{
+				content: string(data),
+				mode:    info.Mode().Perm(),
+				owner:   owner{uid: int(stat.Uid), gid: int(stat.Gid)},
+			}
+			assert.Equal(t, *testCase.expected, actual)
 		})
 	}
 }
