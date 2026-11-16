@@ -99,7 +99,7 @@ func (u *Updater) serversFromData(data apiData, minServers int) (servers []model
 
 	if ipToServer.numberOfServers() < minServers {
 		return nil, fmt.Errorf("%w: %d and expected at least %d",
-			common.ErrNotEnoughServers, len(ipToServer), minServers)
+			common.ErrNotEnoughServers, ipToServer.numberOfServers(), minServers)
 	}
 
 	servers = ipToServer.toServersSlice()

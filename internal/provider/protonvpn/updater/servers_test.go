@@ -36,6 +36,7 @@ func Test_Updater_serversFromData(t *testing.T) {
 			servers, err := updater.serversFromData(data, testCase.minServers)
 			if testCase.notEnough {
 				assert.ErrorIs(t, err, common.ErrNotEnoughServers)
+				assert.ErrorContains(t, err, "2 and expected at least 3")
 				assert.Nil(t, servers)
 				return
 			}
