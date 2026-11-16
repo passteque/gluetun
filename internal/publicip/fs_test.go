@@ -111,7 +111,8 @@ func Test_Loop_writeIPFile(t *testing.T) {
 
 			logger := NewMockLogger(ctrl)
 			if testCase.chownWarning {
-				logger.EXPECT().Warn("file ownership not set: chown " + path + ": operation not permitted")
+				logger.EXPECT().Warn("file ownership not set: chown " + path + ": operation not permitted" +
+					", CAP_CHOWN is required")
 			}
 
 			loop := &Loop{

@@ -60,14 +60,14 @@ func Write(path string, content []byte, puid, pgid int) (err error) {
 	if info.Mode().Perm() != permission {
 		err = file.Chmod(permission)
 		if err != nil {
-			chmodErr = fmt.Errorf("%w: %w", ErrChmod, err)
+			chmodErr = fmt.Errorf("%w: %w%s", ErrChmod, err, capabilityHint(err, "CAP_FOWNER"))
 		}
 	}
 
 	if !IsOwnedBy(info, puid, pgid) {
 		err = file.Chown(puid, pgid)
 		if err != nil {
-			chownErr = fmt.Errorf("%w: %w", ErrChown, err)
+			chownErr = fmt.Errorf("%w: %w%s", ErrChown, err, capabilityHint(err, "CAP_CHOWN"))
 		}
 	}
 
@@ -77,6 +77,14 @@ func Write(path string, content []byte, puid, pgid int) (err error) {
 	}
 
 	return errors.Join(chmodErr, chownErr)
+}
+
+func capabilityHint(err error, capability string) string {
+	if errors.Is(err, fs.ErrPermission) {
+		return ", " + capability + " is required"
+	}
+
+	return ""
 }
 
 // openWritable opens the file for writing, truncating its content and

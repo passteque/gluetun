@@ -272,3 +272,34 @@ func Test_Write(t *testing.T) {
 		})
 	}
 }
+
+func Test_capabilityHint(t *testing.T) {
+	t.Parallel()
+
+	const capability = "CAP_FOWNER"
+	testCases := map[string]struct {
+		err      error
+		expected string
+	}{
+		"permission_error": {
+			err:      &fs.PathError{Op: "chmod", Path: "/file", Err: fs.ErrPermission},
+			expected: ", CAP_FOWNER is required",
+		},
+		// The hint would be misleading, since the permissions cannot be
+		// set whatever the capabilities of the program are.
+		"read_only_file_system_error": {
+			err:      &fs.PathError{Op: "chmod", Path: "/file", Err: syscall.EROFS},
+			expected: "",
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			hint := capabilityHint(testCase.err, capability)
+
+			assert.Equal(t, testCase.expected, hint)
+		})
+	}
+}

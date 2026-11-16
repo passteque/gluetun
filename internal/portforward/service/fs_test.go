@@ -119,7 +119,8 @@ func Test_Service_writePortForwardedFile(t *testing.T) {
 			logger := NewMockLogger(ctrl)
 			logger.EXPECT().Info(testCase.expectedLog + path)
 			if testCase.chownWarning {
-				logger.EXPECT().Warn("file ownership not set: chown " + path + ": operation not permitted")
+				logger.EXPECT().Warn("file ownership not set: chown " + path + ": operation not permitted" +
+					", CAP_CHOWN is required")
 			}
 
 			service := New(Settings{Filepath: path}, nil, nil, nil, logger, nil,
