@@ -22,6 +22,9 @@ var (
 // creating it if needed, then sets its permissions to 0664 and its
 // ownership to puid and pgid, each only if it differs. A puid or pgid
 // of -1 leaves the corresponding ownership unchanged.
+// An existing file the process cannot open for writing sees its
+// permissions set on a best-effort basis and the open retried once,
+// see [openWritable].
 // If the permissions or the ownership cannot be set, the content is
 // still written, both are still attempted and the error returned
 // wraps [ErrChmod], [ErrChown] or both.
@@ -29,7 +32,7 @@ var (
 func Write(path string, content []byte, puid, pgid int) (err error) {
 	// TODO v4: remove world permission (0660)
 	const permission = fs.FileMode(0o664)
-	file, err := os.OpenFile(path, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, permission)
+	file, err := openWritable(path, permission)
 	if err != nil {
 		return fmt.Errorf("opening file: %w", err)
 	}
@@ -74,4 +77,44 @@ func Write(path string, content []byte, puid, pgid int) (err error) {
 	}
 
 	return errors.Join(chmodErr, chownErr)
+}
+
+// openWritable opens the file for writing, truncating its content and
+// creating it with the given permissions if it does not exist.
+//
+// An existing file can have permissions not granting this process write
+// access, for example one chowned to PUID with the 0644 permissions used
+// before v3.42.0, and the open is then denied with a permission error.
+// The permissions of a file owned by another user can only be set with
+// CAP_FOWNER, which can be dropped, so they are set on a best-effort
+// basis after the failed open and the open is retried once.
+// The error of the first open is returned when the file still cannot be
+// opened, since it describes the situation the user starts from.
+func openWritable(path string, permission fs.FileMode) (*os.File, error) {
+	const flags = os.O_TRUNC | os.O_WRONLY | os.O_CREATE
+	file, openErr := os.OpenFile(path, flags, permission)
+	if !errors.Is(openErr, fs.ErrPermission) {
+		return file, openErr
+	}
+
+	// Only worth trying for a regular file with permissions different from
+	// the wanted ones, otherwise the retry is bound to fail too. The file
+	// information is taken without following a symbolic link, so a link
+	// pointing to a file of the system cannot have its permissions changed
+	// by this program, which runs as root.
+	info, statErr := os.Lstat(path)
+	if statErr != nil || !info.Mode().IsRegular() || info.Mode().Perm() == permission {
+		return nil, openErr
+	}
+
+	chmodErr := os.Chmod(path, permission)
+	if chmodErr != nil {
+		return nil, openErr
+	}
+
+	file, reopenErr := os.OpenFile(path, flags, permission)
+	if reopenErr != nil {
+		return nil, openErr
+	}
+	return file, nil
 }

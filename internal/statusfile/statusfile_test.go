@@ -37,16 +37,21 @@ func Test_Write(t *testing.T) {
 		// nonRootOnly is set for cases relying on file permission checks,
 		// which root bypasses.
 		nonRootOnly bool
-		// withoutChown and withoutFowner are set for cases running without
-		// CAP_CHOWN and CAP_FOWNER, which are dropped when running as root.
-		withoutChown  bool
-		withoutFowner bool
-		missingParent bool
-		existing      *file // nil means no existing file
-		content       string
-		owner         owner
-		errs          []error
-		expected      *file // nil means no file
+		// withoutChown, withoutFowner and withoutDACOverride are set for
+		// cases running without CAP_CHOWN, CAP_FOWNER and CAP_DAC_OVERRIDE,
+		// which are dropped when running as root.
+		withoutChown       bool
+		withoutFowner      bool
+		withoutDACOverride bool
+		missingParent      bool
+		existing           *file // nil means no existing file
+		// symlink is the file the tested path is a symbolic link to,
+		// instead of being a regular file.
+		symlink  *file
+		content  string
+		owner    owner
+		errs     []error
+		expected *file // nil means no file
 	}{
 		"create_file": {
 			content:  "1.2.3.4",
@@ -82,13 +87,14 @@ func Test_Write(t *testing.T) {
 			owner:         self,
 			errs:          []error{fs.ErrNotExist},
 		},
-		"read_only_file": {
+		// The open fails and the file, owned by this user, is chmoded
+		// without any capability needed, which lets the write succeed.
+		"read_only_file_of_self": {
 			nonRootOnly: true,
 			existing:    &file{content: "1.2.3.4", mode: 0o444, owner: self},
 			content:     "5.6.7.8",
 			owner:       self,
-			errs:        []error{fs.ErrPermission},
-			expected:    &file{content: "1.2.3.4", mode: 0o444, owner: self},
+			expected:    &file{content: "5.6.7.8", mode: 0o664, owner: self},
 		},
 		"chown_to_other_user": {
 			rootOnly: true,
@@ -103,6 +109,42 @@ func Test_Write(t *testing.T) {
 			content:  "5.6.7.8",
 			owner:    other,
 			expected: &file{content: "5.6.7.8", mode: 0o664, owner: other},
+		},
+		// File left by v3.41.0 when CAP_DAC_OVERRIDE is dropped, which is
+		// the case this program cannot open, hence cannot write to.
+		// The permissions are set thanks to CAP_FOWNER and the write
+		// succeeds, which heals the file for the next runs.
+		"file_of_other_user_with_mode_0644_without_dac_override": {
+			rootOnly:           true,
+			withoutDACOverride: true,
+			existing:           &file{content: "1.2.3.4", mode: 0o644, owner: other},
+			content:            "5.6.7.8",
+			owner:              other,
+			expected:           &file{content: "5.6.7.8", mode: 0o664, owner: other},
+		},
+		// Same file but without CAP_FOWNER to repair it, which leaves the
+		// permission error of the open, and none of the write errors since
+		// nothing has been written.
+		"file_of_other_user_without_dac_override_and_fowner": {
+			rootOnly:           true,
+			withoutChown:       true,
+			withoutFowner:      true,
+			withoutDACOverride: true,
+			existing:           &file{content: "1.2.3.4", mode: 0o644, owner: other},
+			content:            "5.6.7.8",
+			owner:              other,
+			errs:               []error{fs.ErrPermission},
+			expected:           &file{content: "1.2.3.4", mode: 0o644, owner: other},
+		},
+		// The symbolic link is not followed to read the file information,
+		// so the file it points to keeps its permissions and content.
+		"symbolic_link_to_read_only_file": {
+			nonRootOnly: true,
+			symlink:     &file{content: "1.2.3.4", mode: 0o444, owner: self},
+			content:     "5.6.7.8",
+			owner:       self,
+			errs:        []error{fs.ErrPermission},
+			expected:    &file{content: "1.2.3.4", mode: 0o444, owner: self},
 		},
 		// The chmod and the chown are not needed, hence not done,
 		// since they would fail without the capabilities.
@@ -172,19 +214,31 @@ func Test_Write(t *testing.T) {
 				path = filepath.Join(t.TempDir(), "missing", "file")
 			}
 
-			if testCase.existing != nil {
-				existing := *testCase.existing
-				err := os.WriteFile(path, []byte(existing.content), existing.mode)
+			createFile := func(t *testing.T, path string, file file) {
+				t.Helper()
+				err := os.WriteFile(path, []byte(file.content), file.mode)
 				require.NoError(t, err)
 				// chmod explicitly since WriteFile is subject to the umask
-				err = os.Chmod(path, existing.mode)
+				err = os.Chmod(path, file.mode)
 				require.NoError(t, err)
-				err = os.Chown(path, existing.owner.uid, existing.owner.gid)
+				err = os.Chown(path, file.owner.uid, file.owner.gid)
 				require.NoError(t, err)
 			}
 
-			if isRoot && (testCase.withoutChown || testCase.withoutFowner) {
-				dropCapabilities(t, testCase.withoutChown, testCase.withoutFowner)
+			switch {
+			case testCase.symlink != nil:
+				targetPath := path + "-target"
+				createFile(t, targetPath, *testCase.symlink)
+				err := os.Symlink(targetPath, path)
+				require.NoError(t, err)
+			case testCase.existing != nil:
+				createFile(t, path, *testCase.existing)
+			}
+
+			if isRoot &&
+				(testCase.withoutChown || testCase.withoutFowner || testCase.withoutDACOverride) {
+				dropCapabilities(t,
+					testCase.withoutChown, testCase.withoutFowner, testCase.withoutDACOverride)
 			}
 
 			err := Write(path, []byte(testCase.content), testCase.owner.uid, testCase.owner.gid)
