@@ -64,7 +64,7 @@ func Write(path string, content []byte, puid, pgid int) (err error) {
 		}
 	}
 
-	if !isOwnedBy(info, puid, pgid) {
+	if !IsOwnedBy(info, puid, pgid) {
 		err = file.Chown(puid, pgid)
 		if err != nil {
 			chownErr = fmt.Errorf("%w: %w", ErrChown, err)
