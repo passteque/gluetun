@@ -5,44 +5,139 @@ import (
 	"testing"
 
 	"github.com/qdm12/gluetun/internal/constants/vpn"
+	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func Test_Updater_serversFromData(t *testing.T) {
 	t.Parallel()
+
 	testCases := map[string]struct {
+		// Inputs
+		data       apiData
 		minServers int
-		notEnough  bool
+
+		// Outputs
+		servers    []models.Server
+		errWrapped error
+		errMessage string
 	}{
-		"no_minimum":     {},
-		"physical_count": {minServers: 1},
-		"protocol_count": {minServers: 2},
-		"below_minimum":  {minServers: 3, notEnough: true},
-	}
-	for name, testCase := range testCases {
-		t.Run(name, func(t *testing.T) {
-			t.Parallel()
-			tier := uint8(2)
-			data := apiData{LogicalServers: []logicalServer{{
-				Name: "US#81", ExitCountry: "US", Tier: &tier,
+		"no_minimum": {
+			data: apiData{LogicalServers: []logicalServer{{
+				Name: "US#81", ExitCountry: "US", Tier: new(uint8(2)),
 				Servers: []physicalServer{{
 					Status: 1, Domain: "example.org",
 					EntryIP: netip.MustParseAddr("1.2.3.4"), X25519PublicKey: "pubkey",
 				}},
-			}}}
+			}}},
+			servers: []models.Server{
+				{
+					VPN:        vpn.OpenVPN,
+					Country:    "United States",
+					ServerName: "US#81",
+					Hostname:   "example.org",
+					TCP:        true,
+					UDP:        true,
+					IPs:        []netip.Addr{netip.MustParseAddr("1.2.3.4")},
+				},
+				{
+					VPN:        vpn.Wireguard,
+					Country:    "United States",
+					ServerName: "US#81",
+					Hostname:   "example.org",
+					WgPubKey:   "pubkey",
+					IPs:        []netip.Addr{netip.MustParseAddr("1.2.3.4")},
+				},
+			},
+		},
+		"physical_count": {
+			data: apiData{LogicalServers: []logicalServer{{
+				Name: "US#81", ExitCountry: "US", Tier: new(uint8(2)),
+				Servers: []physicalServer{{
+					Status: 1, Domain: "example.org",
+					EntryIP: netip.MustParseAddr("1.2.3.4"), X25519PublicKey: "pubkey",
+				}},
+			}}},
+			minServers: 1,
+			servers: []models.Server{
+				{
+					VPN:        vpn.OpenVPN,
+					Country:    "United States",
+					ServerName: "US#81",
+					Hostname:   "example.org",
+					TCP:        true,
+					UDP:        true,
+					IPs:        []netip.Addr{netip.MustParseAddr("1.2.3.4")},
+				},
+				{
+					VPN:        vpn.Wireguard,
+					Country:    "United States",
+					ServerName: "US#81",
+					Hostname:   "example.org",
+					WgPubKey:   "pubkey",
+					IPs:        []netip.Addr{netip.MustParseAddr("1.2.3.4")},
+				},
+			},
+		},
+		"protocol_count": {
+			data: apiData{LogicalServers: []logicalServer{{
+				Name: "US#81", ExitCountry: "US", Tier: new(uint8(2)),
+				Servers: []physicalServer{{
+					Status: 1, Domain: "example.org",
+					EntryIP: netip.MustParseAddr("1.2.3.4"), X25519PublicKey: "pubkey",
+				}},
+			}}},
+			minServers: 2,
+			servers: []models.Server{
+				{
+					VPN:        vpn.OpenVPN,
+					Country:    "United States",
+					ServerName: "US#81",
+					Hostname:   "example.org",
+					TCP:        true,
+					UDP:        true,
+					IPs:        []netip.Addr{netip.MustParseAddr("1.2.3.4")},
+				},
+				{
+					VPN:        vpn.Wireguard,
+					Country:    "United States",
+					ServerName: "US#81",
+					Hostname:   "example.org",
+					WgPubKey:   "pubkey",
+					IPs:        []netip.Addr{netip.MustParseAddr("1.2.3.4")},
+				},
+			},
+		},
+		"below_minimum": {
+			data: apiData{LogicalServers: []logicalServer{{
+				Name: "US#81", ExitCountry: "US", Tier: new(uint8(2)),
+				Servers: []physicalServer{{
+					Status: 1, Domain: "example.org",
+					EntryIP: netip.MustParseAddr("1.2.3.4"), X25519PublicKey: "pubkey",
+				}},
+			}}},
+			minServers: 3,
+			errWrapped: common.ErrNotEnoughServers,
+			errMessage: "not enough servers found: 2 and expected at least 3",
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
 			updater := &Updater{}
-			servers, err := updater.serversFromData(data, testCase.minServers)
-			if testCase.notEnough {
-				assert.ErrorIs(t, err, common.ErrNotEnoughServers)
-				assert.ErrorContains(t, err, "2 and expected at least 3")
-				assert.Nil(t, servers)
-				return
+
+			servers, err := updater.serversFromData(testCase.data, testCase.minServers)
+
+			assert.Equal(t, testCase.servers, servers)
+			assert.ErrorIs(t, err, testCase.errWrapped)
+			if testCase.errWrapped != nil {
+				assert.ErrorContains(t, err, testCase.errMessage)
+			} else {
+				assert.NoError(t, err)
 			}
-			require.NoError(t, err)
-			require.Len(t, servers, 2)
-			assert.ElementsMatch(t, []string{vpn.OpenVPN, vpn.Wireguard}, []string{servers[0].VPN, servers[1].VPN})
 		})
 	}
 }
