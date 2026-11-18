@@ -10,11 +10,7 @@ import (
 )
 
 var (
-	// ErrChmod is wrapped by the error [Write] returns when the content
-	// is written but the file permissions cannot be set.
 	ErrChmod = errors.New("file permissions not set")
-	// ErrChown is wrapped by the error [Write] returns when the content
-	// is written but the file ownership cannot be set.
 	ErrChown = errors.New("file ownership not set")
 )
 

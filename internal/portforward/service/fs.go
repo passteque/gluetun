@@ -29,7 +29,7 @@ func (s *Service) writePortForwardedFile(ports []uint16) (err error) {
 	// file UID unchanged, use statusfile.Write(filepath, fileData, -1, s.pgid).
 	err = statusfile.Write(filepath, fileData, s.puid, s.pgid)
 	if errors.Is(err, statusfile.ErrChmod) || errors.Is(err, statusfile.ErrChown) {
-		// The ports are written at this point.
+		// The ports are written at this point so not return an error, only log a warning.
 		s.logger.Warn(err.Error())
 		return nil
 	}
