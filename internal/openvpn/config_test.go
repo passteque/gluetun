@@ -98,8 +98,7 @@ func Test_Configurator_WriteConfig(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			const root = 0
-			isRoot := os.Geteuid() == root
+			isRoot := os.Geteuid() == 0
 			switch {
 			case testCase.rootOnly && !isRoot:
 				t.Skip("root is needed to change the ownership of a file to another user")
@@ -125,11 +124,7 @@ func Test_Configurator_WriteConfig(t *testing.T) {
 
 			err := configurator.WriteConfig(testCase.lines)
 
-			if testCase.expectedErr != nil {
-				assert.ErrorIs(t, err, testCase.expectedErr)
-			} else {
-				assert.NoError(t, err)
-			}
+			assert.ErrorIs(t, err, testCase.expectedErr)
 
 			data, err := os.ReadFile(configPath)
 			require.NoError(t, err)
@@ -138,7 +133,7 @@ func Test_Configurator_WriteConfig(t *testing.T) {
 			info, err := os.Stat(configPath)
 			require.NoError(t, err)
 			stat, ok := info.Sys().(*syscall.Stat_t)
-			require.True(t, ok)
+			require.True(t, ok, "the file information of a file on Linux or darwin is a *syscall.Stat_t")
 			assert.Equal(t, testCase.expectedUID, int(stat.Uid))
 			assert.Equal(t, testCase.expectedGID, int(stat.Gid))
 		})

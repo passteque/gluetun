@@ -200,8 +200,7 @@ func Test_Write(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			const root = 0
-			isRoot := os.Geteuid() == root
+			isRoot := os.Geteuid() == 0
 			switch {
 			case testCase.rootOnly && !isRoot:
 				t.Skip("root is needed to change the ownership of a file to another user")
@@ -262,7 +261,7 @@ func Test_Write(t *testing.T) {
 			info, err := os.Stat(path)
 			require.NoError(t, err)
 			stat, ok := info.Sys().(*syscall.Stat_t)
-			require.True(t, ok)
+			require.True(t, ok, "the file information of a file on Linux or darwin is a *syscall.Stat_t")
 			actual := file{
 				content: string(data),
 				mode:    info.Mode().Perm(),

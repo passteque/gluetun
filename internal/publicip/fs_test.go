@@ -87,8 +87,7 @@ func Test_Loop_persistPublicIP(t *testing.T) {
 			t.Parallel()
 			ctrl := gomock.NewController(t)
 
-			const root = 0
-			isRoot := os.Geteuid() == root
+			isRoot := os.Geteuid() == 0
 			switch {
 			case testCase.rootOnly && !isRoot:
 				t.Skip("root is needed to change the ownership of a file to another user")
@@ -137,7 +136,7 @@ func Test_Loop_persistPublicIP(t *testing.T) {
 			const expectedPermission = fs.FileMode(0o664)
 			assert.Equal(t, expectedPermission, info.Mode().Perm())
 			stat, ok := info.Sys().(*syscall.Stat_t)
-			require.True(t, ok)
+			require.True(t, ok, "the file information of a file on Linux or darwin is a *syscall.Stat_t")
 			actualOwner := owner{uid: int(stat.Uid), gid: int(stat.Gid)}
 			assert.Equal(t, testCase.expectedOwner, actualOwner)
 		})
