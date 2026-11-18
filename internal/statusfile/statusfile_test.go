@@ -11,12 +11,15 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/qdm12/gluetun/internal/testuser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func Test_Write(t *testing.T) {
 	t.Parallel()
+
+	testuser.RunCasesAsNonRoot(t)
 
 	type owner struct{ uid, gid int }
 	type file struct {

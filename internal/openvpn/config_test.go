@@ -9,12 +9,15 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/qdm12/gluetun/internal/testuser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func Test_Configurator_WriteConfig(t *testing.T) {
 	t.Parallel()
+
+	testuser.RunCasesAsNonRoot(t)
 
 	// The mode is not asserted, since WriteConfig does not change it and
 	// the mode of a file it creates depends on the umask of the process.
