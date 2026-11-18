@@ -35,16 +35,15 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 		return nil, fmt.Errorf("fetching logical servers: %w", err)
 	}
 
+	return u.serversFromData(data, minServers)
+}
+
+func (u *Updater) serversFromData(data apiData, minServers int) (servers []models.Server, err error) {
 	countryCodes := constants.CountryCodes()
 
 	var count int
 	for _, logicalServer := range data.LogicalServers {
 		count += len(logicalServer.Servers)
-	}
-
-	if count < minServers {
-		return nil, fmt.Errorf("%w: %d and expected at least %d",
-			common.ErrNotEnoughServers, count, minServers)
 	}
 
 	ipToServer := make(ipToServers, count)
@@ -99,7 +98,7 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 
 	if ipToServer.numberOfServers() < minServers {
 		return nil, fmt.Errorf("%w: %d and expected at least %d",
-			common.ErrNotEnoughServers, len(ipToServer), minServers)
+			common.ErrNotEnoughServers, ipToServer.numberOfServers(), minServers)
 	}
 
 	servers = ipToServer.toServersSlice()
