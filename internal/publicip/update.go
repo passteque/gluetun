@@ -21,7 +21,7 @@ func (l *Loop) update(partialUpdate settings.PublicIP) (err error) {
 	if *l.settings.IPFilepath != *updatedSettings.IPFilepath {
 		switch {
 		case *l.settings.IPFilepath == "":
-			err = l.writeIPFile(*updatedSettings.IPFilepath, l.ipData.IP.String())
+			err = l.persistPublicIP(*updatedSettings.IPFilepath, l.ipData.IP.String())
 			if err != nil {
 				return fmt.Errorf("persisting ip data: %w", err)
 			}

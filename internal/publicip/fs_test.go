@@ -14,7 +14,7 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-func Test_Loop_writeIPFile(t *testing.T) {
+func Test_Loop_persistPublicIP(t *testing.T) {
 	t.Parallel()
 
 	type owner struct{ uid, gid int }
@@ -121,7 +121,7 @@ func Test_Loop_writeIPFile(t *testing.T) {
 				logger: logger,
 			}
 
-			err := loop.writeIPFile(path, testCase.content)
+			err := loop.persistPublicIP(path, testCase.content)
 
 			assert.ErrorIs(t, err, testCase.expectedErr)
 			if testCase.expectedErr != nil {
