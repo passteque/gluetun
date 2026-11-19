@@ -9,6 +9,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/qdm12/gluetun/internal/testcapabilities"
 	"github.com/qdm12/gluetun/internal/testuser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,6 +20,11 @@ func Test_Configurator_WriteConfig(t *testing.T) {
 
 	testuser.RunCasesAsNonRoot(t)
 
+	// The unrelated owner is needed to test the file of a previous run,
+	// since the group of the other owners is one of root and would let the
+	// open succeed without any capability.
+	unrelatedUID, unrelatedGID := testuser.UnrelatedOwner(t)
+
 	// The mode is not asserted, since WriteConfig does not change it and
 	// the mode of a file it creates depends on the umask of the process.
 	testCases := map[string]struct {
@@ -28,6 +34,11 @@ func Test_Configurator_WriteConfig(t *testing.T) {
 		// nonRootOnly is set for cases relying on the chown being refused,
 		// which root is allowed to do.
 		nonRootOnly bool
+		// withoutDACOverride and withoutFowner are set for cases running
+		// without CAP_DAC_OVERRIDE and CAP_FOWNER, which are dropped when
+		// running as root.
+		withoutDACOverride bool
+		withoutFowner      bool
 		// existing is the content of an existing file, owned by existingUID
 		// and existingGID, and no file is created beforehand when empty.
 		existing        string
@@ -85,6 +96,42 @@ func Test_Configurator_WriteConfig(t *testing.T) {
 			expectedUID:     os.Getuid() + 1,
 			expectedGID:     os.Getgid() + 1,
 		},
+		// The file of a previous run is owned by PUID/PGID with the 0644
+		// permissions, which this process running as root cannot open without
+		// CAP_DAC_OVERRIDE, unless it repairs the permissions first, thanks to
+		// CAP_FOWNER. The file is owned by a group the process running the test
+		// is not a member of, so no capability is needed to write it once the
+		// permissions are set.
+		"overwrite_file_of_unrelated_user_without_dac_override": {
+			rootOnly:           true,
+			withoutDACOverride: true,
+			existing:           "outdated value\n",
+			existingUID:        unrelatedUID,
+			existingGID:        unrelatedGID,
+			lines:              []string{"option-a value"},
+			ownerUID:           unrelatedUID,
+			ownerGID:           unrelatedGID,
+			expectedContent:    "option-a value",
+			expectedUID:        unrelatedUID,
+			expectedGID:        unrelatedGID,
+		},
+		// Same file, but the permissions cannot be repaired without
+		// CAP_FOWNER, so the write fails and leaves the file unchanged.
+		"overwrite_file_of_unrelated_user_without_dac_override_and_fowner": {
+			rootOnly:           true,
+			withoutDACOverride: true,
+			withoutFowner:      true,
+			existing:           "outdated value\n",
+			existingUID:        unrelatedUID,
+			existingGID:        unrelatedGID,
+			lines:              []string{"option-a value"},
+			ownerUID:           unrelatedUID,
+			ownerGID:           unrelatedGID,
+			expectedErr:        fs.ErrPermission,
+			expectedContent:    "outdated value\n",
+			expectedUID:        unrelatedUID,
+			expectedGID:        unrelatedGID,
+		},
 		"chown_not_permitted": {
 			nonRootOnly:     true,
 			lines:           []string{"option-a value"},
@@ -111,12 +158,21 @@ func Test_Configurator_WriteConfig(t *testing.T) {
 
 			configPath := filepath.Join(t.TempDir(), "config.ovpn")
 			if testCase.existing != "" {
-				// The mode is the safest one, since it is not asserted and
-				// WriteConfig leaves the mode of an existing file unchanged.
-				err := os.WriteFile(configPath, []byte(testCase.existing), 0o600)
+				// The mode is the one WriteConfig leaves on the file, since the
+				// existing file stands for a file written by a previous run.
+				const mode = fs.FileMode(0o644)
+				err := os.WriteFile(configPath, []byte(testCase.existing), mode)
+				require.NoError(t, err)
+				// chmod explicitly since WriteFile is subject to the umask
+				err = os.Chmod(configPath, mode)
 				require.NoError(t, err)
 				err = os.Chown(configPath, testCase.existingUID, testCase.existingGID)
 				require.NoError(t, err)
+			}
+
+			if isRoot && (testCase.withoutDACOverride || testCase.withoutFowner) {
+				testcapabilities.Drop(t, false,
+					testCase.withoutFowner, testCase.withoutDACOverride)
 			}
 
 			configurator := &Configurator{

@@ -33,6 +33,14 @@ func Test_Write(t *testing.T) {
 	// other and third are users other than the one running the test.
 	other := owner{uid: self.uid + 1, gid: self.gid + 1}
 	third := owner{uid: self.uid + 2, gid: self.gid + 2}
+	// unrelated is an owner whose group the process running the test is not
+	// a member of, unlike other, whose group is 1 when the test runs as
+	// root and which root belongs to. A file owned by unrelated cannot be
+	// written through the group permissions of the process running the test,
+	// and needs a capability to be, which is what the cases running without
+	// CAP_DAC_OVERRIDE test.
+	unrelatedUID, unrelatedGID := testuser.UnrelatedOwner(t)
+	unrelated := owner{uid: unrelatedUID, gid: unrelatedGID}
 
 	testCases := map[string]struct {
 		// rootOnly is set for cases changing the ownership of a file to
@@ -118,27 +126,29 @@ func Test_Write(t *testing.T) {
 		// the case this program cannot open, hence cannot write to.
 		// The permissions are set thanks to CAP_FOWNER and the write
 		// succeeds, which heals the file for the next runs.
-		"file_of_other_user_with_mode_0644_without_dac_override": {
+		// The file is owned by an unrelated group, since the group of other
+		// would let the open succeed without any capability.
+		"file_of_unrelated_user_with_mode_0644_without_dac_override": {
 			rootOnly:           true,
 			withoutDACOverride: true,
-			existing:           &file{content: "1.2.3.4", mode: 0o644, owner: other},
+			existing:           &file{content: "1.2.3.4", mode: 0o644, owner: unrelated},
 			content:            "5.6.7.8",
-			owner:              other,
-			expected:           &file{content: "5.6.7.8", mode: 0o664, owner: other},
+			owner:              unrelated,
+			expected:           &file{content: "5.6.7.8", mode: 0o664, owner: unrelated},
 		},
 		// Same file but without CAP_FOWNER to repair it, which leaves the
 		// permission error of the open, and none of the write errors since
 		// nothing has been written.
-		"file_of_other_user_without_dac_override_and_fowner": {
+		"file_of_unrelated_user_without_dac_override_and_fowner": {
 			rootOnly:           true,
 			withoutChown:       true,
 			withoutFowner:      true,
 			withoutDACOverride: true,
-			existing:           &file{content: "1.2.3.4", mode: 0o644, owner: other},
+			existing:           &file{content: "1.2.3.4", mode: 0o644, owner: unrelated},
 			content:            "5.6.7.8",
-			owner:              other,
+			owner:              unrelated,
 			errs:               []error{fs.ErrPermission},
-			expected:           &file{content: "1.2.3.4", mode: 0o644, owner: other},
+			expected:           &file{content: "1.2.3.4", mode: 0o644, owner: unrelated},
 		},
 		// The symbolic link is not followed to read the file information,
 		// so the file it points to keeps its permissions and content.
