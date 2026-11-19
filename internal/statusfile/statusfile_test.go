@@ -136,10 +136,23 @@ func Test_Write(t *testing.T) {
 			owner:              unrelated,
 			expected:           &file{content: "5.6.7.8", mode: 0o664, owner: unrelated},
 		},
-		// Same file but without CAP_FOWNER to repair it, which leaves the
-		// permission error of the open, and none of the write errors since
-		// nothing has been written.
-		"file_of_unrelated_user_without_dac_override_and_fowner": {
+		// Same file, but with CAP_CHOWN left, which lets this process take
+		// the ownership of the file to change its permissions, and give the
+		// ownership back to the wanted owner afterwards.
+		"file_of_unrelated_user_with_chown_only": {
+			rootOnly:           true,
+			withoutFowner:      true,
+			withoutDACOverride: true,
+			existing:           &file{content: "1.2.3.4", mode: 0o644, owner: unrelated},
+			content:            "5.6.7.8",
+			owner:              unrelated,
+			expected:           &file{content: "5.6.7.8", mode: 0o664, owner: unrelated},
+		},
+		// Same file, but with CAP_CHOWN dropped as well, so neither the
+		// permissions nor the ownership can be changed to repair it. This
+		// leaves the permission error of the open, and none of the write
+		// errors since nothing has been written.
+		"file_of_unrelated_user_without_dac_override_fowner_and_chown": {
 			rootOnly:           true,
 			withoutChown:       true,
 			withoutFowner:      true,

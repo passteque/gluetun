@@ -34,9 +34,10 @@ func Test_Configurator_WriteConfig(t *testing.T) {
 		// nonRootOnly is set for cases relying on the chown being refused,
 		// which root is allowed to do.
 		nonRootOnly bool
-		// withoutDACOverride and withoutFowner are set for cases running
-		// without CAP_DAC_OVERRIDE and CAP_FOWNER, which are dropped when
-		// running as root.
+		// withoutChown, withoutDACOverride and withoutFowner are set for
+		// cases running without CAP_CHOWN, CAP_DAC_OVERRIDE and CAP_FOWNER,
+		// which are dropped when running as root.
+		withoutChown       bool
 		withoutDACOverride bool
 		withoutFowner      bool
 		// existing is the content of an existing file, owned by existingUID
@@ -115,10 +116,29 @@ func Test_Configurator_WriteConfig(t *testing.T) {
 			expectedUID:        unrelatedUID,
 			expectedGID:        unrelatedGID,
 		},
-		// Same file, but the permissions cannot be repaired without
-		// CAP_FOWNER, so the write fails and leaves the file unchanged.
-		"overwrite_file_of_unrelated_user_without_dac_override_and_fowner": {
+		// Same file, but without CAP_FOWNER to change its permissions. The
+		// ownership is taken with CAP_CHOWN instead, and given back to the
+		// wanted owner by WriteConfig afterwards.
+		"overwrite_file_of_unrelated_user_with_chown_only": {
 			rootOnly:           true,
+			withoutDACOverride: true,
+			withoutFowner:      true,
+			existing:           "outdated value\n",
+			existingUID:        unrelatedUID,
+			existingGID:        unrelatedGID,
+			lines:              []string{"option-a value"},
+			ownerUID:           unrelatedUID,
+			ownerGID:           unrelatedGID,
+			expectedContent:    "option-a value",
+			expectedUID:        unrelatedUID,
+			expectedGID:        unrelatedGID,
+		},
+		// Same file, but with CAP_CHOWN dropped too, so the permissions
+		// cannot be repaired at all and the write fails, leaving the file
+		// unchanged.
+		"overwrite_file_of_unrelated_user_without_dac_override_fowner_and_chown": {
+			rootOnly:           true,
+			withoutChown:       true,
 			withoutDACOverride: true,
 			withoutFowner:      true,
 			existing:           "outdated value\n",
@@ -170,8 +190,10 @@ func Test_Configurator_WriteConfig(t *testing.T) {
 				require.NoError(t, err)
 			}
 
-			if isRoot && (testCase.withoutDACOverride || testCase.withoutFowner) {
-				testcapabilities.Drop(t, false,
+			if isRoot && (testCase.withoutChown ||
+				testCase.withoutDACOverride ||
+				testCase.withoutFowner) {
+				testcapabilities.Drop(t, testCase.withoutChown,
 					testCase.withoutFowner, testCase.withoutDACOverride)
 			}
 
