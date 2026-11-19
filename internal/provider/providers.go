@@ -52,7 +52,7 @@ type Extractor interface {
 
 func NewProviders(storage Storage, timeNow func() time.Time,
 	updaterWarner common.Warner, client *http.Client, unzipper common.Unzipper,
-	parallelResolver common.ParallelResolver, ipFetcher common.IPFetcher,
+	parallelResolver common.ParallelResolver,
 	extractor custom.Extractor, credentials settings.Updater,
 ) *Providers {
 	randSource := rand.NewSource(timeNow().UnixNano())
@@ -75,7 +75,7 @@ func NewProviders(storage Storage, timeNow func() time.Time,
 		providers.PrivateInternetAccess: privateinternetaccess.New(storage, randSource, timeNow, client),
 		providers.Privatevpn:            privatevpn.New(storage, randSource, unzipper, updaterWarner, parallelResolver),
 		providers.Protonvpn:             protonvpn.New(storage, randSource, client, updaterWarner, *credentials.ProtonEmail, *credentials.ProtonPassword),
-		providers.Purevpn:               purevpn.New(storage, randSource, ipFetcher, unzipper, updaterWarner, parallelResolver),
+		providers.Purevpn:               purevpn.New(storage, randSource, client, updaterWarner, parallelResolver),
 		providers.SlickVPN:              slickvpn.New(storage, randSource, client, updaterWarner, parallelResolver),
 		providers.Surfshark:             surfshark.New(storage, randSource, client, unzipper, updaterWarner, parallelResolver),
 		providers.Torguard:              torguard.New(storage, randSource, unzipper, updaterWarner, parallelResolver),

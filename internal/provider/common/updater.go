@@ -12,7 +12,6 @@ import (
 var (
 	ErrNotEnoughServers     = errors.New("not enough servers found")
 	ErrHTTPStatusCodeNotOK  = errors.New("HTTP status code not OK")
-	ErrIPFetcherUnsupported = errors.New("IP fetcher not supported")
 	ErrCredentialsMissing   = errors.New("credentials missing")
 )
 
@@ -32,10 +31,4 @@ type Unzipper interface {
 
 type Warner interface {
 	Warn(s string)
-}
-
-type IPFetcher interface {
-	String() string
-	CanFetchAnyIP() bool
-	FetchInfo(ctx context.Context, ip netip.Addr) (result models.PublicIP, err error)
 }

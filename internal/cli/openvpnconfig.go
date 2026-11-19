@@ -10,7 +10,6 @@ import (
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/constants"
-	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/openvpn/extract"
 	"github.com/qdm12/gluetun/internal/provider"
 	"github.com/qdm12/gluetun/internal/storage"
@@ -31,12 +30,6 @@ type Unzipper interface {
 type ParallelResolver interface {
 	Resolve(ctx context.Context, settings resolver.ParallelSettings) (
 		hostToIPs map[string][]netip.Addr, warnings []string, err error)
-}
-
-type IPFetcher interface {
-	String() string
-	CanFetchAnyIP() bool
-	FetchInfo(ctx context.Context, ip netip.Addr) (data models.PublicIP, err error)
 }
 
 type IPv6Checker interface {
@@ -72,11 +65,10 @@ func (c *CLI) OpenvpnConfig(logger OpenvpnConfigLogger, reader *reader.Reader,
 	client := (*http.Client)(nil)
 	warner := (Warner)(nil)
 	parallelResolver := (ParallelResolver)(nil)
-	ipFetcher := (IPFetcher)(nil)
 	openvpnFileExtractor := extract.New()
 
 	providers := provider.NewProviders(storage, time.Now, warner, client,
-		unzipper, parallelResolver, ipFetcher, openvpnFileExtractor, allSettings.Updater)
+		unzipper, parallelResolver, openvpnFileExtractor, allSettings.Updater)
 	providerConf := providers.Get(allSettings.VPN.Provider.Name)
 	connection, err := providerConf.GetConnection(
 		allSettings.VPN.Provider.ServerSelection, ipv6Supported)

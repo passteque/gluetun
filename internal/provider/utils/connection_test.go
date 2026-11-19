@@ -206,3 +206,109 @@ func Test_GetConnection(t *testing.T) {
 		})
 	}
 }
+
+// Test_GetConnection_serverPorts covers the server defined ports used to build
+// the connections: since the PureVPN data revamp a single server can expose
+// several OpenVPN ports, and a server not supporting the custom port set must
+// not be selected.
+func Test_GetConnection_serverPorts(t *testing.T) {
+	t.Parallel()
+
+	tcpSelection := settings.ServerSelection{}.WithDefaults(providers.Purevpn)
+	tcpSelection.OpenVPN.Protocol = constants.TCP
+
+	customPortSelection := settings.ServerSelection{}.WithDefaults(providers.Purevpn)
+	customPortSelection.OpenVPN.Protocol = constants.TCP
+	customPort := uint16(4433)
+	customPortSelection.OpenVPN.CustomPort = &customPort
+
+	unsupportedPortSelection := settings.ServerSelection{}.WithDefaults(providers.Purevpn)
+	unsupportedPortSelection.OpenVPN.Protocol = constants.TCP
+	unsupportedPort := uint16(1234)
+	unsupportedPortSelection.OpenVPN.CustomPort = &unsupportedPort
+
+	ip := netip.AddrFrom4([4]byte{1, 1, 1, 1})
+
+	testCases := map[string]struct {
+		server          models.Server
+		serverSelection settings.ServerSelection
+		defaults        ConnectionDefaults
+		expectedPorts   []uint16
+		errMessage      string
+	}{
+		"udp ports of the server are used": {
+			server: models.Server{
+				VPN:      vpn.OpenVPN,
+				IPs:      []netip.Addr{ip},
+				UDPPorts: []uint16{15021, 1194},
+			},
+			serverSelection: settings.ServerSelection{}.WithDefaults(providers.Purevpn),
+			defaults:        NewConnectionDefaults(443, 443, 1382),
+			expectedPorts:   []uint16{1194, 15021},
+		},
+		"tcp ports of the server are used": {
+			server: models.Server{
+				VPN:      vpn.OpenVPN,
+				IPs:      []netip.Addr{ip},
+				TCPPorts: []uint16{4433},
+			},
+			serverSelection: tcpSelection,
+			defaults:        NewConnectionDefaults(443, 443, 1382),
+			expectedPorts:   []uint16{4433},
+		},
+		"custom port supported by the server is used": {
+			server: models.Server{
+				VPN:      vpn.OpenVPN,
+				IPs:      []netip.Addr{ip},
+				TCPPorts: []uint16{443, 4433},
+			},
+			serverSelection: customPortSelection,
+			defaults:        NewConnectionDefaults(443, 443, 1382),
+			expectedPorts:   []uint16{4433},
+		},
+		"custom port unsupported by the server is an error": {
+			server: models.Server{
+				VPN:      vpn.OpenVPN,
+				IPs:      []netip.Addr{ip},
+				TCPPorts: []uint16{443},
+			},
+			serverSelection: unsupportedPortSelection,
+			defaults:        NewConnectionDefaults(443, 443, 1382),
+			errMessage: "no connection to pick from: no server supports the custom" +
+				" port 1234 out of 1 filtered servers",
+		},
+		"no server port falls back on the provider default port": {
+			server: models.Server{
+				VPN: vpn.OpenVPN,
+				IPs: []netip.Addr{ip},
+			},
+			serverSelection: settings.ServerSelection{}.WithDefaults(providers.Purevpn),
+			defaults:        NewConnectionDefaults(443, 443, 1382),
+			expectedPorts:   []uint16{443},
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+
+			ctrl := gomock.NewController(t)
+			storage := common.NewMockStorage(ctrl)
+			storage.EXPECT().
+				FilterServers(providers.Purevpn, testCase.serverSelection).
+				Return([]models.Server{testCase.server}, nil)
+
+			connection, err := GetConnection(providers.Purevpn, storage,
+				testCase.serverSelection, testCase.defaults, true, rand.NewSource(0))
+
+			if testCase.errMessage != "" {
+				assert.EqualError(t, err, testCase.errMessage)
+				return
+			}
+
+			assert.NoError(t, err)
+			assert.Equal(t, ip, connection.IP)
+			assert.Contains(t, testCase.expectedPorts, connection.Port)
+		})
+	}
+}
