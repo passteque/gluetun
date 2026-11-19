@@ -16,4 +16,4 @@ body:
       label: "Extra information and references"
       placeholder: |
         - I tried `docker run something` and it doesn't work
-        - That [url](https://github.com/qdm12/gluetun) is interesting
+        - That [url](https://github.com/passteque/gluetun) is interesting

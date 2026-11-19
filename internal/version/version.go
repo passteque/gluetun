@@ -48,7 +48,7 @@ var errReleaseNotFound = errors.New("release not found")
 
 func getLatestRelease(ctx context.Context, client *http.Client) (tagName, name string, time time.Time, err error) {
 	var releases []githubRelease
-	const url = "https://api.github.com/repos/qdm12/gluetun/releases"
+	const url = "https://api.github.com/repos/passteque/gluetun/releases"
 	err = getJSON(ctx, client, url, &releases)
 	if err != nil {
 		return "", "", time, err
@@ -69,7 +69,7 @@ func getLatestRelease(ctx context.Context, client *http.Client) (tagName, name s
 var errCommitNotFound = errors.New("commit not found")
 
 func getCommitsSince(ctx context.Context, client *http.Client, commitShort string) (n int, err error) {
-	const url = "https://api.github.com/repos/qdm12/gluetun/commits"
+	const url = "https://api.github.com/repos/passteque/gluetun/commits"
 	var commits []githubCommit
 	err = getJSON(ctx, client, url, &commits)
 	if err != nil {
