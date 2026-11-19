@@ -20,7 +20,7 @@ var (
 // of -1 leaves the corresponding ownership unchanged.
 // An existing file the process cannot open for writing sees its
 // permissions set on a best-effort basis and the open retried once,
-// see [openWritable].
+// see [OpenWritable].
 // If the permissions or the ownership cannot be set, the content is
 // still written, both are still attempted and the error returned
 // wraps [ErrChmod], [ErrChown] or both.
@@ -28,7 +28,7 @@ var (
 func Write(path string, content []byte, puid, pgid int) (err error) {
 	// TODO v4: remove world permission (0660)
 	const permission = fs.FileMode(0o664)
-	file, err := openWritable(path, permission)
+	file, err := OpenWritable(path, permission)
 	if err != nil {
 		return fmt.Errorf("opening file: %w", err)
 	}
@@ -83,7 +83,7 @@ func capabilityHint(err error, capability string) string {
 	return ""
 }
 
-// openWritable opens the file for writing, truncating its content and
+// OpenWritable opens the file for writing, truncating its content and
 // creating it with the given permissions if it does not exist.
 //
 // An existing file can have permissions not granting this process write
@@ -94,7 +94,7 @@ func capabilityHint(err error, capability string) string {
 // basis after the failed open and the open is retried once.
 // The error of the first open is returned when the file still cannot be
 // opened, since it describes the situation the user starts from.
-func openWritable(path string, permission fs.FileMode) (*os.File, error) {
+func OpenWritable(path string, permission fs.FileMode) (*os.File, error) {
 	const flags = os.O_TRUNC | os.O_WRONLY | os.O_CREATE
 	file, openErr := os.OpenFile(path, flags, permission)
 	if !errors.Is(openErr, fs.ErrPermission) {
