@@ -20,5 +20,5 @@ func (l *Loop) ClearData() (err error) {
 	l.settingsMutex.RLock()
 	filepath := *l.settings.IPFilepath
 	l.settingsMutex.RUnlock()
-	return persistPublicIP(filepath, "", l.puid, l.pgid)
+	return l.persistPublicIP(filepath, "")
 }

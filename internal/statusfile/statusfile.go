@@ -1,0 +1,113 @@
+// Package statusfile writes status files, such as the public IP
+// address file or the forwarded port file, readable by other programs.
+package statusfile
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+)
+
+var (
+	ErrChmod = errors.New("file permissions not set")
+	ErrChown = errors.New("file ownership not set")
+)
+
+// Write writes the content to the file at the given path in place,
+// creating it if needed, then sets its permissions to 0664 and its
+// ownership to puid and pgid, each only if it differs. A puid or pgid
+// of -1 leaves the corresponding ownership unchanged.
+// An existing file the process cannot open for writing sees its
+// permissions set on a best-effort basis and the open retried once,
+// see [OpenWritable].
+// If the permissions or the ownership cannot be set, the content is
+// still written, both are still attempted and the error returned
+// wraps [ErrChmod], [ErrChown] or both.
+// Writing in place keeps single file bind mounts working.
+func Write(path string, content []byte, puid, pgid int) (err error) {
+	// TODO v4: remove world permission (0660)
+	const permission = fs.FileMode(0o664)
+	file, err := OpenWritable(path, permission)
+	if err != nil {
+		return fmt.Errorf("opening file: %w", err)
+	}
+
+	_, err = file.Write(content)
+	if err != nil {
+		_ = file.Close()
+		return fmt.Errorf("writing file: %w", err)
+	}
+
+	info, err := file.Stat()
+	if err != nil {
+		_ = file.Close()
+		return fmt.Errorf("getting file information: %w", err)
+	}
+
+	// OpenFile is subject to the umask and leaves the permissions of an
+	// existing file unchanged, hence the chmod. On a file owned by another
+	// user, such as one previously chowned to puid, the chmod needs
+	// CAP_FOWNER and the chown needs CAP_CHOWN, even to set the same owner.
+	// Both capabilities may be dropped, so each is only done when needed.
+	// The chmod comes first, since a file just created is still owned by
+	// this process, which then needs no capability to chmod it.
+	var chmodErr, chownErr error
+	if info.Mode().Perm() != permission {
+		err = file.Chmod(permission)
+		if err != nil {
+			chmodErr = fmt.Errorf("%w: %w%s", ErrChmod, err, capabilityHint(err, "CAP_FOWNER"))
+		}
+	}
+
+	if !IsOwnedBy(info, puid, pgid) {
+		err = file.Chown(puid, pgid)
+		if err != nil {
+			chownErr = fmt.Errorf("%w: %w%s", ErrChown, err, capabilityHint(err, "CAP_CHOWN"))
+		}
+	}
+
+	err = file.Close()
+	if err != nil {
+		return fmt.Errorf("closing file: %w", err)
+	}
+
+	return errors.Join(chmodErr, chownErr)
+}
+
+func capabilityHint(err error, capability string) string {
+	if errors.Is(err, fs.ErrPermission) {
+		return ", " + capability + " is required"
+	}
+
+	return ""
+}
+
+// OpenWritable opens the file for writing, truncating its content and
+// creating it with the given permissions if it does not exist.
+//
+// An existing file can have permissions not granting this process write
+// access, for example one chowned to PUID with the 0644 permissions used
+// before v3.42.0. This process running as root is then usually neither the
+// owner nor in the group of the file, so the open is denied and only the
+// write permission for others would let it through: that permission is
+// then added to a regular file, the open is retried once and the given
+// permissions are set on the opened file. Adding it needs CAP_FOWNER for a
+// file owned by another user; on Linux this process takes the ownership of
+// the file instead when CAP_FOWNER is missing, which needs CAP_CHOWN and
+// leaves the file owned by this process, so the caller should set the
+// ownership it wants on the file returned.
+// See [reopenWritable] for how the file is guarded against its path being
+// replaced during the call, and for the permissions and ownership restored
+// when the retry fails.
+// The error of the first open is returned when the file still cannot be
+// opened, since it describes the situation the user starts from, with a
+// hint on the capabilities needed.
+func OpenWritable(path string, permission fs.FileMode) (*os.File, error) {
+	const flags = os.O_TRUNC | os.O_WRONLY | os.O_CREATE
+	file, err := os.OpenFile(path, flags, permission)
+	if !errors.Is(err, fs.ErrPermission) {
+		return file, err
+	}
+	return reopenWritable(path, permission, err)
+}
