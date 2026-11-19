@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/netip"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
@@ -21,19 +20,12 @@ type Loop struct {
 	ipData        models.PublicIP
 	ipDataMutex   sync.RWMutex
 	fetcher       *api.ResilientFetcher
-	// retryWanted is true when the last fetch failed and a retry
-	// is scheduled. It is set to false when the VPN tunnel goes down
-	// (see ClearData) so retries stop until the next tunnel up trigger.
-	retryWanted atomic.Bool
 	// Fixed injected objects
 	httpClient *http.Client
 	logger     Logger
 	// Fixed parameters
 	puid int
 	pgid int
-	// Retry backoff parameters, set as fields for test purposes.
-	retryInitialBackoff time.Duration
-	retryMaxBackoff     time.Duration
 	// Internal channels and locks
 	// runCtx is used to detect when the loop has exited
 	// when performing an update
@@ -44,14 +36,13 @@ type Loop struct {
 	updateTrigger chan<- settings.PublicIP
 	updatedResult <-chan error
 	runDone       <-chan struct{}
+	// retryStopTrigger tells the run loop to drop the retry it has pending,
+	// the VPN connection going down being what pulls it, see [Loop.ClearData].
+	retryStopTrigger chan<- struct{}
 	// Mock functions
-	timeNow func() time.Time
+	timeNow  func() time.Time
+	newTimer func(duration time.Duration) timer
 }
-
-const (
-	defaultRetryInitialBackoff = 10 * time.Second
-	defaultRetryMaxBackoff     = 5 * time.Minute
-)
 
 func NewLoop(settings settings.PublicIP, puid, pgid int,
 	httpClient *http.Client, logger Logger,
@@ -62,15 +53,16 @@ func NewLoop(settings settings.PublicIP, puid, pgid int,
 	}
 
 	return &Loop{
-		settings:            settings,
-		httpClient:          httpClient,
-		fetcher:             api.NewResilient(fetchers, logger),
-		logger:              logger,
-		puid:                puid,
-		pgid:                pgid,
-		retryInitialBackoff: defaultRetryInitialBackoff,
-		retryMaxBackoff:     defaultRetryMaxBackoff,
-		timeNow:             time.Now,
+		settings:   settings,
+		httpClient: httpClient,
+		fetcher:    api.NewResilient(fetchers, logger),
+		logger:     logger,
+		puid:       puid,
+		pgid:       pgid,
+		timeNow:    time.Now,
+		newTimer: func(duration time.Duration) timer {
+			return &timeTimer{timer: time.NewTimer(duration)}
+		},
 	}, nil
 }
 
@@ -101,8 +93,11 @@ func (l *Loop) Start(_ context.Context) (_ <-chan error, err error) {
 	l.updateTrigger = updateTrigger
 	updatedResult := make(chan error)
 	l.updatedResult = updatedResult
+	retryStopTrigger := make(chan struct{}, 1)
+	l.retryStopTrigger = retryStopTrigger
 
-	go l.run(l.runCtx, runDone, runTrigger, runResult, updateTrigger, updatedResult)
+	go l.run(l.runCtx, runDone, runTrigger, runResult, updateTrigger, updatedResult,
+		retryStopTrigger)
 
 	return nil, nil //nolint:nilnil
 }
@@ -110,70 +105,84 @@ func (l *Loop) Start(_ context.Context) (_ <-chan error, err error) {
 func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 	runTrigger <-chan context.Context, runResult chan<- error,
 	updateTrigger <-chan settings.PublicIP, updatedResult chan<- error,
+	retryStop <-chan struct{},
 ) {
 	defer close(runDone)
 
-	retryBackoff := l.retryInitialBackoff
-	var retryTimer *time.Timer
-	var retryTimerC <-chan time.Time // nil when no retry is scheduled
-
-	scheduleRetry := func() {
-		l.retryWanted.Store(true)
-		if retryTimer == nil {
-			retryTimer = time.NewTimer(retryBackoff)
-		} else {
-			retryTimer.Reset(retryBackoff)
-		}
-		retryTimerC = retryTimer.C
-		l.logger.Info("retrying to fetch public IP information in " +
-			retryBackoff.String())
-		const backoffFactor = 2
-		retryBackoff *= backoffFactor
-		if retryBackoff > l.retryMaxBackoff {
-			retryBackoff = l.retryMaxBackoff
-		}
-	}
-	unscheduleRetry := func() {
-		if retryTimerC == nil {
-			return
-		}
-		if !retryTimer.Stop() {
-			<-retryTimer.C
-		}
-		retryTimerC = nil
-	}
+	retries := newRetryState(l.newTimer)
+	// Whatever ends the run, no timer is left armed for a failure the run has
+	// already dealt with, since nobody stops it once the run goroutine is gone.
+	defer retries.stop()
 
 	for {
+		var (
+			// fetchCtx bounds the fetch: the tunnel session context when a tunnel up
+			// asked for the information, and the run context when the loop fetches
+			// for itself, the retry being dropped by [Loop.ClearData].
+			fetchCtx context.Context
+			// fetchedResult carries the outcome back to whoever asked for it, and is
+			// nil when the retry the loop booked for itself woke it up.
+			fetchedResult chan<- error
+		)
+
 		select {
 		case <-runCtx.Done():
 			return
-		case singleRunCtx := <-runTrigger:
-			// Note singleRunCtx is canceled if runCtx is canceled.
-			// A new trigger supersedes any previously scheduled retry.
-			unscheduleRetry()
-			retryBackoff = l.retryInitialBackoff
-			if !*l.settings.Enabled {
-				runResult <- nil
-				continue
+		case fetchCtx = <-runTrigger:
+			// Note fetchCtx is canceled if runCtx is canceled.
+			fetchedResult = runResult
+			// A connection which went down before this one came up can have left a
+			// stop token queued. Draining it here keeps the select from picking it up
+			// after this fetch, which would drop the attempt this fetch fails to book.
+			select {
+			case <-retryStop:
+			default:
 			}
-			err := l.fetchAndStore(singleRunCtx)
-			if err != nil {
-				scheduleRetry()
-			}
-			runResult <- err
-		case <-retryTimerC:
-			retryTimerC = nil
-			if !l.retryWanted.Load() || !*l.settings.Enabled {
-				continue
-			}
-			err := l.fetchAndStore(runCtx)
-			if err != nil && l.retryWanted.Load() {
-				l.logger.Warn("fetching public IP information failed: " +
-					err.Error())
-				scheduleRetry()
-			}
+			// The tunnel came up, so the attempt booked for the failure before it is
+			// superseded, and a fresh connection is a fresh chance: the delays of the
+			// failures to come start over, whether the outage before it ended with a
+			// fetch which went through or not.
+			retries.stop()
+			retries.reset()
 		case partialUpdate := <-updateTrigger:
 			updatedResult <- l.update(partialUpdate)
+			continue
+		case <-retryStop:
+			// The VPN connection went down: fetching with it down answers nothing but
+			// timeouts, and the tunnel up which follows triggers a fetch of its own.
+			retries.stop()
+			continue
+		case <-retries.after:
+			// The attempt booked is over, the timer has nothing left to stop.
+			retries.timer, retries.after = nil, nil
+			fetchCtx = runCtx
+		}
+
+		if !*l.settings.Enabled {
+			if fetchedResult != nil {
+				fetchedResult <- nil
+			}
+			continue
+		}
+
+		err := l.fetchAndStore(fetchCtx)
+		if err != nil {
+			booked := retries.failure()
+			// The delay of the attempt booked belongs to the report, so whoever reads
+			// it knows the failure is not the end of the story.
+			err = fmt.Errorf("%w - retrying in %s (attempt %d)",
+				err, booked.Delay, booked.Attempts)
+		}
+
+		if fetchedResult != nil {
+			// Whoever asked for this fetch waits for its outcome, whatever the loop
+			// does next.
+			fetchedResult <- err
+			continue
+		}
+		if err != nil {
+			// Nobody asked for this fetch, so nobody else reports its failure.
+			l.logger.Error(err.Error())
 		}
 	}
 }
