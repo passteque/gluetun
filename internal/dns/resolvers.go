@@ -7,14 +7,35 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"math/rand/v2"
 	"net/http"
-	"sort"
-	"strings"
+	"net/netip"
+	"slices"
 )
 
-func leakCheck(ctx context.Context, client *http.Client) (report string, err error) {
+// checkResolvers logs the DNS resolvers detected through the tunnel by the
+// ipleak.net service, when the resolver check is enabled. This is purely
+// informational: it cannot tell if the detected resolvers are the expected ones.
+func (l *Loop) checkResolvers(ctx context.Context, checkEnabled bool) {
+	if !checkEnabled {
+		return
+	}
+
+	resolvers, err := detectResolvers(ctx, l.client)
+	if err != nil {
+		l.logger.Warnf("detecting DNS resolvers through the tunnel: %s", err)
+		return
+	}
+
+	l.logger.Infof("DNS resolvers detected through the tunnel: %v", resolvers)
+}
+
+// detectResolvers resolves the name of a randomly generated subdomain of
+// ipleak.net several times, and returns the IP addresses of the DNS resolvers
+// that answered, sorted by address.
+func detectResolvers(ctx context.Context, client *http.Client) (
+	resolvers []netip.Addr, err error,
+) {
 	const sessionLength = 40
 	session := generateRandomString(sessionLength)
 
@@ -50,13 +71,23 @@ func leakCheck(ctx context.Context, client *http.Client) (report string, err err
 	}
 
 	if err != nil {
-		return "", err
+		return nil, err
 	} else if len(dnsToCount) == 0 {
 		// ipleak.net does not see every resolver, Google Public DNS for example.
-		return "", errors.New("no DNS resolver detected")
+		return nil, errors.New("no DNS resolver detected")
 	}
 
-	return formatPercentages(dnsToCount), nil
+	resolvers = make([]netip.Addr, 0, len(dnsToCount))
+	for resolver := range dnsToCount {
+		addr, err := netip.ParseAddr(resolver)
+		if err != nil {
+			return nil, fmt.Errorf("parsing resolver address %s: %w", resolver, err)
+		}
+		resolvers = append(resolvers, addr)
+	}
+	slices.SortFunc(resolvers, netip.Addr.Compare)
+
+	return resolvers, nil
 }
 
 func generateRandomString(length uint) string {
@@ -130,35 +161,4 @@ func (d *dnsCounters) UnmarshalJSON(data []byte) error {
 	}
 	*d = m
 	return nil
-}
-
-func formatPercentages(data map[string]uint) string {
-	if len(data) == 0 {
-		return ""
-	}
-
-	var total uint
-	keys := make([]string, 0, len(data))
-	for k, v := range data {
-		total += v
-		keys = append(keys, k)
-	}
-
-	sort.Slice(keys, func(i, j int) bool {
-		if data[keys[i]] == data[keys[j]] {
-			return keys[i] < keys[j] // Tie-breaker: alphabetical
-		}
-		return data[keys[i]] > data[keys[j]]
-	})
-
-	results := make([]string, len(keys))
-	for i, key := range keys {
-		var pct float64
-		if total > 0 {
-			pct = math.Ceil((float64(data[key]) / float64(total)) * 100) //nolint:mnd
-		}
-		results[i] = fmt.Sprintf("%s (%.0f%%)", key, pct)
-	}
-
-	return strings.Join(results, ", ")
 }

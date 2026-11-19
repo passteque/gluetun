@@ -80,6 +80,7 @@ func extractServers(jsonServer serverData, groups map[uint32]groupData,
 		Region:     region,
 		City:       location.Country.City.Name,
 		Categories: jsonServer.categories(groups),
+		Dedicated:  jsonServer.isDedicated(groups),
 		Hostname:   jsonServer.Hostname,
 		IPs:        jsonServer.ips(),
 	}
@@ -115,6 +116,9 @@ func extractServers(jsonServer serverData, groups map[uint32]groupData,
 			continue
 		}
 
+		// Note a dedicated IP server also advertises the openvpn_udp,
+		// openvpn_tcp and wireguard_udp technologies, in addition to the
+		// openvpn_dedicated_* ones, so it is detected with its groups.
 		switch technologyData.Identifier {
 		case "openvpn_udp", "openvpn_dedicated_udp":
 			openvpnFound = true

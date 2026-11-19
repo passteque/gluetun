@@ -129,7 +129,7 @@ services:
 
 ## Fun graphs and badges
 
-[![passteque/gluetun | Trendshift](https://trendshift.io/api/badge/repositories/3591)](https://trendshift.io/repositories/3591?utm_source=repository-badge&utm_medium=badge&utm_campaign=badge-repository-3591)
+[![passteque/gluetun | Trendshift](https://trendshift.io/api/badge/repositories/3591)](https://trendshift.io/repositories/3591)
 
 [![Star History Chart](https://star-history.dera.page/svg?repos=passteque/gluetun&type=date&legend=top-left)](https://star-history.dera.page/#passteque/gluetun&type=date&legend=top-left)
 

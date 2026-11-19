@@ -98,6 +98,15 @@ func filterServer(server models.Server,
 		return true
 	}
 
+	// A dedicated IP server only accepts the service credentials of the account
+	// the IP address has been sold to, so it is only selected when explicitly
+	// asked for with SERVER_CATEGORIES, or when the server is named.
+	if server.Dedicated &&
+		len(selection.Categories) == 0 &&
+		len(selection.Hostnames) == 0 {
+		return true
+	}
+
 	if filterByPossibilities(server.Region, selection.Regions) {
 		return true
 	}
