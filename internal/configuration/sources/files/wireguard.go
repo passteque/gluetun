@@ -92,7 +92,7 @@ func parseWireguardPeerSection(peerSection *ini.Section) (
 	return preSharedKey, publicKey, endpointIP, endpointPort
 }
 
-var regexINIKeyNotExist = regexp.MustCompile(`key ".*" not exists$`)
+var regexINIKeyNotExist = regexp.MustCompile(`key ".*" does not exist$`)
 
 func getINIKeyFromSection(section *ini.Section, key string) (value *string) {
 	iniKey, err := section.GetKey(key)
