@@ -52,6 +52,7 @@ func Test_Settings_String(t *testing.T) {
 |           ├── [2606:4700:4700::1111]:443
 |           └── [2001:4860:4860::8888]:443
 ├── DNS settings:
+|   ├── Resolvers check: no
 |   ├── Upstream resolver type: dot
 |   ├── Upstream resolvers:
 |   |   └── Cloudflare
