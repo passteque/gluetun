@@ -38,6 +38,7 @@ type Server struct {
 	PortForward      bool         `json:"port_forward,omitempty"`
 	QuantumResistant bool         `json:"quantum_resistant,omitempty"`
 	Obfuscated       bool         `json:"obfuscated,omitempty"`
+	Dedicated        bool         `json:"dedicated,omitempty"`
 	Keep             bool         `json:"keep,omitempty"`
 	IPs              []netip.Addr `json:"ips,omitempty"`
 }
