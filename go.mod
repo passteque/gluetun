@@ -8,7 +8,7 @@ require (
 	github.com/breml/rootcerts v0.3.8
 	github.com/fatih/color v1.19.0
 	github.com/jsimonetti/rtnetlink v1.4.2
-	github.com/klauspost/compress v1.20.3
+	github.com/klauspost/compress v1.20.4
 	github.com/klauspost/pgzip v1.3.0
 	github.com/mdlayher/genetlink v1.4.0
 	github.com/mdlayher/netlink v1.11.2
@@ -37,7 +37,7 @@ require (
 	golang.zx2c4.com/wireguard v0.0.0-20260522210424-ecfc5a8d5446
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20230429144221-925a1e7659e6
 	google.golang.org/protobuf v1.36.12
-	gopkg.in/ini.v1 v1.67.3
+	gopkg.in/ini.v1 v1.68.0
 )
 
 require (
