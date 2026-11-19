@@ -67,6 +67,10 @@ jobs:
           -v "$(pwd)/coverage.txt:/tmp/gobuild/coverage.txt" \
           test-container
 
+      - name: Run integration tests in test container
+        run: |
+          docker run --rm --entrypoint go test-container test -tags=integration ./internal/restrictednet
+
       - name: Verify dev cross platform compatibility
         run: docker build --target xcompile .
 
@@ -81,13 +85,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: ./devrun/go.mod
       - run: go test ./...
         working-directory: ./devrun
 
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: ./ci/go.mod
       - run: go test ./...
@@ -110,7 +114,7 @@ jobs:
       - run: docker build -t qmcgaw/gluetun .
 
       - name: Setup Go for CI utility
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           go-version-file: ci/go.mod
 
@@ -146,9 +150,15 @@ jobs:
           secrets.AIRVPN_WIREGUARD_ADDRESSES }}" | ./ci/runner airvpn-wireguard
 
       - name: Run Gluetun container with AirVPN OpenVPN configuration
-        run:
-          echo -e "${{ secrets.AIRVPN_OPENVPN_KEY }}\n${{ secrets.AIRVPN_OPENVPN_CERT
-          }}" | ./ci/runner airvpn-openvpn
+        run: echo -e "${{ secrets.AIRVPN_OPENVPN_KEY }}\n${{ secrets.AIRVPN_OPENVPN_CERT }}" | ./ci/runner airvpn-openvpn
+
+      - name: Run Gluetun container with Windscribe Wireguard configuration
+        run: echo -e "${{ secrets.WINDSCRIBE_WIREGUARD_PRIVATE_KEY }}\n${{
+          secrets.WINDSCRIBE_WIREGUARD_PRESHARED_KEY }}\n${{
+          secrets.WINDSCRIBE_WIREGUARD_ADDRESSES }}" | ./ci/runner windscribe-wireguard
+
+      - name: Run Gluetun container with Windscribe OpenVPN configuration
+        run: echo -e "${{ secrets.WINDSCRIBE_OPENVPN_USER }}\n${{ secrets.WINDSCRIBE_OPENVPN_PASSWORD }}" | ./ci/runner windscribe-openvpn
 
   codeql:
     runs-on: ubuntu-latest
@@ -158,7 +168,7 @@ jobs:
       security-events: write
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
       - uses: github/codeql-action/init@v4
@@ -237,3 +247,5 @@ jobs:
             VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
           tags: ${{ steps.meta.outputs.tags }}
           push: true
+          provenance: mode=max
+          sbom: true

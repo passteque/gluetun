@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io/fs"
 	"net/http"
@@ -30,6 +31,7 @@ import (
 	"github.com/qdm12/gluetun/internal/firewall"
 	"github.com/qdm12/gluetun/internal/healthcheck"
 	"github.com/qdm12/gluetun/internal/httpproxy"
+	"github.com/qdm12/gluetun/internal/metrics"
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/qdm12/gluetun/internal/openvpn"
@@ -165,8 +167,6 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		}
 	}
 
-	defer fmt.Println(gluetunLogo)
-
 	announcementExp, err := time.Parse(time.RFC3339, "2026-06-30T00:00:00Z")
 	if err != nil {
 		return err
@@ -223,7 +223,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 
 	firewallLogger := logger.New(log.SetComponent("firewall"))
 	firewallConf, err := firewall.NewConfig(ctx, firewallLogger, iptablesLogger, cmder,
-		defaultRoutes, localNetworks)
+		netLinker, defaultRoutes, localNetworks)
 	if err != nil {
 		return err
 	}
@@ -232,10 +232,6 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		err = firewallConf.SetEnabled(ctx, true)
 		if err != nil {
 			return err
-		}
-		err = netLinker.FlushConntrack()
-		if err != nil {
-			logger.Warnf("flushing conntrack failed: %s", err)
 		}
 	}
 
@@ -295,18 +291,13 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		logger.Warn(warning)
 	}
 
-	const permission = fs.FileMode(0o644)
-	err = os.MkdirAll("/tmp/gluetun", permission)
+	err = createDirectories()
 	if err != nil {
-		return err
-	}
-	err = os.MkdirAll("/gluetun", permission)
-	if err != nil {
-		return err
+		return fmt.Errorf("creating directories: %w", err)
 	}
 
 	const defaultUsername = "nonrootuser"
-	nonRootUsername, err := alpineConf.CreateUser(defaultUsername, puid)
+	nonRootUsername, err := alpineConf.CreateUser(defaultUsername, puid, pgid)
 	if err != nil {
 		return fmt.Errorf("creating user: %w", err)
 	}
@@ -413,11 +404,12 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	}
 
 	socks5Loop := socks5.NewLoop(socks5.Settings{
-		Enabled:  *allSettings.Socks5.Enabled,
-		Username: *allSettings.Socks5.Username,
-		Password: *allSettings.Socks5.Password,
-		Address:  allSettings.Socks5.ListeningAddress,
-		Logger:   logger.New(log.SetComponent("socks5")),
+		Enabled:      *allSettings.Socks5.Enabled,
+		Username:     *allSettings.Socks5.Username,
+		Password:     *allSettings.Socks5.Password,
+		Address:      allSettings.Socks5.ListeningAddress,
+		AllowedCIDRs: stringsToIPPrefixes(allSettings.Socks5.AllowedCIDRs),
+		Logger:       logger.New(log.SetComponent("socks5")),
 	})
 	socks5RunError, err := socks5Loop.Start(ctx)
 	if err != nil {
@@ -445,8 +437,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	parallelResolver := resolver.NewParallelResolver(dohDialer)
 	openvpnFileExtractor := extract.New()
 	providers := provider.NewProviders(storage, time.Now, updaterLogger,
-		httpClient, unzipper, parallelResolver, publicIPLooper.Fetcher(),
-		openvpnFileExtractor, allSettings.Updater)
+		httpClient, unzipper, parallelResolver, openvpnFileExtractor, allSettings.Updater)
 
 	boringPollLogger := logger.New(log.SetComponent("boring poll"))
 	boringPoll := boringpoll.New(httpClient, boringPollLogger, allSettings.BoringPoll)
@@ -459,6 +450,15 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	vpnHandler, vpnCtx, vpnDone := goshutdown.NewGoRoutineHandler(
 		"vpn", goroutine.OptionTimeout(time.Second))
 	go vpnLooper.Run(vpnCtx, vpnDone)
+
+	metricsServer, err := metrics.New(allSettings.Metrics, logger, vpnLooper, netLinker)
+	if err != nil {
+		return fmt.Errorf("creating metrics server: %w", err)
+	}
+	metricsRunError, err := metricsServer.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("starting metrics server: %w", err)
+	}
 
 	updaterLooper := updater.NewLoop(allSettings.Updater,
 		providers, storage, httpClient, updaterLogger)
@@ -519,7 +519,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 			String() string
 			Stop() error
 		}{
-			portForwardLooper, publicIPLooper, socks5Loop,
+			portForwardLooper, publicIPLooper, socks5Loop, metricsServer,
 		}
 		for _, stopper := range stoppers {
 			err := stopper.Stop()
@@ -533,6 +533,8 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		logger.Errorf("public IP loop crashed: %s", err)
 	case err := <-socks5RunError:
 		logger.Errorf("SOCKS5 server loop crashed: %s", err)
+	case err := <-metricsRunError:
+		logger.Errorf("metrics server crashed: %s", err)
 	}
 
 	return orderHandler.Shutdown(context.Background())
@@ -545,6 +547,38 @@ type printVersionElement struct {
 
 type infoer interface {
 	Info(s string)
+}
+
+func createDirectories() error {
+	// create /tmp/gluetun if it does not exist with correct
+	// permissions for sharing with nonrootuser
+	_, err := os.Stat("/tmp/gluetun")
+	switch {
+	case errors.Is(err, os.ErrNotExist):
+		// TODO v4: remove world permission (0770 or 2770)
+		// TODO v4: chown root:PGID for sharing with nonrootuser
+		const tmpPermission = fs.FileMode(0o774)
+		err = os.MkdirAll("/tmp/gluetun", tmpPermission)
+		if err != nil {
+			return fmt.Errorf("creating /tmp/gluetun: %w", err)
+		}
+		// chmod explicitly since MkdirAll is subject to the umask
+		err = os.Chmod("/tmp/gluetun", tmpPermission)
+		if err != nil {
+			return fmt.Errorf("setting /tmp/gluetun permissions: %w", err)
+		}
+	case err != nil:
+		return fmt.Errorf("checking /tmp/gluetun: %w", err)
+	}
+
+	// /gluetun is not shared with nonrootuser
+	const gluetunPermission = fs.FileMode(0o755)
+	err = os.MkdirAll("/gluetun", gluetunPermission)
+	if err != nil {
+		return fmt.Errorf("creating /gluetun: %w", err)
+	}
+
+	return nil
 }
 
 func printVersions(ctx context.Context, logger infoer,
@@ -569,6 +603,14 @@ func localNetworksToPrefixes(localNetworks []routing.LocalNetwork) (prefixes []n
 	prefixes = make([]netip.Prefix, len(localNetworks))
 	for i, localNetwork := range localNetworks {
 		prefixes[i] = localNetwork.IPNet
+	}
+	return prefixes
+}
+
+func stringsToIPPrefixes(strings []string) (prefixes []netip.Prefix) {
+	prefixes = make([]netip.Prefix, len(strings))
+	for i, s := range strings {
+		prefixes[i] = netip.MustParsePrefix(s)
 	}
 	return prefixes
 }
@@ -632,34 +674,3 @@ type RunStarter interface {
 	RunAndLog(ctx context.Context, commandString string,
 		logger command.Logger) (err error)
 }
-
-const gluetunLogo = `                         @@@
-                         @@@@
-                        @@@@@@
-                       @@@@.@@                       @@@@@@@@@@
-                       @@@@.@@@                   @@@@@@@@==@@@@
-                      @@@.@..@@                @@@@@@@=@..==@@@@
-            @@@@      @@@.@@.@@              @@@@@@===@@@@.=@@@
-           @...-@@   @@@@.@@.@@@  @@@     @@@@@@=======@@@=@@@@
-           @@@@@@@@  @@@.-%@.+@@@@@@@@  @@@@@%============@@@@
-                     @@@.--@..@@@@.-@@@@@@@==============@@@@
-              @@@@  @@@-@--@@.@@.---@@@@@==============#@@@@@
-              @@@   @@@.@@-@@.@@--@@@@@===============@@@@@@
-                   @@@@.@--@@@@@@@@@@================@@@@@@@
-                   @@@..--@@*@@@@@@================@@@@+*@@
-                   @@@.---@@.@@@@=================@@@@--@@
-                  @@@-.---@@@@@@================@@@@*--@@@
-                  @@@.:-#@@@@@@===============*@@@@.---@@
-                  @@@.-------.@@@============@@@@@@.--@@@
-                 @@@..--------:@@@=========@@@@@@@@.--@@@
-                 @@@.-@@@@@@@@@@@========@@@@@  @@@.--@@
-                 @@.@@@@===============@@@@@ @@@@@@---@@@@@@
-                @@@@@@@==============@@@@@@@@@@@@*@---@@@@@@@@
-                @@@@@@=============@@@@@ @@@...------------.*@@@
-                @@@@%===========@@@@@@ @@@..------@@@@.-----.-@@@
-                @@@@@@.=======@@@@@@  @@@.-------@@@@@@-.------=@@
-               @@@@@@@@@===@@@@@@     @@.------@@@@   @@@@.-----@@@
-               @@@==@@@=@@@@@@@      @@@.-@@@@@@@       @@@@@@@--@@
-               @@@@@@@@@@@@@         @@@@@@@@                @@@@@@@
-                @@@@@@@@             @@@@                       @@@@
-                                                                       `

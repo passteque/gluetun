@@ -5,7 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
@@ -16,7 +19,7 @@ import (
 func fetchServers(ctx context.Context, client *http.Client,
 	warner common.Warner,
 ) (servers []models.Server, err error) {
-	const url = "https://www.vpnsecure.me/vpn-locations/"
+	const url = "https://www.vpnsecure.me/locations/"
 	rootNode, err := htmlutils.Fetch(ctx, client, url)
 	if err != nil {
 		return nil, fmt.Errorf("fetching HTML code: %w", err)
@@ -39,14 +42,14 @@ func parseHTML(rootNode *html.Node) (servers []models.Server,
 	warnings []string, err error,
 ) {
 	// Find div container for all servers, searching with BFS.
-	serversDiv := findServersDiv(rootNode)
+	serversDiv := htmlutils.BFS(rootNode, htmlutils.MatchID("servers"))
 	if serversDiv == nil {
 		return nil, nil, htmlutils.WrapError(errors.New("HTML servers container div not found"), rootNode)
 	}
 
 	for countryNode := serversDiv.FirstChild; countryNode != nil; countryNode = countryNode.NextSibling {
-		if countryNode.Data != divString {
-			// empty line(s) and tab(s)
+		if countryNode.Data != divString ||
+			!htmlutils.HasClassStrings(countryNode, "box", "dark-gray") {
 			continue
 		}
 
@@ -56,26 +59,20 @@ func parseHTML(rootNode *html.Node) (servers []models.Server,
 			continue
 		}
 
-		grid := htmlutils.BFS(countryNode, matchGridDiv)
-		if grid == nil {
-			warnings = append(warnings, htmlutils.WrapWarning("grid div not found", countryNode))
-			continue
-		}
+		// Find all server tables within this country container
+		for serverNode := countryNode.FirstChild; serverNode != nil; serverNode = serverNode.NextSibling {
+			if serverNode.Data != divString {
+				continue
+			}
+			if !htmlutils.HasClassStrings(serverNode, "box", "white") {
+				continue
+			}
 
-		gridItems := htmlutils.DirectChildren(grid, matchGridItem)
-		if len(gridItems) == 0 {
-			warnings = append(warnings, htmlutils.WrapWarning("no grid item found", grid))
-			continue
-		}
-
-		for _, gridItem := range gridItems {
-			server, warning := parseHTMLGridItem(gridItem)
+			server, warning := parseServerNode(serverNode, country)
 			if warning != "" {
 				warnings = append(warnings, warning)
 				continue
 			}
-
-			server.Country = country
 			servers = append(servers, server)
 		}
 	}
@@ -83,168 +80,231 @@ func parseHTML(rootNode *html.Node) (servers []models.Server,
 	return servers, warnings, nil
 }
 
-func parseHTMLGridItem(gridItem *html.Node) (
+func parseServerNode(node *html.Node, country string) (
 	server models.Server, warning string,
 ) {
-	gridItemDT := htmlutils.DirectChild(gridItem, matchDT)
-	if gridItemDT == nil {
-		return server, htmlutils.WrapWarning("grid item <dt> not found", gridItem)
+	// Find the table within this server box
+	tableNode := htmlutils.DirectChild(node, func(n *html.Node) bool {
+		return n != nil && n.Data == "table"
+	})
+	if tableNode == nil {
+		return server, htmlutils.WrapWarning("server table not found", node)
 	}
 
-	host := findHost(gridItemDT)
-	host = naToEmpty(host)
-	if host == "" {
-		return server, htmlutils.WrapWarning("host not found", gridItemDT)
+	// Check status from green-circle in thead
+	isUp := hasGreenCircle(tableNode)
+	if !isUp {
+		warning := "skipping server which is not up"
+		return server, htmlutils.WrapWarning(warning, tableNode)
 	}
 
-	status := findStatus(gridItemDT)
-	if !strings.EqualFold(status, "up") {
-		warning := fmt.Sprintf("skipping server with host %s which has status %q", host, status)
-		warning = htmlutils.WrapWarning(warning, gridItemDT)
-		return server, warning
-	}
-
-	gridItemDD := htmlutils.DirectChild(gridItem, matchDD)
-	if gridItemDD == nil {
-		return server, htmlutils.WrapWarning("grid item dd not found", gridItem)
-	}
-
-	region := findSpanStrong(gridItemDD, "Region:")
-	if region == "" {
-		warning := fmt.Sprintf("region for host %s not found", host)
-		return server, htmlutils.WrapWarning(warning, gridItemDD)
-	}
-	region = naToEmpty(region)
-
-	city := findSpanStrong(gridItemDD, "City:")
+	// Extract city from thead
+	city := findCity(tableNode)
 	if city == "" {
-		warning := fmt.Sprintf("region for host %s not found", host)
-		return server, htmlutils.WrapWarning(warning, gridItemDD)
+		return server, htmlutils.WrapWarning("city not found", tableNode)
 	}
-	city = naToEmpty(city)
 
-	premiumString := findSpanStrong(gridItemDD, "Premium:")
-	premiumString = naToEmpty(premiumString)
-	if premiumString == "" {
-		warning := fmt.Sprintf("premium for host %s not found", host)
-		return server, htmlutils.WrapWarning(warning, gridItemDD)
+	// Extract server identifier (e.g., "AU #01") from thead
+	serverID := findServerID(tableNode)
+	if serverID == "" {
+		return server, htmlutils.WrapWarning("server ID not found", tableNode)
 	}
+
+	hostname, err := buildHostname(serverID)
+	if err != nil {
+		return server, htmlutils.WrapWarning(fmt.Sprintf("invalid server ID %q: %v", serverID, err), tableNode)
+	}
+
+	// Check for Dedicated IP feature (maps to Premium)
+	premium := hasFeature(tableNode, "Dedicated IP")
 
 	return models.Server{
-		Region:   region,
+		Country:  country,
 		City:     city,
-		Hostname: host + ".isponeder.com",
-		Premium:  strings.EqualFold(premiumString, "yes"),
+		Hostname: hostname,
+		Premium:  premium,
 	}, ""
 }
 
-func naToEmpty(current string) (output string) {
-	if current == "N / A" {
-		return ""
+var serverIDPattern = regexp.MustCompile(`^([A-Z]{2})\s*#\s*(\d+)$`)
+
+func buildHostname(serverID string) (string, error) {
+	const expectedSubmatches = 3
+	matches := serverIDPattern.FindStringSubmatch(serverID)
+	if len(matches) != expectedSubmatches {
+		return "", errors.New("unexpected format")
 	}
-	return current
+	countryCode := strings.ToLower(matches[1])
+	serverNum := strings.TrimLeft(matches[2], "0")
+	return fmt.Sprintf("%s%s.isponeder.com", countryCode, serverNum), nil
 }
 
 func findCountry(countryNode *html.Node) (country string) {
-	for node := countryNode.FirstChild; node != nil; node = node.NextSibling {
-		if node.Data != "a" {
-			continue
-		}
-		for subNode := node.FirstChild; subNode != nil; subNode = subNode.NextSibling {
-			if subNode.Data != "h4" {
-				continue
-			}
-			return subNode.FirstChild.Data
+	h3Node := htmlutils.DirectChild(countryNode, func(n *html.Node) bool {
+		return n != nil && n.Data == "h3"
+	})
+	if h3Node == nil {
+		return ""
+	}
+
+	// Extract text content from h3, trimming the flag emoji and whitespace
+	var sb strings.Builder
+	for child := h3Node.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type == html.TextNode {
+			sb.WriteString(child.Data)
 		}
 	}
+	country = strings.TrimSpace(sb.String())
+	// Strip leading emoji (flag) - flags are typically composed emoji characters
+	for len(country) > 0 {
+		r, size := utf8.DecodeRuneInString(country)
+		if !isEmojiRune(r) {
+			break
+		}
+		country = country[size:]
+	}
+	country = strings.TrimSpace(country)
+	return country
+}
+
+func findCity(tableNode *html.Node) (city string) {
+	const minThCount = 2
+	theadNode := htmlutils.DirectChild(tableNode, func(n *html.Node) bool {
+		return n != nil && n.Data == "thead"
+	})
+	if theadNode == nil {
+		return ""
+	}
+
+	// Find the second <th> which contains the city name
+	thNodes := htmlutils.BFS(theadNode, func(n *html.Node) bool {
+		return n != nil && n.Data == "th"
+	})
+	if thNodes == nil {
+		return ""
+	}
+
+	// Collect th nodes in order
+	var ths []*html.Node
+	for node := thNodes; node != nil; node = node.NextSibling {
+		if node.Data == "th" {
+			ths = append(ths, node)
+		}
+	}
+	if len(ths) < minThCount {
+		return ""
+	}
+
+	// Second th contains the city
+	return strings.TrimSpace(getTextContent(ths[1]))
+}
+
+func findServerID(tableNode *html.Node) (serverID string) {
+	theadNode := htmlutils.DirectChild(tableNode, func(n *html.Node) bool {
+		return n != nil && n.Data == "thead"
+	})
+	if theadNode == nil {
+		return ""
+	}
+
+	// Find the right-aligned th which contains the server ID
+	for node := htmlutils.BFS(theadNode, func(n *html.Node) bool {
+		return n != nil && n.Data == "th"
+	}); node != nil; node = node.NextSibling {
+		if node.Data == "th" && htmlutils.HasClassStrings(node, "right") {
+			return strings.TrimSpace(getTextContent(node))
+		}
+	}
+
 	return ""
 }
 
-func findServersDiv(rootNode *html.Node) (serversDiv *html.Node) {
-	locationsDiv := htmlutils.BFS(rootNode, matchLocationsListDiv)
-	if locationsDiv == nil {
-		return nil
-	}
-
-	return htmlutils.BFS(locationsDiv, matchServersDiv)
+func hasGreenCircle(tableNode *html.Node) bool {
+	return htmlutils.BFS(tableNode, func(n *html.Node) bool {
+		return n != nil && n.Data == "div" &&
+			htmlutils.HasClassStrings(n, "green-circle")
+	}) != nil
 }
 
-func findHost(gridItemDT *html.Node) (host string) {
-	hostNode := htmlutils.DirectChild(gridItemDT, matchText)
-	return strings.TrimSpace(hostNode.Data)
-}
-
-func matchText(node *html.Node) (match bool) {
-	if node.Type != html.TextNode {
+func hasFeature(tableNode *html.Node, featureName string) bool {
+	tbodyNode := htmlutils.DirectChild(tableNode, func(n *html.Node) bool {
+		return n != nil && n.Data == "tbody"
+	})
+	if tbodyNode == nil {
 		return false
 	}
-	data := strings.TrimSpace(node.Data)
-	return data != ""
-}
 
-func findStatus(gridItemDT *html.Node) (status string) {
-	statusNode := htmlutils.DirectChild(gridItemDT, matchStatusSpan)
-	return strings.TrimSpace(statusNode.FirstChild.Data)
-}
-
-func matchServersDiv(node *html.Node) (match bool) {
-	return node != nil && node.Data == divString &&
-		htmlutils.HasClassStrings(node, "blk__i")
-}
-
-func matchLocationsListDiv(node *html.Node) (match bool) {
-	return node != nil && node.Data == divString &&
-		htmlutils.HasClassStrings(node, "locations-list")
-}
-
-func matchGridDiv(node *html.Node) (match bool) {
-	return node != nil && node.Data == divString &&
-		htmlutils.HasClassStrings(node, "grid--locations")
-}
-
-func matchGridItem(node *html.Node) (match bool) {
-	return node != nil && node.Data == "dl" &&
-		htmlutils.HasClassStrings(node, "grid__i")
-}
-
-func matchDT(node *html.Node) (match bool) {
-	return node != nil && node.Data == "dt"
-}
-
-func matchDD(node *html.Node) (match bool) {
-	return node != nil && node.Data == "dd"
-}
-
-func matchStatusSpan(node *html.Node) (match bool) {
-	return node.Data == "span" && htmlutils.HasClassStrings(node, "status")
-}
-
-func findSpanStrong(gridItemDD *html.Node, spanData string) (
-	strongValue string,
-) {
-	spanFound := false
-	for child := gridItemDD.FirstChild; child != nil; child = child.NextSibling {
-		if !htmlutils.MatchData("div")(child) {
+	for trNode := tbodyNode.FirstChild; trNode != nil; trNode = trNode.NextSibling {
+		if trNode.Data != "tr" {
 			continue
 		}
 
-		for subchild := child.FirstChild; subchild != nil; subchild = subchild.NextSibling {
-			if htmlutils.MatchData("span")(subchild) && subchild.FirstChild.Data == spanData {
-				spanFound = true
-				break
+		// Collect td cells in this row
+		var tds []*html.Node
+		for tdNode := trNode.FirstChild; tdNode != nil; tdNode = tdNode.NextSibling {
+			if tdNode.Data == "td" {
+				tds = append(tds, tdNode)
 			}
 		}
-
-		if !spanFound {
+		if len(tds) == 0 {
 			continue
 		}
 
-		for subchild := child.FirstChild; subchild != nil; subchild = subchild.NextSibling {
-			if htmlutils.MatchData("strong")(subchild) {
-				return subchild.FirstChild.Data
+		feature := strings.TrimSpace(getTextContent(tds[0]))
+		if feature != featureName {
+			continue
+		}
+
+		// If only one td with colspan spanning columns, feature exists
+		if len(tds) == 1 && htmlutils.Attribute(tds[0], "colspan") != "" {
+			return true
+		}
+
+		// Otherwise check for pink-check icon in subsequent td cells
+		for _, td := range tds[1:] {
+			if htmlutils.BFS(td, func(n *html.Node) bool {
+				return n != nil && n.Data == "img" &&
+					strings.Contains(htmlutils.Attribute(n, "src"), "pink-check")
+			}) != nil {
+				return true
 			}
 		}
 	}
 
-	return ""
+	return false
+}
+
+func getTextContent(node *html.Node) string {
+	var sb strings.Builder
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type == html.TextNode {
+			sb.WriteString(child.Data)
+		}
+	}
+	return sb.String()
+}
+
+func isEmojiRune(r rune) bool {
+	for _, rangeStart := range []struct{ lo, hi rune }{
+		// Emoticons
+		{0x1F600, 0x1F64F},
+		// Misc Symbols and Pictographs
+		{0x1F300, 0x1F5FF},
+		// Transport and Map Symbols
+		{0x1F680, 0x1F6FF},
+		// Flags (regional indicator symbols + flag emojis)
+		{0x1F1E0, 0x1F1FF},
+		{0x1F100, 0x1F10A},
+		// Supplemental Symbols
+		{0x1F900, 0x1F9FF},
+	} {
+		if r >= rangeStart.lo && r <= rangeStart.hi {
+			return true
+		}
+	}
+	// Catch-all for non-ASCII emoji using Unicode category
+	if r > 0x7E && unicode.In(r, unicode.So) {
+		return true
+	}
+	return false
 }

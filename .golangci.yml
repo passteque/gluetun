@@ -32,6 +32,10 @@ linters:
         - "^(tcp|udp)$"
         # Server route strings
         - "^/status$"
+        - "^https$"
+        - "^<key>$"
+        - "^</key>$"
+        - "^auto$"
 
   exclusions:
     generated: lax
@@ -45,8 +49,13 @@ linters:
           - containedctx
           - dupl
           - err113
+          - goconst
           - maintidx
+          - prealloc
         path: _test\.go
+      - linters:
+          - goconst
+        path: (hardcoded|locationdata)\.go
       - linters:
           - dupl
         path: internal\/server\/.+\.go

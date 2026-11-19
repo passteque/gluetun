@@ -178,7 +178,9 @@ func runTest(ctx context.Context, dst netip.AddrPort, mtu uint32,
 	switch finalPacketHeader.typ { //nolint:exhaustive
 	case packetTypeRST:
 		return nil
-	case packetTypeACK:
+	case packetTypeACK, packetTypePSHACK:
+		// the server received our MTU-test data and acknowledged it,
+		// possibly with a response of its own, e.g. an HTTP error
 		err = sendRST(fd, src, dst, finalPacketHeader.ack)
 		if err != nil {
 			return fmt.Errorf("sending RST packet: %w", err)

@@ -59,7 +59,6 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 	if o.Protocol == constants.TCP && helpers.IsOneOf(vpnProvider,
 		providers.Giganews,
 		providers.Ipvanish,
-		providers.Perfectprivacy,
 		providers.Vyprvpn,
 	) {
 		return fmt.Errorf("TCP protocol is not supported: for VPN service provider %s", vpnProvider)
@@ -70,11 +69,11 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 		switch vpnProvider {
 		// no restriction on port
 		case providers.Custom, providers.Cyberghost, providers.HideMyAss,
-			providers.Privatevpn, providers.Torguard:
+			providers.Privatevpn, providers.Purevpn, providers.Torguard:
 		// no custom port allowed
 		case providers.Expressvpn, providers.Fastestvpn,
 			providers.Giganews, providers.Ipvanish,
-			providers.Nordvpn, providers.Purevpn,
+			providers.Nordvpn,
 			providers.Surfshark, providers.VPNSecure,
 			providers.VPNUnlimited, providers.Vyprvpn:
 			return fmt.Errorf("custom endpoint port is not allowed: for VPN service provider %s", vpnProvider)
@@ -93,9 +92,6 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 			case providers.Mullvad:
 				allowedTCP = []uint16{80, 443, 1401}
 				allowedUDP = []uint16{53, 1194, 1195, 1196, 1197, 1300, 1301, 1302, 1303, 1400}
-			case providers.Perfectprivacy:
-				allowedTCP = []uint16{44, 443, 4433}
-				allowedUDP = []uint16{44, 443, 4433}
 			case providers.Privado:
 				allowedTCP = []uint16{443, 1194, 8080, 8443}
 				allowedUDP = []uint16{443, 1194, 8080, 8443}

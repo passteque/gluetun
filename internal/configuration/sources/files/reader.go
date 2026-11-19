@@ -87,50 +87,64 @@ func (s *Source) Get(key string) (value string, isSet bool) {
 
 func (s *Source) getAmneziawgKey(key string) (value string, isSet, matched bool) {
 	switch key {
-	case "amnezia_private_key":
+	case "amneziawg_private_key":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Wireguard.PrivateKey)
-	case "amnezia_preshared_key":
+	case "amneziawg_preshared_key":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Wireguard.PreSharedKey)
-	case "amnezia_addresses":
+	case "amneziawg_addresses":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Wireguard.Addresses)
-	case "amnezia_public_key":
+	case "amneziawg_public_key":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Wireguard.PublicKey)
-	case "amnezia_endpoint_ip":
+	case "amneziawg_endpoint_ip":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Wireguard.EndpointIP)
-	case "amnezia_endpoint_port":
+	case "amneziawg_endpoint_port":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Wireguard.EndpointPort)
-	case "amnezia_jc":
+	case "amneziawg_jc":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Jc)
-	case "amnezia_jmin":
+	case "amneziawg_jmin":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Jmin)
-	case "amnezia_jmax":
+	case "amneziawg_jmax":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Jmax)
-	case "amnezia_s1":
+	case "amneziawg_s1":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().S1)
-	case "amnezia_s2":
+	case "amneziawg_s2":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().S2)
-	case "amnezia_s3":
+	case "amneziawg_s3":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().S3)
-	case "amnezia_s4":
+	case "amneziawg_s4":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().S4)
-	case "amnezia_h1":
+	case "amneziawg_h1":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().H1)
-	case "amnezia_h2":
+	case "amneziawg_h2":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().H2)
-	case "amnezia_h3":
+	case "amneziawg_h3":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().H3)
-	case "amnezia_h4":
+	case "amneziawg_h4":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().H4)
-	case "amnezia_i1":
+	case "amneziawg_i1":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().I1)
-	case "amnezia_i2":
+	case "amneziawg_i2":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().I2)
-	case "amnezia_i3":
+	case "amneziawg_i3":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().I3)
-	case "amnezia_i4":
+	case "amneziawg_i4":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().I4)
-	case "amnezia_i5":
+	case "amneziawg_i5":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().I5)
+	case "amneziawg_header_protection_key":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().HeaderProtectionKey)
+	case "amneziawg_content_padding_addition":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().ContentPaddingAddition)
+	case "amneziawg_rekey_after_time":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().RekeyAfterTime)
+	case "amneziawg_rekey_timeout":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().RekeyTimeout)
+	case "amneziawg_reject_after_time":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().RejectAfterTime)
+	case "amneziawg_keepalive_timeout":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().KeepaliveTimeout)
+	case "amneziawg_max_handshake_attempts":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().MaxHandshakeAttempts)
 	default:
 		return "", false, false
 	}

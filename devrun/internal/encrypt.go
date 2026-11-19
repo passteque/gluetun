@@ -244,7 +244,7 @@ func promptAndAddCredential(
 			return fmt.Errorf("reading private key: %w", err)
 		}
 
-		address, err := readLine(ctx, "WireGuard address (optional): ", true)
+		addresses, err := readLine(ctx, "WireGuard address(es) (optional): ", true)
 		if err != nil {
 			return fmt.Errorf("reading address: %w", err)
 		}
@@ -260,7 +260,7 @@ func promptAndAddCredential(
 
 		wireguardCredentials := &wireguardCredentials{
 			PrivateKey:   string(privateKey),
-			Address:      address,
+			Addresses:    addresses,
 			PresharedKey: string(presharedKey),
 		}
 		err = validateWireguardCredentials(provider, wireguardCredentials)

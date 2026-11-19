@@ -6,6 +6,7 @@ type Logger interface {
 	Debug(s string)
 	Debugf(format string, args ...interface{})
 	Info(s string)
+	Warn(s string)
 	Error(s string)
 	Errorf(format string, args ...interface{})
 }

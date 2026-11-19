@@ -19,6 +19,7 @@ type Settings struct {
 	Health        Health
 	HTTPProxy     HTTPProxy
 	Log           Log
+	Metrics       Metrics
 	PublicIP      PublicIP
 	Socks5        Socks5
 	Shadowsocks   Shadowsocks
@@ -49,6 +50,7 @@ func (s *Settings) Validate(filterChoicesGetter FilterChoicesGetter, ipv6Support
 		"health":          s.Health.Validate,
 		"http proxy":      s.HTTPProxy.validate,
 		"log":             s.Log.validate,
+		"metrics":         s.Metrics.validate,
 		"public ip check": s.PublicIP.validate,
 		"socks5":          s.Socks5.validate,
 		"shadowsocks":     s.Shadowsocks.validate,
@@ -82,6 +84,7 @@ func (s *Settings) copy() (copied Settings) {
 		Health:        s.Health.copy(),
 		HTTPProxy:     s.HTTPProxy.copy(),
 		Log:           s.Log.copy(),
+		Metrics:       s.Metrics.copy(),
 		PublicIP:      s.PublicIP.copy(),
 		Socks5:        s.Socks5.copy(),
 		Shadowsocks:   s.Shadowsocks.copy(),
@@ -106,6 +109,7 @@ func (s *Settings) OverrideWith(other Settings,
 	patchedSettings.Health.OverrideWith(other.Health)
 	patchedSettings.HTTPProxy.overrideWith(other.HTTPProxy)
 	patchedSettings.Log.overrideWith(other.Log)
+	patchedSettings.Metrics.overrideWith(other.Metrics)
 	patchedSettings.PublicIP.overrideWith(other.PublicIP)
 	patchedSettings.Socks5.overrideWith(other.Socks5)
 	patchedSettings.Shadowsocks.overrideWith(other.Shadowsocks)
@@ -133,6 +137,7 @@ func (s *Settings) SetDefaults() {
 	s.Health.SetDefaults()
 	s.HTTPProxy.setDefaults()
 	s.Log.setDefaults()
+	s.Metrics.setDefaults()
 	s.IPv6.setDefaults()
 	s.PublicIP.setDefaults()
 	s.Socks5.setDefaults()
@@ -158,6 +163,7 @@ func (s Settings) toLinesNode() (node *gotree.Node) {
 	node.AppendNode(s.Firewall.toLinesNode())
 	node.AppendNode(s.Log.toLinesNode())
 	node.AppendNode(s.IPv6.toLinesNode())
+	node.AppendNode(s.Metrics.toLinesNode())
 	node.AppendNode(s.Health.toLinesNode())
 	node.AppendNode(s.Socks5.toLinesNode())
 	node.AppendNode(s.Shadowsocks.toLinesNode())
@@ -215,6 +221,7 @@ func (s *Settings) Read(r *reader.Reader, warner Warner) (err error) {
 		"health":         s.Health.Read,
 		"http proxy":     s.HTTPProxy.read,
 		"log":            s.Log.read,
+		"metrics":        s.Metrics.read,
 		"public ip": func(r *reader.Reader) error {
 			return s.PublicIP.read(r, warner)
 		},

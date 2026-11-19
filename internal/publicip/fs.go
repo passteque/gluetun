@@ -1,27 +1,19 @@
 package publicip
 
 import (
-	"io/fs"
-	"os"
+	"errors"
+
+	"github.com/qdm12/gluetun/internal/statusfile"
 )
 
-func persistPublicIP(path string, content string, puid, pgid int) error {
-	const permission = fs.FileMode(0o644)
-	file, err := os.OpenFile(path, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, permission)
-	if err != nil {
-		return err
+// persistPublicIP writes the content to the public IP address file.
+// The permissions or the ownership of the file not being set
+// is only logged, since the content is written at this point.
+func (l *Loop) persistPublicIP(path, content string) (err error) {
+	err = statusfile.Write(path, []byte(content), l.puid, l.pgid)
+	if errors.Is(err, statusfile.ErrChmod) || errors.Is(err, statusfile.ErrChown) {
+		l.logger.Warn(err.Error())
+		return nil
 	}
-
-	_, err = file.WriteString(content)
-	if err != nil {
-		_ = file.Close()
-		return err
-	}
-
-	if err := file.Chown(puid, pgid); err != nil {
-		_ = file.Close()
-		return err
-	}
-
-	return file.Close()
+	return err
 }

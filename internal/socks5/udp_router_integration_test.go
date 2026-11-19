@@ -12,10 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/miekg/dns"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 func Test_udpRouter_ResolveGithubFromCloudflareDNS(t *testing.T) {
@@ -36,7 +36,7 @@ func Test_udpRouter_ResolveGithubFromCloudflareDNS(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	logger := NewMockLogger(ctrl)
 
-	router, err := newUDPRouter(ctx, "127.0.0.1:0", logger)
+	router, err := newUDPRouter(ctx, "127.0.0.1:0", nil, logger)
 	require.NoError(t, err)
 
 	routerRunErrCh := make(chan error)

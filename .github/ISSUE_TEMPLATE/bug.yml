@@ -8,20 +8,31 @@ body:
       value: |
         Thanks for taking the time to fill out this bug report!
 
-        ⚠️ Your issue will be instantly closed as not planned WITHOUT explanation if:
-        - you do not fill out **the title of the issue** ☝️
-        - you do not provide the **Gluetun version** as requested below
-        - you provide **less than 10 lines of logs** as requested below
+        ⚠️ PLEASE set a **title** for the issue ☝️
   - type: dropdown
-    id: urgent
+    id: latest
     attributes:
-      label: Is this urgent?
+      label: Is this bug present on the latest image (`:master` branch)?
       description: |
-        Is this a critical bug, or do you need this fixed urgently?
-        If this is urgent, note you can use one of the [image tags available](https://github.com/qdm12/gluetun-wiki/blob/main/setup/docker-image-tags.md) if that can help.
+        Don't forget to re-pull the latest image to make sure you are running the last pushed `:latest` image tag.
+        Note this is NOT the same as the latest stable release (i.e. `:v3.41.3`).
       options:
         - "No"
         - "Yes"
+    validations:
+      required: true
+  - type: dropdown
+    id: last-stable
+    attributes:
+      label: Is this bug present on the last stable image?
+      description: |
+        Make sure you use the latest `:v3.x.y` release tag from [here](https://github.com/passteque/gluetun/releases)
+        Answering this allows to find if this is a regression bug or not.
+      options:
+        - "No"
+        - "Yes"
+    validations:
+      required: true
   - type: input
     id: host-os
     attributes:
@@ -84,15 +95,6 @@ body:
         - Other
     validations:
       required: true
-  - type: input
-    id: version
-    attributes:
-      label: What is the version of Gluetun
-      description: |
-        Copy paste the version line at the top of your logs.
-        It MUST be in the form `Running version latest built on 2020-03-13T01:30:06Z (commit d0f678c)`.
-    validations:
-      required: true
   - type: textarea
     id: problem
     attributes:
@@ -103,7 +105,7 @@ body:
   - type: textarea
     id: logs
     attributes:
-      label: Share your logs (at least 10 lines)
+      label: Share your logs (at least 10 lines). Share the version string logged at the beginning PLEASE!!
       description: No sensitive information is logged out except when running with `LOG_LEVEL=debug`.
       render: plain text
     validations:

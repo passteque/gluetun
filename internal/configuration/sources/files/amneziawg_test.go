@@ -58,6 +58,37 @@ PresharedKey = YJ680VN+dGrdsWNjSFqZ6vvwuiNhbq502ZL3G7Q3o3g=
 				I1: ptrTo("<b 0x1234>"),
 			},
 		},
+		"v3_parameters": {
+			fileContent: `
+[Interface]
+PrivateKey = QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8=
+Address = 10.38.22.35/32
+HeaderProtectionKey = a8e67cbcdda62b8a4bef0475b58eae237a0fe5a4bd745d201fc8cada53389c1d
+ContentPaddingAddition = 66-93
+RekeyAfterTime = 110-126
+RekeyTimeout = 5
+RejectAfterTime = 170-182
+KeepaliveTimeout = 12-17
+MaxHandshakeAttempts = 16
+
+[Peer]
+PublicKey = QMNoEriYqOcgOfqNb5XmFThzMGXMOyEiIiCmkmS8VyQ=
+`,
+			amneziawg: AmneziawgConfig{
+				Wireguard: WireguardConfig{
+					PrivateKey: new("QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8="),
+					Addresses:  new("10.38.22.35/32"),
+					PublicKey:  new("QMNoEriYqOcgOfqNb5XmFThzMGXMOyEiIiCmkmS8VyQ="),
+				},
+				HeaderProtectionKey:    new("a8e67cbcdda62b8a4bef0475b58eae237a0fe5a4bd745d201fc8cada53389c1d"),
+				ContentPaddingAddition: new("66-93"),
+				RekeyAfterTime:         new("110-126"),
+				RekeyTimeout:           new("5"),
+				RejectAfterTime:        new("170-182"),
+				KeepaliveTimeout:       new("12-17"),
+				MaxHandshakeAttempts:   new("16"),
+			},
+		},
 	}
 
 	for testName, testCase := range testCases {

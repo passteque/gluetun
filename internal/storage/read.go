@@ -135,6 +135,9 @@ func (s *Storage) readServersFromFilepath(provider, filepath string, hardcodedVe
 ) {
 	providerFile, err := os.Open(filepath)
 	if os.IsNotExist(err) {
+		s.logger.Warn(fmt.Sprintf(
+			"servers file %s for provider %s referenced by the manifest does not exist, using hardcoded servers",
+			filepath, provider))
 		return models.Servers{}, false, nil
 	} else if err != nil {
 		return models.Servers{}, false, fmt.Errorf("opening servers file %s for provider %s: %w",

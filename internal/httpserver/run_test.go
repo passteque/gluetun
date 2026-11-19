@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	gomock "github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	gomock "go.uber.org/mock/gomock"
 )
 
 func Test_Server_Run_success(t *testing.T) {

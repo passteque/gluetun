@@ -22,6 +22,7 @@ type udpRouter struct {
 	logger Logger
 
 	listener                      net.PacketConn
+	allowedIPs                    []netip.Prefix
 	mutex                         sync.Mutex
 	bufferPool                    sync.Pool
 	nextAssociationID             uint64
@@ -36,7 +37,9 @@ const (
 	pooledUDPPacketBufferCapacity = maxUDPPacketLength + maxSOCKS5UDPDatagramOverhead
 )
 
-func newUDPRouter(ctx context.Context, address string, logger Logger) (router *udpRouter, err error) {
+func newUDPRouter(ctx context.Context, address string, allowedIPs []netip.Prefix,
+	logger Logger,
+) (router *udpRouter, err error) {
 	config := &net.ListenConfig{}
 	listener, err := config.ListenPacket(ctx, "udp", address)
 	if err != nil {
@@ -44,8 +47,9 @@ func newUDPRouter(ctx context.Context, address string, logger Logger) (router *u
 	}
 
 	return &udpRouter{
-		logger:   logger,
-		listener: listener,
+		logger:     logger,
+		listener:   listener,
+		allowedIPs: allowedIPs,
 		bufferPool: sync.Pool{
 			New: func() any {
 				return bytes.NewBuffer(make([]byte, 0, pooledUDPPacketBufferCapacity))
@@ -140,6 +144,10 @@ func (r *udpRouter) run(ctx context.Context) error {
 		sourceAddrPort, err := netAddrToNetipAddrPort(sourceAddress)
 		if err != nil {
 			r.logger.Warnf("parsing source address: %s", err)
+			continue
+		}
+		if !ipAllowed(r.allowedIPs, sourceAddrPort.Addr()) {
+			r.logger.Warnf("dropping UDP datagram from non-allowed IP %s", sourceAddrPort.Addr())
 			continue
 		}
 		buffer := r.bufferPool.Get().(*bytes.Buffer) //nolint:forcetypeassert

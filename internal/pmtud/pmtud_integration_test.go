@@ -23,7 +23,7 @@ func Test_PathMTUDiscover(t *testing.T) {
 	logger := log.New(log.SetLevel(log.LevelDebug))
 
 	cmder := command.New()
-	fw, err := firewall.NewConfig(t.Context(), logger, logger, cmder, nil, nil)
+	fw, err := firewall.NewConfig(t.Context(), logger, logger, cmder, nil, nil, nil)
 	if errors.Is(err, iptables.ErrNotSupported) {
 		t.Skip("iptables not installed, skipping TCP PMTUD tests")
 	}

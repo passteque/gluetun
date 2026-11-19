@@ -194,7 +194,7 @@ func (l *Loop) fetchAndStore(ctx context.Context) (err error) {
 	l.ipDataMutex.Unlock()
 
 	filepath := *l.settings.IPFilepath
-	err = persistPublicIP(filepath, result.IP.String(), l.puid, l.pgid)
+	err = l.persistPublicIP(filepath, result.IP.String())
 	if err != nil {
 		return fmt.Errorf("persisting public ip address: %w", err)
 	}
@@ -241,8 +241,4 @@ func (l *Loop) Stop() (err error) {
 	l.runCancel()
 	<-l.runDone
 	return l.ClearData()
-}
-
-func (l *Loop) Fetcher() (fetcher *api.ResilientFetcher) {
-	return l.fetcher
 }

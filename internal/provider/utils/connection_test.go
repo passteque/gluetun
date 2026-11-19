@@ -4,9 +4,9 @@ import (
 	"errors"
 	"math/rand"
 	"net/netip"
+	"slices"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/constants"
 	"github.com/qdm12/gluetun/internal/constants/providers"
@@ -14,6 +14,7 @@ import (
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
 
 func Test_GetConnection(t *testing.T) {
@@ -92,6 +93,96 @@ func Test_GetConnection(t *testing.T) {
 				Port:     1194,
 				Hostname: "x509",
 			}},
+		},
+		"OpenVPN_server_uses_protocol-specific_TCP_port_when_no_custom_port_set": {
+			filteredServers: []models.Server{
+				{
+					VPN:      vpn.OpenVPN,
+					TCP:      true,
+					TCPPorts: []uint16{4433},
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{8, 8, 8, 8})},
+					Hostname: "name",
+				},
+			},
+			serverSelection: func() settings.ServerSelection {
+				ss := settings.ServerSelection{}.WithDefaults(providers.Mullvad)
+				ss.OpenVPN.Protocol = constants.TCP
+				return ss
+			}(),
+			defaults:   NewConnectionDefaults(443, 1194, 58820),
+			randSource: rand.NewSource(0),
+			connections: []models.Connection{{
+				Type:     vpn.OpenVPN,
+				IP:       netip.AddrFrom4([4]byte{8, 8, 8, 8}),
+				Protocol: constants.TCP,
+				Port:     4433,
+				Hostname: "name",
+			}},
+		},
+		"OpenVPN_server_uses_protocol-specific_UDP_port_when_no_custom_port_set": {
+			filteredServers: []models.Server{
+				{
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					UDPPorts: []uint16{15021},
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{9, 9, 9, 9})},
+					Hostname: "name",
+				},
+			},
+			serverSelection: settings.ServerSelection{}.
+				WithDefaults(providers.Mullvad),
+			defaults:   NewConnectionDefaults(443, 1194, 58820),
+			randSource: rand.NewSource(0),
+			connections: []models.Connection{{
+				Type:     vpn.OpenVPN,
+				IP:       netip.AddrFrom4([4]byte{9, 9, 9, 9}),
+				Protocol: constants.UDP,
+				Port:     15021,
+				Hostname: "name",
+			}},
+		},
+		"OpenVPN_custom_port_supported_by_server": {
+			filteredServers: []models.Server{
+				{
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					UDPPorts: []uint16{15021, 1194},
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{10, 10, 10, 10})},
+					Hostname: "name",
+				},
+			},
+			serverSelection: func() settings.ServerSelection {
+				ss := settings.ServerSelection{}.WithDefaults(providers.Mullvad)
+				*ss.OpenVPN.CustomPort = 1194
+				return ss
+			}(),
+			defaults:   NewConnectionDefaults(443, 53, 58820),
+			randSource: rand.NewSource(0),
+			connections: []models.Connection{{
+				Type:     vpn.OpenVPN,
+				IP:       netip.AddrFrom4([4]byte{10, 10, 10, 10}),
+				Protocol: constants.UDP,
+				Port:     1194,
+				Hostname: "name",
+			}},
+		},
+		"OpenVPN_custom_port_not_supported_by_server": {
+			filteredServers: []models.Server{
+				{
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					UDPPorts: []uint16{15021},
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{10, 10, 10, 10})},
+					Hostname: "name",
+				},
+			},
+			serverSelection: func() settings.ServerSelection {
+				ss := settings.ServerSelection{}.WithDefaults(providers.Mullvad)
+				*ss.OpenVPN.CustomPort = 1194
+				return ss
+			}(),
+			defaults:   NewConnectionDefaults(443, 53, 58820),
+			errMessage: "no server supports the custom port 1194 out of 1 filtered servers",
 		},
 		"server with IPv4 and IPv6": {
 			filteredServers: []models.Server{
@@ -179,6 +270,151 @@ func Test_GetConnection(t *testing.T) {
 				Hostname: "hostname",
 			}},
 		},
+		"ordered_selection_mode_picks_by_list_order": {
+			filteredServers: []models.Server{
+				{
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{2, 2, 2, 1})},
+					Hostname: "de-1",
+					Country:  "Germany",
+				},
+				{
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{1, 1, 1, 1})},
+					Hostname: "pl-1",
+					Country:  "Poland",
+				},
+			},
+			serverSelection: settings.ServerSelection{
+				VPN:       vpn.OpenVPN,
+				Mode:      "ordered",
+				Countries: []string{"Poland", "Germany"},
+			}.WithDefaults(providers.Mullvad),
+			defaults: NewConnectionDefaults(443, 1194, 58820),
+			connections: []models.Connection{{
+				Type:     vpn.OpenVPN,
+				IP:       netip.AddrFrom4([4]byte{1, 1, 1, 1}),
+				Protocol: constants.UDP,
+				Port:     1194,
+				Hostname: "pl-1",
+			}},
+		},
+		"ordered_selection_mode_narrowest_filter_list_takes_priority": {
+			filteredServers: []models.Server{
+				{
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{1, 1, 1, 1})},
+					Hostname: "pl-warsaw-1",
+					Country:  "Poland",
+					City:     "Warsaw",
+				},
+				{
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{2, 2, 2, 1})},
+					Hostname: "de-berlin-1",
+					Country:  "Germany",
+					City:     "Berlin",
+				},
+			},
+			serverSelection: settings.ServerSelection{
+				VPN:       vpn.OpenVPN,
+				Mode:      "ordered",
+				Countries: []string{"Germany", "Poland"},
+				Cities:    []string{"Berlin", "Warsaw"},
+			}.WithDefaults(providers.Mullvad),
+			defaults: NewConnectionDefaults(443, 1194, 58820),
+			connections: []models.Connection{{
+				Type:     vpn.OpenVPN,
+				IP:       netip.AddrFrom4([4]byte{2, 2, 2, 1}),
+				Protocol: constants.UDP,
+				Port:     1194,
+				Hostname: "de-berlin-1",
+			}},
+		},
+		"ordered_selection_mode_prefers_IPv6_within_a_tier": {
+			filteredServers: []models.Server{
+				{
+					VPN: vpn.OpenVPN,
+					UDP: true,
+					IPs: []netip.Addr{
+						netip.AddrFrom4([4]byte{1, 1, 1, 1}),
+						netip.MustParseAddr("2001:db8::1"),
+					},
+					Hostname: "pl-1",
+					Country:  "Poland",
+				},
+			},
+			serverSelection: settings.ServerSelection{
+				VPN:       vpn.OpenVPN,
+				Mode:      "ordered",
+				Countries: []string{"Poland"},
+			}.WithDefaults(providers.Mullvad),
+			defaults:      NewConnectionDefaults(443, 1194, 58820),
+			ipv6Supported: true,
+			connections: []models.Connection{{
+				Type:     vpn.OpenVPN,
+				IP:       netip.MustParseAddr("2001:db8::1"),
+				Protocol: constants.UDP,
+				Port:     1194,
+				Hostname: "pl-1",
+			}},
+		},
+		"ordered_selection_mode_tier_takes_priority_over_IPv6": {
+			filteredServers: []models.Server{
+				{
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					IPs:      []netip.Addr{netip.MustParseAddr("2001:db8::2")},
+					Hostname: "de-1",
+					Country:  "Germany",
+				},
+				{
+					VPN:      vpn.OpenVPN,
+					UDP:      true,
+					IPs:      []netip.Addr{netip.AddrFrom4([4]byte{1, 1, 1, 1})},
+					Hostname: "pl-1",
+					Country:  "Poland",
+				},
+			},
+			serverSelection: settings.ServerSelection{
+				VPN:       vpn.OpenVPN,
+				Mode:      "ordered",
+				Countries: []string{"Poland", "Germany"},
+			}.WithDefaults(providers.Mullvad),
+			defaults:      NewConnectionDefaults(443, 1194, 58820),
+			ipv6Supported: true,
+			connections: []models.Connection{{
+				Type:     vpn.OpenVPN,
+				IP:       netip.AddrFrom4([4]byte{1, 1, 1, 1}),
+				Protocol: constants.UDP,
+				Port:     1194,
+				Hostname: "pl-1",
+			}},
+		},
+		"OpenVPN server with two IPs and two UDP ports": {
+			filteredServers: []models.Server{{
+				VPN:      vpn.OpenVPN,
+				UDP:      true,
+				UDPPorts: []uint16{5565, 1210},
+				IPs: []netip.Addr{
+					netip.AddrFrom4([4]byte{1, 1, 1, 1}),
+					netip.AddrFrom4([4]byte{1, 1, 1, 2}),
+				},
+				Hostname: "name",
+			}},
+			serverSelection: settings.ServerSelection{}.WithDefaults(providers.Mullvad),
+			defaults:        NewConnectionDefaults(443, 1194, 58820),
+			connections: []models.Connection{
+				{Type: vpn.OpenVPN, IP: netip.AddrFrom4([4]byte{1, 1, 1, 1}), Protocol: constants.UDP, Port: 5565, Hostname: "name"}, //nolint:lll
+				{Type: vpn.OpenVPN, IP: netip.AddrFrom4([4]byte{1, 1, 1, 1}), Protocol: constants.UDP, Port: 1210, Hostname: "name"}, //nolint:lll
+				{Type: vpn.OpenVPN, IP: netip.AddrFrom4([4]byte{1, 1, 1, 2}), Protocol: constants.UDP, Port: 5565, Hostname: "name"}, //nolint:lll
+				{Type: vpn.OpenVPN, IP: netip.AddrFrom4([4]byte{1, 1, 1, 2}), Protocol: constants.UDP, Port: 1210, Hostname: "name"}, //nolint:lll
+			},
+		},
 	}
 
 	for name, testCase := range testCases {
@@ -196,12 +432,113 @@ func Test_GetConnection(t *testing.T) {
 				testCase.serverSelection, testCase.defaults, testCase.ipv6Supported,
 				connPicker)
 
-			assert.Contains(t, testCase.connections, connection)
 			if testCase.errMessage != "" {
-				assert.EqualError(t, err, testCase.errMessage)
-			} else {
-				assert.NoError(t, err)
+				assert.ErrorContains(t, err, testCase.errMessage)
+				return
 			}
+			assert.NoError(t, err)
+			assert.Contains(t, testCase.connections, connection)
 		})
+	}
+}
+
+// Test_GetConnection_ordered_selection_mode_fallback tests that
+// with the ordered selection mode, connections are picked from
+// the first filter list values, falling back to the next ones
+// only once the previous ones are exhausted across (re)starts.
+func Test_GetConnection_ordered_selection_mode_fallback(t *testing.T) {
+	t.Parallel()
+
+	ctrl := gomock.NewController(t)
+	connPicker := NewConnectionPicker()
+
+	servers := []models.Server{
+		{
+			VPN:      vpn.OpenVPN,
+			UDP:      true,
+			IPs:      []netip.Addr{netip.AddrFrom4([4]byte{2, 2, 2, 1})},
+			Hostname: "de-1",
+			Country:  "Germany",
+		},
+		{
+			VPN:      vpn.OpenVPN,
+			UDP:      true,
+			IPs:      []netip.Addr{netip.AddrFrom4([4]byte{1, 1, 1, 1})},
+			Hostname: "pl-1",
+			Country:  "Poland",
+		},
+		{
+			VPN:      vpn.OpenVPN,
+			UDP:      true,
+			IPs:      []netip.Addr{netip.AddrFrom4([4]byte{1, 1, 1, 2})},
+			Hostname: "pl-2",
+			Country:  "Poland",
+		},
+		{
+			VPN:      vpn.OpenVPN,
+			UDP:      true,
+			IPs:      []netip.Addr{netip.AddrFrom4([4]byte{3, 3, 3, 1})},
+			Hostname: "cz-1",
+			Country:  "Czechia",
+		},
+	}
+	selection := settings.ServerSelection{
+		VPN:       vpn.OpenVPN,
+		Mode:      "ordered",
+		Countries: []string{"Poland", "Germany", "Czechia"},
+	}.WithDefaults(providers.Mullvad)
+	defaults := NewConnectionDefaults(443, 1194, 58820)
+
+	storage := common.NewMockStorage(ctrl)
+	storage.EXPECT().
+		FilterServers("", selection).
+		DoAndReturn(func(_ string, _ settings.ServerSelection) ([]models.Server, error) {
+			// Mimic the real storage that deep copies servers.
+			serversCopy := make([]models.Server, len(servers))
+			for i, server := range servers {
+				serverCopy := server
+				serverCopy.IPs = slices.Clone(server.IPs)
+				serversCopy[i] = serverCopy
+			}
+			return serversCopy, nil
+		}).
+		Times(4)
+
+	expectedConnections := []models.Connection{
+		{
+			Type:     vpn.OpenVPN,
+			IP:       netip.AddrFrom4([4]byte{1, 1, 1, 1}),
+			Protocol: constants.UDP,
+			Port:     1194,
+			Hostname: "pl-1",
+		},
+		{
+			Type:     vpn.OpenVPN,
+			IP:       netip.AddrFrom4([4]byte{1, 1, 1, 2}),
+			Protocol: constants.UDP,
+			Port:     1194,
+			Hostname: "pl-2",
+		},
+		{
+			Type:     vpn.OpenVPN,
+			IP:       netip.AddrFrom4([4]byte{2, 2, 2, 1}),
+			Protocol: constants.UDP,
+			Port:     1194,
+			Hostname: "de-1",
+		},
+		{
+			Type:     vpn.OpenVPN,
+			IP:       netip.AddrFrom4([4]byte{3, 3, 3, 1}),
+			Protocol: constants.UDP,
+			Port:     1194,
+			Hostname: "cz-1",
+		},
+	}
+
+	for i := range 4 {
+		connection, err := GetConnection("", storage, selection,
+			defaults, false, connPicker)
+		assert.NoError(t, err)
+		assert.Equal(t, expectedConnections[i], connection)
 	}
 }

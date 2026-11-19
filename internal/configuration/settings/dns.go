@@ -3,6 +3,7 @@ package settings
 import (
 	"fmt"
 	"net/netip"
+	"strings"
 	"time"
 
 	"github.com/qdm12/dns/v2/pkg/provider"
@@ -40,6 +41,10 @@ type DNS struct {
 	Caching *bool `json:"caching"`
 	// IPv6 is true if the server should connect over IPv6.
 	IPv6 *bool `json:"ipv6"`
+	// ResolversCheck is true to detect the DNS resolvers used through the
+	// tunnel, by sending DNS queries to ipleak.net. Note this uses a third
+	// party service and is done once the tunnel is up. It defaults to false.
+	ResolversCheck *bool `json:"resolvers_check"`
 	// Blacklist contains settings to configure the filter
 	// block lists.
 	Blacklist DNSBlacklist
@@ -48,6 +53,16 @@ type DNS struct {
 	// Note, if the upstream type is [dnsUpstreamTypePlain] and this field is set,
 	// the Providers field is ignored.
 	UpstreamPlainAddresses []netip.AddrPort
+	// PublicNamesAsLocal is a list of hostnames that should be resolved
+	// as local hostnames, even if they are public. This is useful for
+	// split-horizon DNS setups where certain public names should be resolved
+	// using local resolvers.
+	PublicNamesAsLocal []string `json:"public_names_as_local"`
+	// PublicNameserverCIDRsAsLocal is a list of public nameserver IP prefixes that
+	// should be considered local when reading the nameservers from the OS, for example
+	// from /etc/resolv.conf. For example if you use your own DNS server at 55.66.77.88,
+	// then you can set this to 55.66.77.88/32.
+	PublicNameserverCIDRsAsLocal []netip.Prefix `json:"public_nameserver_cidrs_as_local"`
 }
 
 func (d DNS) validate() (err error) {
@@ -97,6 +112,15 @@ func (d DNS) validate() (err error) {
 		return err
 	}
 
+	for _, prefix := range d.PublicNameserverCIDRsAsLocal {
+		switch {
+		case prefix.Addr().IsPrivate(), prefix.Addr().IsLoopback():
+			return fmt.Errorf("public nameserver prefix %s is not a public address", prefix)
+		case !prefix.Addr().IsValid():
+			return fmt.Errorf("public nameserver prefix %s is not a valid address", prefix)
+		}
+	}
+
 	return nil
 }
 
@@ -119,14 +143,17 @@ func (d DNS) validateForServerOff() (err error) {
 
 func (d *DNS) Copy() (copied DNS) {
 	return DNS{
-		ServerEnabled:          gosettings.CopyPointer(d.ServerEnabled),
-		UpstreamType:           d.UpstreamType,
-		UpdatePeriod:           gosettings.CopyPointer(d.UpdatePeriod),
-		Providers:              gosettings.CopySlice(d.Providers),
-		Caching:                gosettings.CopyPointer(d.Caching),
-		IPv6:                   gosettings.CopyPointer(d.IPv6),
-		Blacklist:              d.Blacklist.copy(),
-		UpstreamPlainAddresses: gosettings.CopySlice(d.UpstreamPlainAddresses),
+		ServerEnabled:                gosettings.CopyPointer(d.ServerEnabled),
+		UpstreamType:                 d.UpstreamType,
+		UpdatePeriod:                 gosettings.CopyPointer(d.UpdatePeriod),
+		Providers:                    gosettings.CopySlice(d.Providers),
+		Caching:                      gosettings.CopyPointer(d.Caching),
+		IPv6:                         gosettings.CopyPointer(d.IPv6),
+		ResolversCheck:               gosettings.CopyPointer(d.ResolversCheck),
+		Blacklist:                    d.Blacklist.copy(),
+		UpstreamPlainAddresses:       gosettings.CopySlice(d.UpstreamPlainAddresses),
+		PublicNamesAsLocal:           gosettings.CopySlice(d.PublicNamesAsLocal),
+		PublicNameserverCIDRsAsLocal: gosettings.CopySlice(d.PublicNameserverCIDRsAsLocal),
 	}
 }
 
@@ -140,8 +167,12 @@ func (d *DNS) overrideWith(other DNS) {
 	d.Providers = gosettings.OverrideWithSlice(d.Providers, other.Providers)
 	d.Caching = gosettings.OverrideWithPointer(d.Caching, other.Caching)
 	d.IPv6 = gosettings.OverrideWithPointer(d.IPv6, other.IPv6)
+	d.ResolversCheck = gosettings.OverrideWithPointer(d.ResolversCheck, other.ResolversCheck)
 	d.Blacklist.overrideWith(other.Blacklist)
 	d.UpstreamPlainAddresses = gosettings.OverrideWithSlice(d.UpstreamPlainAddresses, other.UpstreamPlainAddresses)
+	d.PublicNamesAsLocal = gosettings.OverrideWithSlice(d.PublicNamesAsLocal, other.PublicNamesAsLocal)
+	d.PublicNameserverCIDRsAsLocal = gosettings.OverrideWithSlice(d.PublicNameserverCIDRsAsLocal,
+		other.PublicNameserverCIDRsAsLocal)
 }
 
 func (d *DNS) setDefaults() {
@@ -157,7 +188,10 @@ func (d *DNS) setDefaults() {
 	d.Providers = gosettings.DefaultSlice(d.Providers, defaultDNSProviders())
 	d.Caching = gosettings.DefaultPointer(d.Caching, true)
 	d.IPv6 = gosettings.DefaultPointer(d.IPv6, false)
+	d.ResolversCheck = gosettings.DefaultPointer(d.ResolversCheck, false)
 	d.Blacklist.setDefaults()
+	d.PublicNamesAsLocal = gosettings.DefaultSlice(d.PublicNamesAsLocal, []string{})
+	d.PublicNameserverCIDRsAsLocal = gosettings.DefaultSlice(d.PublicNameserverCIDRsAsLocal, []netip.Prefix{})
 }
 
 func defaultDNSProviders() []string {
@@ -172,6 +206,8 @@ func (d DNS) String() string {
 
 func (d DNS) toLinesNode() (node *gotree.Node) {
 	node = gotree.New("DNS settings:")
+
+	node.Appendf("Resolvers check: %s", gosettings.BoolToYesNo(d.ResolversCheck))
 
 	if !*d.ServerEnabled {
 		plainServers := node.Append("Plain DNS servers to use directly:")
@@ -212,6 +248,20 @@ func (d DNS) toLinesNode() (node *gotree.Node) {
 
 	node.AppendNode(d.Blacklist.toLinesNode())
 
+	if len(d.PublicNamesAsLocal) > 0 {
+		node.Appendf("Public names to resolve using local resolvers: %s",
+			strings.Join(d.PublicNamesAsLocal, ", "))
+	}
+
+	if len(d.PublicNameserverCIDRsAsLocal) > 0 {
+		prefixes := make([]string, len(d.PublicNameserverCIDRsAsLocal))
+		for i, prefix := range d.PublicNameserverCIDRsAsLocal {
+			prefixes[i] = prefix.String()
+		}
+		node.Appendf("Public nameserver CIDRs to consider as local: %s",
+			strings.Join(prefixes, ", "))
+	}
+
 	return node
 }
 
@@ -240,12 +290,24 @@ func (d *DNS) read(r *reader.Reader) (err error) {
 		return err
 	}
 
+	d.ResolversCheck, err = r.BoolPtr("DNS_RESOLVERS_CHECK")
+	if err != nil {
+		return err
+	}
+
 	err = d.Blacklist.read(r)
 	if err != nil {
 		return err
 	}
 
 	err = d.readUpstreamPlainAddresses(r)
+	if err != nil {
+		return err
+	}
+
+	d.PublicNamesAsLocal = r.CSV("DNS_PUBLIC_NAMES_AS_LOCAL")
+
+	d.PublicNameserverCIDRsAsLocal, err = r.CSVNetipPrefixes("DNS_PUBLIC_NAMESERVER_CIDRS_AS_LOCAL")
 	if err != nil {
 		return err
 	}

@@ -9,6 +9,7 @@ import (
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
 	"github.com/qdm12/gluetun/internal/updater/openvpn"
+	"github.com/qdm12/gluetun/internal/updater/unzip"
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 )
@@ -17,6 +18,8 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 	servers []models.Server, err error,
 ) {
 	const url = "https://configs.ipvanish.com/openvpn/v2.6.0-0/configs.zip"
+	//nolint:lll
+	ctx = unzip.WithUserAgent(ctx, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
 	contents, err := u.unzipper.FetchAndExtract(ctx, url)
 	if err != nil {
 		return nil, err

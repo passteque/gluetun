@@ -17,7 +17,7 @@ func Test_parseHardcodedServers(t *testing.T) {
 
 	var servers models.AllServers
 	assert.NotPanics(t, func() {
-		servers = parseHardcodedServers()
+		servers = parseHardcodedServers(t.TempDir())
 	})
 
 	// all providers minus custom
@@ -33,7 +33,7 @@ func Test_parseHardcodedServers(t *testing.T) {
 func Test_parseHardcodedServers_filepathsAndEmbeddedProviderFiles(t *testing.T) {
 	t.Parallel()
 
-	hardcodedServers := parseHardcodedServers()
+	hardcodedServers := parseHardcodedServers(t.TempDir())
 
 	allProviders := providers.All()
 	for _, provider := range allProviders {

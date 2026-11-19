@@ -8,15 +8,17 @@ import (
 	"testing"
 	"time"
 
-	gomock "github.com/golang/mock/gomock"
 	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/qdm12/gluetun/internal/pmtud/constants"
 	"github.com/qdm12/gluetun/internal/pmtud/ip"
 	"github.com/stretchr/testify/require"
+	gomock "go.uber.org/mock/gomock"
 )
 
 func Test_runTest(t *testing.T) {
 	t.Parallel()
+
+	skipUnlessRawNetworking(t)
 
 	localNonListenPort := reserveClosedPort(t)
 

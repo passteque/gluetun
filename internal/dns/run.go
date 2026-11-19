@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/qdm12/dns/v2/pkg/nameserver"
-	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/constants"
 )
 
@@ -12,7 +11,8 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 	defer close(done)
 
 	var err error
-	l.localResolvers, err = nameserver.GetPrivateDNSServers()
+	settings := l.GetSettings()
+	l.localResolvers, err = nameserver.GetPrivateDNSServersWithPublicCIDRsAsLocal(settings.PublicNameserverCIDRsAsLocal)
 	if err != nil {
 		l.logger.Error("getting private DNS servers: " + err.Error())
 		return
@@ -29,7 +29,6 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		// Their values are to be used if DOT=off
 		var runError <-chan error
 
-		var settings settings.DNS
 		for {
 			settings = l.GetSettings()
 			var err error
@@ -63,12 +62,7 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 
 		l.userTrigger = false
 
-		report, err := leakCheck(ctx, l.client)
-		if err != nil {
-			l.logger.Warnf("running leak check: %s", err)
-		} else {
-			l.logger.Infof("leak check report: %s", report)
-		}
+		l.checkResolvers(ctx, *settings.ResolversCheck)
 
 		exitLoop := l.runWait(ctx, runError)
 		if exitLoop {

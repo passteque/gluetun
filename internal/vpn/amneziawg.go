@@ -71,5 +71,13 @@ func buildAmneziaWgSettings(connection models.Connection,
 		InitPacketI3:    *userSettings.InitPacketI3,
 		InitPacketI4:    *userSettings.InitPacketI4,
 		InitPacketI5:    *userSettings.InitPacketI5,
+		// v3 parameters
+		HeaderProtectionKey:    *userSettings.HeaderProtectionKey,
+		ContentPaddingAddition: *userSettings.ContentPaddingAddition,
+		RekeyAfterTime:         *userSettings.RekeyAfterTime,
+		RekeyTimeout:           *userSettings.RekeyTimeout,
+		RejectAfterTime:        *userSettings.RejectAfterTime,
+		KeepaliveTimeout:       *userSettings.KeepaliveTimeout,
+		MaxHandshakeAttempts:   *userSettings.MaxHandshakeAttempts,
 	}
 }

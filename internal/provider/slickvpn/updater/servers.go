@@ -15,6 +15,7 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 ) {
 	// Since SlickVPN website listing VPN servers https://www.slickvpn.com/locations/
 	// went to become a pile of trash, we now hardcode the servers data below.
+	//nolint:goconst
 	servers = []models.Server{
 		{Hostname: "gw1.akl1.slickvpn.com", Region: "Oceania", Country: "New Zealand", City: "Auckland"},
 		{Hostname: "gw1.arn1.slickvpn.com", Region: "Europe", Country: "Sweden", City: "Stockholm"},

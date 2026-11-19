@@ -20,12 +20,12 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 		return nil, fmt.Errorf("%w: password is empty", common.ErrCredentialsMissing)
 	}
 
-	apiClient, err := newAPIClient(ctx, u.client)
+	apiClient, err := newAPIClient(ctx, u.client, u.warner)
 	if err != nil {
 		return nil, fmt.Errorf("creating API client: %w", err)
 	}
 
-	cookie, err := apiClient.authenticate(ctx, u.email, u.password)
+	cookie, err := apiClient.authenticate(ctx, u.email, u.password, u.totpSecret, u.totpCode)
 	if err != nil {
 		return nil, fmt.Errorf("authentifying with Proton: %w", err)
 	}
@@ -35,16 +35,15 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 		return nil, fmt.Errorf("fetching logical servers: %w", err)
 	}
 
+	return u.serversFromData(data, minServers)
+}
+
+func (u *Updater) serversFromData(data apiData, minServers int) (servers []models.Server, err error) {
 	countryCodes := constants.CountryCodes()
 
 	var count int
 	for _, logicalServer := range data.LogicalServers {
 		count += len(logicalServer.Servers)
-	}
-
-	if count < minServers {
-		return nil, fmt.Errorf("%w: %d and expected at least %d",
-			common.ErrNotEnoughServers, count, minServers)
 	}
 
 	ipToServer := make(ipToServers, count)
@@ -82,7 +81,8 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 			}
 
 			hostname := physicalServer.Domain
-			entryIP := physicalServer.EntryIP
+			entryIPv4 := physicalServer.EntryIP
+			entryIPv6 := physicalServer.EntryIPv6
 			wgPubKey := physicalServer.X25519PublicKey
 
 			// Note: for multi-hop use the server name or hostname
@@ -93,13 +93,13 @@ func (u *Updater) FetchServers(ctx context.Context, minServers int) (
 				u.warner.Warn(warning)
 			}
 
-			ipToServer.add(country, region, city, name, hostname, wgPubKey, free, entryIP, features)
+			ipToServer.add(country, region, city, name, hostname, wgPubKey, free, entryIPv4, entryIPv6, features)
 		}
 	}
 
 	if ipToServer.numberOfServers() < minServers {
 		return nil, fmt.Errorf("%w: %d and expected at least %d",
-			common.ErrNotEnoughServers, len(ipToServer), minServers)
+			common.ErrNotEnoughServers, ipToServer.numberOfServers(), minServers)
 	}
 
 	servers = ipToServer.toServersSlice()

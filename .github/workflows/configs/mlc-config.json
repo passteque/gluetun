@@ -5,6 +5,9 @@
     },
     {
       "pattern": "^https://github.com/passteque/gluetun$"
+    },
+    {
+      "pattern": "^https://trendshift.io/repositories/3591$"
     }
   ],
   "timeout": "20s",

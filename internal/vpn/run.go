@@ -59,7 +59,6 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 				enabled:   settings.Type != vpn.Wireguard || *settings.Wireguard.MTU == 0,
 				vpnType:   settings.Type,
 				network:   connection.Protocol,
-				ipv6:      l.isIPv6Used(settings),
 				icmpAddrs: settings.PMTUD.ICMPAddresses,
 				tcpAddrs:  settings.PMTUD.TCPAddresses,
 			},
@@ -91,7 +90,7 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		for stayHere {
 			select {
 			case <-tunnelReady:
-				go l.onTunnelUp(vpnCtx, ctx, tunnelUpData)
+				go l.onTunnelUp(vpnCtx, ctx, tunnelUpData) //nolint:gosec
 			case <-ctx.Done():
 				l.cleanup()
 				vpnCancel()

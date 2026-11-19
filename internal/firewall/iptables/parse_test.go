@@ -29,9 +29,9 @@ func Test_parseIptablesInstruction(t *testing.T) {
 		"one_pair": {
 			s: "-A INPUT",
 			instruction: iptablesInstruction{
-				table:  "filter",
-				chain:  "INPUT",
-				append: true,
+				table:     "filter",
+				chain:     "INPUT",
+				operation: opAppend,
 			},
 		},
 		"instruction_A": {
@@ -39,7 +39,7 @@ func Test_parseIptablesInstruction(t *testing.T) {
 			instruction: iptablesInstruction{
 				table:           "filter",
 				chain:           "INPUT",
-				append:          true,
+				operation:       opAppend,
 				inputInterface:  "tun0",
 				protocol:        "tcp",
 				source:          netip.MustParsePrefix("1.2.3.4/32"),
@@ -53,13 +53,82 @@ func Test_parseIptablesInstruction(t *testing.T) {
 			instruction: iptablesInstruction{
 				table:           "nat",
 				chain:           "PREROUTING",
-				append:          false,
+				operation:       opDelete,
 				inputInterface:  "tun0",
 				protocol:        "tcp",
 				destinationPort: 43716,
 				target:          "REDIRECT",
 				toPorts:         []uint16{5678},
 			},
+		},
+		"conntrack_match": {
+			s: "-A OUTPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT",
+			instruction: iptablesInstruction{
+				table:     "filter",
+				chain:     "OUTPUT",
+				operation: opAppend,
+				ctstate:   []string{"ESTABLISHED", "RELATED"},
+				target:    "ACCEPT",
+			},
+		},
+		"connmark_match": {
+			s: "-I OUTPUT -m conntrack --ctstate RELATED,ESTABLISHED -m connmark --mark 0x567 -j ACCEPT",
+			instruction: iptablesInstruction{
+				table:     "filter",
+				chain:     "OUTPUT",
+				operation: opInsert,
+				ctstate:   []string{"RELATED", "ESTABLISHED"},
+				connMark:  mark{value: 0x567},
+				target:    "ACCEPT",
+			},
+		},
+		"connmark_match_inverted": {
+			s: "-A GLUETUN_PUBLIC_ONLY -m connmark ! --mark 0x567 -j DROP",
+			instruction: iptablesInstruction{
+				table:     "filter",
+				chain:     "GLUETUN_PUBLIC_ONLY",
+				operation: opAppend,
+				connMark:  mark{value: 0x567, invert: true},
+				target:    "DROP",
+			},
+		},
+		"connmark_match_no_value": {
+			s: "-A GLUETUN_PUBLIC_ONLY -m connmark -j DROP",
+			instruction: iptablesInstruction{
+				table:     "filter",
+				chain:     "GLUETUN_PUBLIC_ONLY",
+				operation: opAppend,
+				target:    "DROP",
+			},
+		},
+		"connmark_set_mark_jump": {
+			s: "-A GLUETUN_PUBLIC_ONLY -m conntrack --ctstate NEW -j CONNMARK --set-mark 0x567",
+			instruction: iptablesInstruction{
+				table:     "filter",
+				chain:     "GLUETUN_PUBLIC_ONLY",
+				operation: opAppend,
+				ctstate:   []string{"NEW"},
+				target:    "CONNMARK",
+				setMark:   0x567,
+			},
+		},
+		"reject_with_tcp_reset": {
+			s: "-A GLUETUN_PUBLIC_ONLY -p tcp -m conntrack --ctstate RELATED,ESTABLISHED " +
+				"-j REJECT --reject-with tcp-reset",
+			instruction: iptablesInstruction{
+				table:      "filter",
+				chain:      "GLUETUN_PUBLIC_ONLY",
+				operation:  opAppend,
+				protocol:   "tcp",
+				ctstate:    []string{"RELATED", "ESTABLISHED"},
+				target:     "REJECT",
+				rejectWith: "tcp-reset",
+			},
+		},
+		"connmark_match_missing_value": {
+			s: "-A OUTPUT -m connmark --mark",
+			errMessage: `parsing "-A OUTPUT -m connmark --mark": parsing match module: ` +
+				`iptables command is malformed: connmark --mark requires a value`,
 		},
 	}
 

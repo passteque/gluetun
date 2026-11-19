@@ -4,9 +4,7 @@ Lightweight swiss-army-knife-like VPN client to multiple VPN service providers
 
 ⚠️ This and [gluetun-wiki](https://github.com/qdm12/gluetun-wiki) are the only websites for Gluetun, other websites claiming to be official are scams ⚠️
 
-🗯️ this repository will be migrated to [github.com/passteque/gluetun](https://github.com/passteque/gluetun) on 2026-05-21, which is a Github organization under my sole control, so don't get alarmed if you get redirected in the coming days 😉 Reason being migrating Github sponsors to the Open source collective due to my personal situation, basically annoying paperwork. On the plus side, it will be more transparent and funds donated will only be used for the project. The Docker image names will remain the same.
-
-![Title image](https://raw.githubusercontent.com/passteque/gluetun/master/title.svg)
+![Title image](title.svg)
 
 [![Build status](https://github.com/passteque/gluetun/actions/workflows/ci.yml/badge.svg)](https://github.com/passteque/gluetun/actions/workflows/ci.yml)
 
@@ -60,10 +58,10 @@ Lightweight swiss-army-knife-like VPN client to multiple VPN service providers
 ## Features
 
 - Based on Alpine 3.23 for a small Docker image of 43.1MB
-- Supports: **AirVPN**, **Cyberghost**, **ExpressVPN**, **FastestVPN**, **Giganews**, **HideMyAss**, **IPVanish**, **IVPN**, **Mullvad** (Wireguard only), **NordVPN**, **Perfect Privacy**, **Privado**, **Private Internet Access**, **PrivateVPN**, **ProtonVPN**, **PureVPN**,  **SlickVPN**, **Surfshark**, **TorGuard**, **VPNSecure.me**, **VPNUnlimited**, **Vyprvpn**, **Windscribe** servers
+- Supports: **AirVPN**, **Cyberghost**, **ExpressVPN**, **FastestVPN**, **Giganews**, **HideMyAss**, **IPVanish**, **IVPN**, **Mullvad** (Wireguard only), **NordVPN**, **Privado**, **Private Internet Access**, **PrivateVPN**, **ProtonVPN**, **PureVPN**,  **SlickVPN**, **Surfshark**, **TorGuard**, **VPNSecure.me**, **VPNUnlimited**, **Vyprvpn**, **Windscribe** servers
 - Supports OpenVPN for all providers listed
 - Supports Wireguard both kernelspace and userspace
-  - For **AirVPN**, **FastestVPN**, **Ivpn**, **Mullvad**, **NordVPN**, **Perfect privacy**, **ProtonVPN**, **Surfshark** and **Windscribe**
+  - For **AirVPN**, **FastestVPN**, **Ivpn**, **Mullvad**, **NordVPN**, **ProtonVPN**, **Surfshark** and **Windscribe**
   - For **Cyberghost**, **Private Internet Access**, **PrivateVPN**, **PureVPN**, **Torguard**, **VPN Unlimited** and **VyprVPN** using [the custom provider](https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/custom.md)
   - For custom Wireguard configurations using [the custom provider](https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/custom.md)
   - More in progress, see [#134](https://github.com/passteque/gluetun/issues/134)
@@ -71,14 +69,14 @@ Lightweight swiss-army-knife-like VPN client to multiple VPN service providers
 - DNS over TLS baked in with service provider(s) of your choice
 - DNS fine blocking of malicious/ads hostnames and IP addresses, with live update every 24 hours
 - Choose the vpn network protocol, `udp` or `tcp`
-- Built in firewall kill switch to allow traffic only with needed the VPN servers and LAN devices
+- Built in firewall kill switch that only allows traffic through the VPN, to the VPN server, and to allowed LAN devices
 - Built in Shadowsocks proxy server (protocol based on SOCKS5 with an encryption layer, tunnels TCP+UDP)
 - Built in Socks5 proxy server (tunnels TCP+UDP) - partial credits to @angelakis and @adjscent
 - Built in HTTP proxy (tunnels HTTP and HTTPS through TCP)
 - [Connect other containers to it](https://github.com/qdm12/gluetun-wiki/blob/main/setup/connect-a-container-to-gluetun.md)
 - [Connect LAN devices to it](https://github.com/qdm12/gluetun-wiki/blob/main/setup/connect-a-lan-device-to-gluetun.md)
 - Compatible with amd64, i686 (32 bit), **ARM** 64 bit, ARM 32 bit v6 and v7, and even ppc64le 🎆
-- Custom VPN server side port forwarding for [Perfect Privacy](https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/perfect-privacy.md#vpn-server-port-forwarding), [Private Internet Access](https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/private-internet-access.md#vpn-server-port-forwarding), [PrivateVPN](https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/privatevpn.md#vpn-server-port-forwarding) and [ProtonVPN](https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/protonvpn.md#vpn-server-port-forwarding)
+- Custom VPN server side port forwarding for [Private Internet Access](https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/private-internet-access.md#vpn-server-port-forwarding), [PrivateVPN](https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/privatevpn.md#vpn-server-port-forwarding) and [ProtonVPN](https://github.com/qdm12/gluetun-wiki/blob/main/setup/providers/protonvpn.md#vpn-server-port-forwarding)
 - Possibility of split horizon DNS by selecting multiple DNS over TLS providers
 - Can work as a Kubernetes sidecar container, thanks @rorph
 
@@ -129,9 +127,11 @@ services:
 
 🆕 Image also available as `ghcr.io/qdm12/gluetun`
 
-## Fun graphs
+## Fun graphs and badges
 
-[![Star History Chart](https://api.star-history.com/svg?repos=passteque/gluetun&type=date&legend=top-left)](https://www.star-history.com/#passteque/gluetun&type=date&legend=top-left)
+[![passteque/gluetun | Trendshift](https://trendshift.io/api/badge/repositories/3591)](https://trendshift.io/repositories/3591)
+
+[![Star History Chart](https://star-history.dera.page/svg?repos=passteque/gluetun&type=date&legend=top-left)](https://star-history.dera.page/#passteque/gluetun&type=date&legend=top-left)
 
 ## License
 

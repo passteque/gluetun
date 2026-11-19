@@ -71,17 +71,27 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 	) {
 		defer close(doneCh)
 		close(readyCh)
-		err = portForwarder.KeepPortForward(ctx, obj)
+		err := portForwarder.KeepPortForward(ctx, obj)
 		crashed := ctx.Err() == nil
 		if !crashed { // stopped by Stop call
 			return
 		}
 		s.startStopMutex.Lock()
-		defer s.startStopMutex.Unlock()
 		s.portMutex.Lock()
-		defer s.portMutex.Unlock()
 		_ = s.cleanup()
-		runError <- err
+		s.portMutex.Unlock()
+		s.startStopMutex.Unlock()
+
+		// The report is made without the mutexes held, and given up on once the
+		// service is stopped. The port forwarding loop reads this channel while
+		// it runs, but it leaves the service behind when it stops on a fatal
+		// error: a send holding the start stop mutex forever prevents the
+		// service from ever being stopped, since Stop waits for the very
+		// goroutine reporting the crash.
+		select {
+		case runError <- err:
+		case <-ctx.Done():
+		}
 	}(keepPortCtx, s.settings.PortForwarder, obj, readyCh, runErrorCh, keepPortDoneCh)
 	<-readyCh
 
@@ -133,7 +143,11 @@ func (s *Service) onNewPorts(ctx context.Context, internalToExternalPorts map[ui
 	copy(s.ports, externalPorts)
 
 	if s.settings.UpCommand != "" {
-		err = runCommand(ctx, s.cmder, s.logger, s.settings.UpCommand, externalPorts, s.settings.Interface)
+		logger := &loggerWithPrefix{
+			prefix: "up command: ",
+			logger: s.logger,
+		}
+		err = runCommand(ctx, s.cmder, logger, s.settings.UpCommand, externalPorts, s.settings.Interface)
 		if err != nil {
 			err = fmt.Errorf("running up command: %w", err)
 			s.logger.Error(err.Error())

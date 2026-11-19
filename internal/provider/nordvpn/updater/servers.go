@@ -72,7 +72,7 @@ func extractServers(jsonServer serverData, groups map[uint32]groupData,
 	region := jsonServer.region(groups)
 	if region == "" {
 		warning := fmt.Sprintf("no region found for server %s", jsonServer.Name)
-		return nil, []string{warning}
+		warnings = append(warnings, warning)
 	}
 
 	server := models.Server{
@@ -80,6 +80,7 @@ func extractServers(jsonServer serverData, groups map[uint32]groupData,
 		Region:     region,
 		City:       location.Country.City.Name,
 		Categories: jsonServer.categories(groups),
+		Dedicated:  jsonServer.isDedicated(groups),
 		Hostname:   jsonServer.Hostname,
 		IPs:        jsonServer.ips(),
 	}
@@ -91,7 +92,8 @@ func extractServers(jsonServer serverData, groups map[uint32]groupData,
 		warnings = append(warnings, warning)
 	case err != nil:
 		warning := fmt.Sprintf("failed parsing server name: %s", err)
-		return nil, []string{warning}
+		warnings = append(warnings, warning)
+		return nil, warnings
 	default: // no error
 		server.Number = number
 	}
@@ -114,6 +116,9 @@ func extractServers(jsonServer serverData, groups map[uint32]groupData,
 			continue
 		}
 
+		// Note a dedicated IP server also advertises the openvpn_udp,
+		// openvpn_tcp and wireguard_udp technologies, in addition to the
+		// openvpn_dedicated_* ones, so it is detected with its groups.
 		switch technologyData.Identifier {
 		case "openvpn_udp", "openvpn_dedicated_udp":
 			openvpnFound = true

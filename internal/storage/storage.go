@@ -34,9 +34,17 @@ type Logger interface {
 // Passing an empty directoryPath disables the reading and writing of
 // servers.
 func New(logger Logger, disk bool, directoryPath, legacyFilepath string) (storage *Storage, err error) {
+	// The hardcoded servers filepaths are the canonical on-disk locations
+	// of the provider files, as defined by the configured directory path.
+	serversPath := directoryPath
+	if serversPath == "" {
+		const defaultServersPath = "/gluetun/servers/"
+		serversPath = defaultServersPath
+	}
+
 	// A unit test prevents [parseHardcodedServers] from ever failing,
 	// and ensures all providers are part of the servers returned.
-	hardcodedServers := parseHardcodedServers()
+	hardcodedServers := parseHardcodedServers(serversPath)
 
 	storage = &Storage{
 		hardcodedServers: hardcodedServers,

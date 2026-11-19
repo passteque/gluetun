@@ -29,7 +29,7 @@ func (h *handler) handleHTTP(responseWriter http.ResponseWriter, request *http.R
 		setForwardedHeaders(request)
 	}
 
-	response, err := h.client.Do(request)
+	response, err := h.client.Do(request) //nolint:gosec // SSRF is the feature: HTTP proxy forwards to arbitrary URLs
 	if err != nil {
 		http.Error(responseWriter, "server error", http.StatusInternalServerError)
 		h.logger.Warn("cannot process request for client " + request.RemoteAddr + ": " + err.Error())

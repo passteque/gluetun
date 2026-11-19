@@ -41,44 +41,51 @@ func (l *Loop) SetStatus(ctx context.Context, status models.LoopStatus) (outcome
 		case constants.Starting, constants.Running, constants.Stopping, constants.Crashed:
 			return fmt.Sprintf("already %s", existingStatus), nil
 		}
-		l.loopLock.Lock()
-		defer l.loopLock.Unlock()
-		l.state.status = constants.Starting
-		l.state.statusMu.Unlock()
-		l.start <- struct{}{}
-
-		newStatus := constants.Starting // for canceled context
-		select {
-		case <-ctx.Done():
-		case newStatus = <-l.running:
-		}
-		l.state.statusMu.Lock()
-		l.state.status = newStatus
-		return newStatus.String(), nil
+		return transitionStatus(ctx, l, existingStatus, constants.Starting, l.start, l.running), nil
 	case constants.Stopped:
 		switch existingStatus {
 		case constants.Stopped, constants.Stopping, constants.Starting, constants.Crashed:
 			return fmt.Sprintf("already %s", existingStatus), nil
 		}
-		l.loopLock.Lock()
-		defer l.loopLock.Unlock()
-		l.state.status = constants.Stopping
-		l.state.statusMu.Unlock()
-		l.stop <- struct{}{}
-
-		newStatus := constants.Stopping // for canceled context
-		select {
-		case <-ctx.Done():
-		case <-l.stopped:
-			newStatus = constants.Stopped
-		}
-		l.state.statusMu.Lock()
-		l.state.status = newStatus
-		return status.String(), nil
+		return transitionStatus(ctx, l, existingStatus, constants.Stopping, l.stop, l.stopped), nil
 	default:
 		return "", fmt.Errorf("invalid status: %s: it can only be one of: %s, %s",
 			status, constants.Running, constants.Stopped)
 	}
+}
+
+// transitionStatus sets the transition status, requests the transition from
+// the loop, waits for the loop to perform it, and returns the resulting status.
+// The request can be abandoned with the context, in which case the previous
+// status is restored. Once the loop received the request though, the matching
+// notification is always read back, since the loop sends exactly one
+// notification per request received and would otherwise be left blocked.
+func transitionStatus[notificationType any](ctx context.Context, l *Loop,
+	existingStatus models.LoopStatus, transitionStatus models.LoopStatus,
+	request chan<- struct{}, notification <-chan notificationType,
+) (outcome string) {
+	l.loopLock.Lock()
+	defer l.loopLock.Unlock()
+	l.state.status = transitionStatus
+	l.state.statusMu.Unlock()
+
+	requestSent := false
+	select {
+	case <-ctx.Done():
+	case request <- struct{}{}:
+		requestSent = true
+		// Read back the notification the loop always sends per request
+		// received, so the loop is never left blocked on it. The loop also
+		// closes the channel if it exits, so this never waits forever.
+		<-notification
+	}
+	l.state.statusMu.Lock()
+	if !requestSent {
+		// The request never reached the loop, so revert to the
+		// status the loop was in before this call
+		l.state.status = existingStatus
+	}
+	return l.state.status.String()
 }
 
 func (l *Loop) GetSettings() (settings settings.Updater) {

@@ -3,9 +3,9 @@ package settings
 import (
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/qdm12/gosettings/reader"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
 
 func Test_PublicIP_read(t *testing.T) {

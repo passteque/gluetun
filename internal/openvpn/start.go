@@ -26,7 +26,8 @@ func start(ctx context.Context, starter CmdStarter, version string, flags []stri
 		return nil, nil, nil, fmt.Errorf("OpenVPN version is unknown: %s", version)
 	}
 
-	args := []string{"--config", configPath}
+	args := make([]string, 0, 2+len(flags)) //nolint:mnd
+	args = append(args, "--config", configPath)
 	args = append(args, flags...)
 	cmd := exec.CommandContext(ctx, bin, args...)
 	setCmdSysProcAttr(cmd)

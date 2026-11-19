@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/qdm12/gluetun/internal/models"
 	"github.com/qdm12/gluetun/internal/provider/common"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 	"golang.org/x/net/html"
 )
 
@@ -33,42 +33,77 @@ func Test_fetchServers(t *testing.T) {
 		servers        []models.Server
 		errMessage     string
 	}{
-		"context canceled": {
+		"context_canceled": {
 			ctx:        canceledCtx,
-			errMessage: `fetching HTML code: Get "https://www.vpnsecure.me/vpn-locations/": context canceled`,
+			errMessage: `fetching HTML code: Get "https://www.vpnsecure.me/locations/": context canceled`,
 		},
-		"success": {
+		"success_with_testdata": {
 			ctx:            context.Background(),
 			responseStatus: http.StatusOK,
 			responseBody: io.NopCloser(strings.NewReader(`
-			<div class="blk blk--white locations-list">
-				<div class="blk__i">
-					<div>
-					<a href="https://www.vpnsecure.me/vpn-locations/australia/">
-						<h4>Australia</h4>
-					</a>
-					<div class="grid grid--3 grid--locations">
-						<dl class="grid__i">
-							<dt>
-								au1
-								<span class="status status--up">up</span>
-							</dt>
-							<dd>
-								<div><span>City:</span> <strong>City</strong></div>
-								<div><span>Region:</span> <strong>Region</strong></div>
-								<div><span>Premium:</span> <strong>YES</strong></div>
-
-							</dd>
-						</dl>
-					</div>
-				</div>
+<body data-controller="menu" class="locations">
+	<div id="servers" class="container mt-5 mt-lg-6">
+		<div class="col-12 box dark-gray d-lg-none">
+			<h3>
+				<span class="flag">🇦🇺</span>
+				Australia
+			</h3>
+			<div class="col-12 box white">
+				<table>
+					<thead>
+						<tr>
+							<th><div class="green-circle"></div></th>
+							<th>City</th>
+							<th class="right">AU #01</th>
+						</tr>
+					</thead>
+					<tbody>
+						<tr>
+							<td colspan="2">
+								WireGuard
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2">
+								OpenVPN
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2">
+								Stealth Mode
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2">
+								Streaming
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2">
+								Dedicated IP
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2">
+								Fast (1Gbps)
+							</td>
+						</tr>
+						<tr>
+							<td colspan="2">
+								Adblocker
+							</td>
+						</tr>
+					</tbody>
+				</table>
 			</div>
+		</div>
+	</div>
+</body>
 			`)),
 			servers: []models.Server{
 				{
 					Country:  "Australia",
 					City:     "City",
-					Region:   "Region",
 					Hostname: "au1.isponeder.com",
 					Premium:  true,
 				},
@@ -84,7 +119,7 @@ func Test_fetchServers(t *testing.T) {
 			client := &http.Client{
 				Transport: roundTripFunc(func(r *http.Request) (*http.Response, error) {
 					assert.Equal(t, http.MethodGet, r.Method)
-					assert.Equal(t, r.URL.String(), "https://www.vpnsecure.me/vpn-locations/")
+					assert.Equal(t, r.URL.String(), "https://www.vpnsecure.me/locations/")
 
 					ctxErr := r.Context().Err()
 					if ctxErr != nil {
@@ -92,7 +127,7 @@ func Test_fetchServers(t *testing.T) {
 					}
 
 					return &http.Response{
-						StatusCode: http.StatusOK,
+						StatusCode: testCase.responseStatus,
 						Status:     http.StatusText(testCase.responseStatus),
 						Body:       testCase.responseBody,
 					}, nil
@@ -122,92 +157,211 @@ func Test_parseHTML(t *testing.T) {
 		warnings   []string
 		errMessage string
 	}{
-		"empty html": {
+		"empty_html": {
 			rootNode:   parseTestHTML(t, ""),
 			errMessage: `HTML servers container div not found: in HTML code: <html><head></head><body></body></html>`,
 		},
-		"test data": {
-			rootNode: parseTestDataIndexHTML(t),
-			warnings: []string{
-				"no grid item found: in HTML code: <div class=\"grid grid--3 grid--locations\">\n                      </div>",
-			},
-			//nolint:lll
+		"missing_servers_div": {
+			rootNode:   parseTestHTML(t, `<div id="other"></div>`),
+			errMessage: "HTML servers container div not found",
+		},
+		"server_without_green_circle_is_skipped": {
+			rootNode: parseTestHTML(t, `<div id="servers">
+				<div class="box dark-gray">
+					<h3>Germany</h3>
+					<div class="box white">
+						<table>
+							<thead>
+								<tr>
+									<th><div class="red-circle"></div></th>
+									<th>Berlin</th>
+									<th class="right">DE #01</th>
+								</tr>
+							</thead>
+						</table>
+					</div>
+				</div>
+			</div>`),
+			// servers is nil (all servers skipped)
+			warnings: []string{"skipping server which is not up"},
+		},
+		"server_without_Dedicated_IP_is_not_premium": {
+			rootNode: parseTestHTML(t, `<div id="servers">
+				<div class="box dark-gray">
+					<h3>Germany</h3>
+					<div class="box white">
+						<table>
+							<thead>
+								<tr>
+									<th><div class="green-circle"></div></th>
+									<th>Berlin</th>
+									<th class="right">DE #01</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td colspan="2">Dedicated IP</td>
+									<td class="right"><img src="/purple-cross.svg"></td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				</div>
+			</div>`),
 			servers: []models.Server{
-				{Country: "Australia", Region: "Queensland", City: "Brisbane", Hostname: "au1.isponeder.com", Premium: true},
-				{Country: "Australia", Region: "New South Wales", City: "Sydney", Hostname: "au2.isponeder.com"},
-				{Country: "Australia", Region: "New South Wales", City: "Sydney", Hostname: "au3.isponeder.com"},
-				{Country: "Australia", Region: "New South Wales", City: "Sydney", Hostname: "au4.isponeder.com", Premium: true},
-				{Country: "Austria", Region: "Vienna", City: "Vienna", Hostname: "at1.isponeder.com", Premium: true},
-				{Country: "Austria", Region: "Vienna", City: "Vienna", Hostname: "at2.isponeder.com"},
-				{Country: "Brazil", Region: "Sao Paulo", City: "Sao Paulo", Hostname: "br1.isponeder.com", Premium: true},
-				{Country: "Belgium", Region: "Flanders", City: "Zaventem", Hostname: "be1.isponeder.com"},
-				{Country: "Belgium", Region: "Brussels Hoofdstedelijk Gewest", City: "Brussel", Hostname: "be2.isponeder.com"},
-				{Country: "Canada", Region: "Ontario", City: "Richmond Hill", Hostname: "ca1.isponeder.com"},
-				{Country: "Canada", Region: "Ontario", City: "Richmond Hill", Hostname: "ca2.isponeder.com"},
-				{Country: "Canada", Region: "Quebec", City: "Montréal", Hostname: "ca3.isponeder.com", Premium: true},
-				{Country: "Denmark", Region: "Capital Region", City: "Copenhagen", Hostname: "dk1.isponeder.com", Premium: true},
-				{Country: "Denmark", Region: "Capital Region", City: "Copenhagen", Hostname: "dk2.isponeder.com", Premium: true},
-				{Country: "Denmark", Region: "Capital Region", City: "Ballerup", Hostname: "dk3.isponeder.com"},
-				{Country: "France", Region: "Île-de-France", City: "Paris", Hostname: "fr1.isponeder.com"},
-				{Country: "France", Region: "Île-de-France", City: "Paris", Hostname: "fr2.isponeder.com"},
-				{Country: "France", Region: "Grand Est", City: "Strasbourg", Hostname: "fr3.isponeder.com"},
-				{Country: "Germany", Region: "Hesse", City: "Frankfurt am Main", Hostname: "de1.isponeder.com"},
-				{Country: "Germany", Region: "Hesse", City: "Frankfurt am Main", Hostname: "de2.isponeder.com"},
-				{Country: "Germany", Region: "Hesse", City: "Frankfurt am Main", Hostname: "de3.isponeder.com"},
-				{Country: "Germany", Region: "Hesse", City: "Frankfurt am Main", Hostname: "de4.isponeder.com"},
-				{Country: "Germany", Region: "Hesse", City: "Limburg an der Lahn", Hostname: "de5.isponeder.com"},
-				{Country: "Germany", Region: "Hesse", City: "Frankfurt am Main", Hostname: "de6.isponeder.com"},
-				{Country: "Hungary", Region: "Budapest", City: "Budapest", Hostname: "hu1.isponeder.com", Premium: true},
-				{Country: "India", Region: "Karnataka", City: "Doddaballapura", Hostname: "in1.isponeder.com"},
-				{Country: "Indonesia", Region: "Special Capital Region of Jakarta", City: "Jakarta", Hostname: "id1.isponeder.com"},
-				{Country: "Ireland", Region: "Dublin City", City: "Dublin", Hostname: "ie1.isponeder.com"},
-				{Country: "Israel", Region: "Tel Aviv", City: "Tel Aviv", Hostname: "il1.isponeder.com", Premium: true},
-				{Country: "Italy", Region: "Lombardy", City: "Milan", Hostname: "it1.isponeder.com", Premium: true},
-				{Country: "Japan", Region: "Tokyo", City: "Tokyo", Hostname: "jp2.isponeder.com", Premium: true},
-				{Country: "Mexico", Region: "México", City: "Ampliación San Mateo (Colonia Solidaridad)", Hostname: "mx1.isponeder.com"},
-				{Country: "Netherlands", Region: "North Holland", City: "Haarlem", Hostname: "nl1.isponeder.com"},
-				{Country: "Netherlands", Region: "South Holland", City: "Naaldwijk", Hostname: "nl2.isponeder.com"},
-				{Country: "New Zealand", Region: "Auckland", City: "Auckland", Hostname: "nz1.isponeder.com"},
-				{Country: "Norway", Region: "Oslo", City: "Oslo", Hostname: "no1.isponeder.com", Premium: true},
-				{Country: "Norway", Region: "Stockholm", City: "Stockholm", Hostname: "no2.isponeder.com", Premium: true},
-				{Country: "Poland", Region: "Mazovia", City: "Warsaw", Hostname: "pl1.isponeder.com", Premium: true},
-				{Country: "Romania", Region: "Bucure?ti", City: "Bucharest", Hostname: "ro1.isponeder.com", Premium: true},
-				{Country: "Russia", Region: "Moscow", City: "Moscow", Hostname: "ru1.isponeder.com", Premium: true},
-				{Country: "Singapore", Region: "Singapore", City: "Singapore", Hostname: "sg1.isponeder.com", Premium: true},
-				{Country: "South Africa", Region: "Western Cape", City: "Cape Town", Hostname: "za1.isponeder.com", Premium: true},
-				{Country: "Spain", Region: "Madrid", City: "Madrid", Hostname: "es2.isponeder.com"},
-				{Country: "Spain", Region: "Valencia", City: "Valencia", Hostname: "se1.isponeder.com"},
-				{Country: "Sweden", Region: "Stockholm", City: "Stockholm", Hostname: "se2.isponeder.com", Premium: true},
-				{Country: "Sweden", Region: "Stockholm", City: "Stockholm", Hostname: "se3.isponeder.com"},
-				{Country: "Switzerland", Region: "Vaud", City: "Lausanne", Hostname: "ch1.isponeder.com"},
-				{Country: "Switzerland", Region: "Geneva", City: "Geneva", Hostname: "ch1.isponeder.com", Premium: true},
-				{Country: "Switzerland", Region: "Geneva", City: "Genève", Hostname: "ch2.isponeder.com", Premium: true},
-				{Country: "Ukraine", Region: "Poltavs'ka Oblast'", City: "Kremenchuk", Hostname: "ua1.isponeder.com", Premium: true},
-				{Country: "United Arab Emirates", Region: "Maharashtra", City: "Mumbai", Hostname: "ae1.isponeder.com", Premium: true},
-				{Country: "United Kingdom", Region: "England", City: "London", Hostname: "uk2.isponeder.com"},
-				{Country: "United Kingdom", Region: "England", City: "Kent", Hostname: "uk3.isponeder.com"},
-				{Country: "United Kingdom", Region: "England", City: "London", Hostname: "uk4.isponeder.com"},
-				{Country: "United Kingdom", Region: "England", City: "London", Hostname: "uk5.isponeder.com"},
-				{Country: "United Kingdom", Region: "Brent", City: "Harlesden", Hostname: "uk6.isponeder.com"},
-				{Country: "United Kingdom", Region: "England", City: "Manchester", Hostname: "uk7.isponeder.com"},
-				{Country: "United States", Region: "New Jersey", City: "Secaucus", Hostname: "us1.isponeder.com"},
-				{Country: "United States", Region: "New York", City: "New York City", Hostname: "us10.isponeder.com"},
-				{Country: "United States", Region: "California", City: "Los Angeles", Hostname: "us11.isponeder.com"},
-				{Country: "United States", Region: "Illinois", City: "Chicago", Hostname: "us12.isponeder.com"},
-				{Country: "United States", Region: "California", City: "Los Angeles", Hostname: "us13.isponeder.com"},
-				{Country: "United States", Region: "California", City: "Los Angeles", Hostname: "us14.isponeder.com"},
-				{Country: "United States", Region: "California", City: "Los Angeles", Hostname: "us15.isponeder.com"},
-				{Country: "United States", Region: "Illinois", City: "Chicago", Hostname: "us16.isponeder.com"},
-				{Country: "United States", Region: "New York", City: "New York City", Hostname: "us2.isponeder.com"},
-				{Country: "United States", Region: "Oregon", City: "Portland", Hostname: "us3.isponeder.com", Premium: true},
-				{Country: "United States", Region: "Illinois", City: "Chicago", Hostname: "us4.isponeder.com"},
-				{Country: "United States", Region: "California", City: "Los Angeles", Hostname: "us5.isponeder.com"},
-				{Country: "United States", Region: "California", City: "Los Angeles", Hostname: "us6.isponeder.com"},
-				{Country: "United States", Region: "Illinois", City: "Chicago", Hostname: "us7.isponeder.com"},
-				{Country: "United States", Region: "Georgia", City: "Atlanta", Hostname: "us8.isponeder.com"},
-				{Country: "United States", Region: "Georgia", City: "Atlanta", Hostname: "us9.isponeder.com"},
-				{Country: "Hong Kong", Region: "Central and Western", City: "Hong Kong", Hostname: "hk1.isponeder.com"},
-				{Country: "United States West", Region: "California", City: "Los Angeles", Hostname: "us3.isponeder.com", Premium: true},
+				{
+					Country:  "Germany",
+					City:     "Berlin",
+					Hostname: "de1.isponeder.com",
+					Premium:  false,
+				},
+			},
+		},
+		"server_with_Dedicated_IP_is_premium": {
+			rootNode: parseTestHTML(t, `<div id="servers">
+				<div class="box dark-gray">
+					<h3>Germany</h3>
+					<div class="box white">
+						<table>
+							<thead>
+								<tr>
+									<th><div class="green-circle"></div></th>
+									<th>Berlin</th>
+									<th class="right">DE #01</th>
+								</tr>
+							</thead>
+							<tbody>
+								<tr>
+									<td colspan="2">Dedicated IP</td>
+									<td class="right"><img src="/pink-check.svg"></td>
+								</tr>
+							</tbody>
+						</table>
+					</div>
+				</div>
+			</div>`),
+			servers: []models.Server{
+				{
+					Country:  "Germany",
+					City:     "Berlin",
+					Hostname: "de1.isponeder.com",
+					Premium:  true,
+				},
+			},
+		},
+		"country_with_flag_emoji_prefix_is_stripped": {
+			rootNode: parseTestHTML(t, `<div id="servers">
+				<div class="box dark-gray">
+					<h3><span class="flag">🇩🇪</span> Germany</h3>
+					<div class="box white">
+						<table>
+							<thead>
+								<tr>
+									<th><div class="green-circle"></div></th>
+									<th>Berlin</th>
+									<th class="right">DE #01</th>
+								</tr>
+							</thead>
+							<tbody></tbody>
+						</table>
+					</div>
+				</div>
+			</div>`),
+			servers: []models.Server{
+				{
+					Country:  "Germany",
+					City:     "Berlin",
+					Hostname: "de1.isponeder.com",
+				},
+			},
+		},
+		"country_name_starting_with_emoji_inline_text": {
+			rootNode: parseTestHTML(t, `<div id="servers">
+				<div class="box dark-gray">
+					<h3>🇯🇵 Japan</h3>
+					<div class="box white">
+						<table>
+							<thead>
+								<tr>
+									<th><div class="green-circle"></div></th>
+									<th>Tokyo</th>
+									<th class="right">JP #01</th>
+								</tr>
+							</thead>
+							<tbody></tbody>
+						</table>
+					</div>
+				</div>
+			</div>`),
+			servers: []models.Server{
+				{
+					Country:  "Japan",
+					City:     "Tokyo",
+					Hostname: "jp1.isponeder.com",
+				},
+			},
+		},
+		"test_data": {
+			rootNode: parseTestDataIndexHTML(t),
+			servers: []models.Server{
+				{Country: "Australia", City: "Sydney", Hostname: "au1.isponeder.com", Premium: false},
+				{Country: "Brazil", City: "São Paulo", Hostname: "br1.isponeder.com", Premium: false},
+				{Country: "Canada", City: "Montréal", Hostname: "ca.isponeder.com", Premium: true},
+				{Country: "Canada", City: "Montréal", Hostname: "ca1.isponeder.com", Premium: true},
+				{Country: "Canada", City: "Montréal", Hostname: "ca2.isponeder.com", Premium: true},
+				{Country: "Canada", City: "Montréal", Hostname: "ca3.isponeder.com", Premium: true},
+				{Country: "Czech Republic", City: "Prague", Hostname: "cz1.isponeder.com", Premium: true},
+				{Country: "France", City: "Roubaix", Hostname: "fr.isponeder.com", Premium: true},
+				{Country: "France", City: "Roubaix", Hostname: "fr1.isponeder.com", Premium: true},
+				{Country: "France", City: "Roubaix", Hostname: "fr2.isponeder.com", Premium: true},
+				{Country: "France", City: "Strasbourg", Hostname: "fr3.isponeder.com", Premium: true},
+				{Country: "France", City: "Strasbourg", Hostname: "fr4.isponeder.com", Premium: true},
+				{Country: "Germany", City: "Frankfurt", Hostname: "de2.isponeder.com", Premium: true},
+				{Country: "Germany", City: "Limburg", Hostname: "de1.isponeder.com", Premium: true},
+				{Country: "Hong Kong", City: "Hong Kong", Hostname: "hk1.isponeder.com", Premium: false},
+				{Country: "India", City: "Mumbai", Hostname: "in1.isponeder.com", Premium: false},
+				{Country: "Ireland", City: "Dublin", Hostname: "ie1.isponeder.com", Premium: true},
+				{Country: "Ireland", City: "Dublin", Hostname: "ie2.isponeder.com", Premium: true},
+				{Country: "Ireland", City: "Dublin", Hostname: "ie3.isponeder.com", Premium: true},
+				{Country: "Israel", City: "Tel Aviv", Hostname: "il1.isponeder.com", Premium: false},
+				{Country: "Italy", City: "Milan", Hostname: "it1.isponeder.com", Premium: true},
+				{Country: "Italy", City: "Milan", Hostname: "it2.isponeder.com", Premium: true},
+				{Country: "Japan", City: "Tokyo", Hostname: "jp1.isponeder.com", Premium: false},
+				{Country: "Lithuania", City: "Vilnius", Hostname: "lt1.isponeder.com", Premium: true},
+				{Country: "Mexico", City: "Mexico City", Hostname: "mx1.isponeder.com", Premium: false},
+				{Country: "Netherlands", City: "Amsterdam", Hostname: "nl1.isponeder.com", Premium: true},
+				{Country: "Netherlands", City: "Amsterdam", Hostname: "nl2.isponeder.com", Premium: true},
+				{Country: "Poland", City: "Warsaw", Hostname: "pl1.isponeder.com", Premium: true},
+				{Country: "Romania", City: "Bucharest", Hostname: "ro2.isponeder.com", Premium: true},
+				{Country: "Romania", City: "Voluntari", Hostname: "ro1.isponeder.com", Premium: true},
+				{Country: "Russia", City: "Saint Petersburg", Hostname: "ru1.isponeder.com", Premium: false},
+				{Country: "Singapore", City: "Singapore", Hostname: "sg.isponeder.com", Premium: true},
+				{Country: "Singapore", City: "Singapore", Hostname: "sg1.isponeder.com", Premium: true},
+				{Country: "Spain", City: "Madrid", Hostname: "es1.isponeder.com", Premium: true},
+				{Country: "Spain", City: "Madrid", Hostname: "es2.isponeder.com", Premium: true},
+				{Country: "Sweden", City: "Stockholm", Hostname: "se1.isponeder.com", Premium: false},
+				{Country: "Switzerland", City: "Zurich", Hostname: "ch1.isponeder.com", Premium: false},
+				{Country: "Ukraine", City: "Kyiv", Hostname: "ua1.isponeder.com", Premium: true},
+				{Country: "Ukraine", City: "Kyiv", Hostname: "ua2.isponeder.com", Premium: true},
+				{Country: "United Kingdom", City: "Bexleyheath", Hostname: "gb3.isponeder.com", Premium: false},
+				{Country: "United Kingdom", City: "Erith", Hostname: "gb2.isponeder.com", Premium: false},
+				{Country: "United Kingdom", City: "London", Hostname: "gb1.isponeder.com", Premium: false},
+				{Country: "United States", City: "Missouri", Hostname: "us5.isponeder.com", Premium: false},
+				{Country: "United States", City: "New York", Hostname: "us1.isponeder.com", Premium: false},
+				{Country: "United States", City: "New York", Hostname: "us4.isponeder.com", Premium: false},
+				{Country: "United States", City: "Oregon", Hostname: "us6.isponeder.com", Premium: true},
+				{Country: "United States", City: "Oregon", Hostname: "us7.isponeder.com", Premium: true},
+				{Country: "United States", City: "Oregon", Hostname: "us8.isponeder.com", Premium: true},
+				{Country: "United States", City: "Oregon", Hostname: "us9.isponeder.com", Premium: true},
+				{Country: "United States", City: "Oregon", Hostname: "us10.isponeder.com", Premium: true},
+				{Country: "United States", City: "Texas", Hostname: "us2.isponeder.com", Premium: false},
+				{Country: "United States", City: "Texas", Hostname: "us3.isponeder.com", Premium: false},
+				{Country: "United States", City: "Virginia", Hostname: "us11.isponeder.com", Premium: true},
+				{Country: "United States", City: "Virginia", Hostname: "us12.isponeder.com", Premium: true},
+				{Country: "United States", City: "Virginia", Hostname: "us13.isponeder.com", Premium: true},
+				{Country: "United States", City: "Virginia", Hostname: "us14.isponeder.com", Premium: true},
+				{Country: "United States", City: "Virginia", Hostname: "us15.isponeder.com", Premium: true},
+				{Country: "United States", City: "Virginia", Hostname: "us16.isponeder.com", Premium: true},
 			},
 		},
 	}
@@ -219,9 +373,18 @@ func Test_parseHTML(t *testing.T) {
 			servers, warnings, err := parseHTML(testCase.rootNode)
 
 			assert.Equal(t, testCase.servers, servers)
-			assert.Equal(t, testCase.warnings, warnings)
+			for _, expected := range testCase.warnings {
+				found := false
+				for _, actual := range warnings {
+					if strings.Contains(actual, expected) {
+						found = true
+						break
+					}
+				}
+				assert.True(t, found, "warning %q not found in %v", expected, warnings)
+			}
 			if testCase.errMessage != "" {
-				assert.EqualError(t, err, testCase.errMessage)
+				assert.ErrorContains(t, err, testCase.errMessage)
 			} else {
 				assert.NoError(t, err)
 			}

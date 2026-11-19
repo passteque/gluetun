@@ -38,7 +38,7 @@ func Test_addCredential(t *testing.T) {
 			vpnType:            "wireguard",
 			wireguardCreds: &wireguardCredentials{
 				PrivateKey: wireguardPrivateKey.String(),
-				Address:    "10.0.0.2/32",
+				Addresses:  "10.0.0.2/32",
 			},
 			expectedLength:    1,
 			expectedWireGuard: true,
@@ -212,7 +212,7 @@ func Test_marshalLoadCredentials(t *testing.T) {
 		"mullvad": {
 			WireGuard: &wireguardCredentials{
 				PrivateKey: wireguardPrivateKey.String(),
-				Address:    "10.0.0.2/32",
+				Addresses:  "10.0.0.2/32",
 			},
 		},
 		"protonvpn": {
@@ -282,7 +282,7 @@ func Test_formatCredentialForDump(t *testing.T) {
 			providerCredentials: providerCredentials{
 				WireGuard: &wireguardCredentials{
 					PrivateKey:   "private",
-					Address:      "10.0.0.2/32",
+					Addresses:    "10.0.0.2/32",
 					PresharedKey: "preshared",
 				},
 			},

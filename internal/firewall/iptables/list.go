@@ -33,6 +33,9 @@ type chainRule struct {
 	ctstate         []string     // for example ["RELATED","ESTABLISHED"]. Can be empty.
 	tcpFlags        tcpFlags
 	mark            mark
+	connMark        mark
+	setMark         uint
+	rejectWith      string // for example "tcp-reset", only used for REJECT targets
 }
 
 type mark struct {
@@ -215,10 +218,6 @@ func parseChainRuleField(fieldIndex int, field string, rule *chainRule) (err err
 			return fmt.Errorf("parsing bytes: %w", err)
 		}
 	case targetIndex:
-		err = checkTarget(field)
-		if err != nil {
-			return fmt.Errorf("checking target: %w", err)
-		}
 		rule.target = field
 	case protocolIndex:
 		rule.protocol, err = parseProtocol(field)
@@ -289,6 +288,33 @@ func parseChainRuleOptionalFields(optionalFields []string, rule *chainRule) (err
 			}
 			rule.mark = mark
 			i += consumed
+		case "reject-with":
+			i++
+			rule.rejectWith = optionalFields[i] // for example "tcp-reset"
+			i++
+		case "connmark":
+			i++
+			connMark, consumed, err := parseMark(optionalFields[i:])
+			if err != nil {
+				return fmt.Errorf("parsing connmark: %w", err)
+			}
+			rule.connMark = connMark
+			i += consumed
+		case "CONNMARK":
+			i++
+			switch optionalFields[i] {
+			case "set":
+				i++
+				value, err := parseAny32bNumber(optionalFields[i])
+				if err != nil {
+					return fmt.Errorf("parsing CONNMARK set value: %w", err)
+				}
+				rule.setMark = value
+				i++
+			default:
+				return fmt.Errorf("chain rule is malformed: unexpected %q after CONNMARK",
+					optionalFields[i])
+			}
 		default:
 			return fmt.Errorf("chain rule is malformed: unexpected optional field: %s",
 				optionalFields[i])
@@ -421,13 +447,11 @@ func parseMark(optionalFields []string) (m mark, consumed int, err error) {
 			consumed++
 		}
 
-		const base = 0 // auto-detect
-		const bits = 32
-		value, err := strconv.ParseUint(optionalFields[consumed], base, bits)
+		value, err := parseAny32bNumber(optionalFields[consumed])
 		if err != nil {
 			return mark{}, 0, fmt.Errorf("mark value is malformed: %s", optionalFields[consumed])
 		}
-		m.value = uint(value)
+		m.value = value
 		consumed++
 	default:
 		return mark{}, 0, fmt.Errorf("chain rule is malformed: unexpected mark mode field: %s",

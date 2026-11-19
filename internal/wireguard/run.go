@@ -11,7 +11,6 @@ import (
 	gtun "github.com/qdm12/gluetun/internal/tun"
 	"golang.zx2c4.com/wireguard/conn"
 	"golang.zx2c4.com/wireguard/device"
-	"golang.zx2c4.com/wireguard/tun"
 	"golang.zx2c4.com/wireguard/wgctrl"
 )
 
@@ -30,7 +29,7 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 	setupFunction := setupUserSpace
 	userspace := false
 	switch w.settings.Implementation {
-	case "auto": //nolint:goconst
+	case "auto":
 		if !kernelSupported {
 			w.logger.Info("Using userspace implementation since Kernel support does not exist")
 			userspace = true
@@ -62,7 +61,8 @@ func (w *Wireguard) Run(ctx context.Context, waitError chan<- error, ready chan<
 		linkIndex uint32, waitAndCleanup func() error, err error,
 	) {
 		return setupFunction(ctx,
-			w.settings.InterfaceName, w.netlink, w.settings.MTU, cleanups, w.logger)
+			w.settings.InterfaceName, w.netlink, w.settings.MTU,
+			*w.settings.GSO, cleanups, w.logger)
 	}
 
 	Run(ctx, waitError, ready, setup, w.settings, w.netlink, w.logger)
@@ -119,6 +119,14 @@ func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 		return
 	}
 
+	// The IP rules must be removed last, after the link is deleted
+	// together with its addresses. Otherwise, once a rule is removed,
+	// packets of connections established through the tunnel would be
+	// routed out of the default route interface, with the tunnel
+	// address as source, and leak outside the VPN, since the firewall
+	// accepts established connections.
+	const ruleCleanupOrder = 8
+
 	if *settings.IPv6 {
 		// requires net.ipv6.conf.all.disable_ipv6=0
 		ruleCleanup6, err := AddRule(settings.RulePriority,
@@ -128,7 +136,7 @@ func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 			waitError <- fmt.Errorf("adding IPv6 rule: %w", err)
 			return
 		}
-		cleanups.Add("removing IPv6 rule", 1, ruleCleanup6)
+		cleanups.Add("removing IPv6 rule", ruleCleanupOrder, ruleCleanup6)
 	}
 
 	ruleCleanup, err := AddRule(settings.RulePriority,
@@ -139,7 +147,7 @@ func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 		return
 	}
 
-	cleanups.Add("removing IPv4 rule", 1, ruleCleanup)
+	cleanups.Add("removing IPv4 rule", ruleCleanupOrder, ruleCleanup)
 	ready <- struct{}{}
 
 	waitError <- waitAndCleanup()
@@ -147,7 +155,7 @@ func Run(ctx context.Context, waitError chan<- error, ready chan<- struct{},
 
 func setupKernelSpace(ctx context.Context,
 	interfaceName string, netLinker NetLinker, mtu uint32,
-	cleanups *cleanup.Cleanups, logger Logger) (
+	_ bool, cleanups *cleanup.Cleanups, logger Logger) (
 	linkIndex uint32, waitAndCleanup func() error, err error,
 ) {
 	links, err := netLinker.LinkList()
@@ -191,10 +199,10 @@ func setupKernelSpace(ctx context.Context,
 
 func setupUserSpace(ctx context.Context,
 	interfaceName string, netLinker NetLinker, mtu uint32,
-	cleanups *cleanup.Cleanups, logger Logger) (
+	gso bool, cleanups *cleanup.Cleanups, logger Logger) (
 	linkIndex uint32, waitAndCleanup func() error, err error,
 ) {
-	tun, err := tun.CreateTUN(interfaceName, int(mtu))
+	tun, err := createTUN(interfaceName, int(mtu), gso)
 	if err != nil {
 		return 0, nil, fmt.Errorf("creating TUN device: %w", err)
 	}
@@ -220,7 +228,7 @@ func setupUserSpace(ctx context.Context,
 
 	cleanups.Add("closing bind", 7, bind.Close)
 
-	deviceLogger := makeDeviceLogger(logger)
+	deviceLogger := makeDeviceLogger(logger, gso)
 	device := device.NewDevice(tun, bind, deviceLogger)
 
 	cleanups.Add("closing Wireguard device", 6, func() error {

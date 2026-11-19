@@ -7,10 +7,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/golang/mock/gomock"
 	"github.com/qdm12/gluetun/internal/httpserver"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.uber.org/mock/gomock"
 )
 
 //go:generate mockgen -destination=logger_mock_test.go -package $GOPACKAGE github.com/qdm12/gluetun/internal/httpserver Logger

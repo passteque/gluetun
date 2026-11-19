@@ -1,0 +1,219 @@
+{
+    // See https://containers.dev/implementors/json_reference/
+    "name": "gluetun-dev",
+    // The image builds an unprivileged account (uid/gid 1000 by default, name `user`)
+    // and runs as it. Keep this value in sync with the USERNAME build argument, and
+    // with the /home/user paths below, if you rebuild the image with other values.
+    "remoteUser": "user",
+    "containerEnv": {
+        "TZ": "", // User defined timezone
+        "GH_TOKEN": "${localEnv:GH_TOKEN}", // GitHub token for GitHub CLI, used for `gh auth login` in the container
+        "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock" // Comment out if not using the SSH agent
+    },
+    "build": {
+        "dockerfile": "../Dockerfile",
+        // The unprivileged account the image creates and runs as (see the README,
+        // "Non-root user"). They must match "remoteUser" above and the /home/user
+        // mount targets below. DOCKER_GID is read from the host environment, empty
+        // meaning the docker group is not created in the image: use
+        // DOCKER_GID=$(stat -c %g /var/run/docker.sock) to bake in the group allowed
+        // to open a rootful engine's socket. Docker Desktop needs nothing.
+        "args": {
+            "USERNAME": "user",
+            "GROUP_NAME": "user",
+            "USER_UID": "1000",
+            "USER_GID": "1000",
+            "DOCKER_GID": "${localEnv:DOCKER_GID}"
+        }
+    },
+    "runArgs": [
+        // Set `host.docker.internal` to match Docker Desktop setups, in case this is running
+        // without Docker desktop using dockerd only.
+        "--add-host=host.docker.internal:host-gateway",
+        // Set `host.containers.internal` to match Podman setups to simplify cross engine configuration
+        "--add-host=host.containers.internal:host-gateway",
+        // The TUN character device, required to create a tunnel interface: the
+        // internal/wireguard userspace test, and any run bringing up a tunnel. The host
+        // needs the `tun` module loaded (`modprobe tun`). Comment the line out if it is
+        // unavailable - the container then starts as before, and only tunnel-bound code
+        // fails, with `creating TUN device: mkdir /dev/net: permission denied`.
+        "--device=/dev/net/tun:/dev/net/tun"
+        // A rootful dockerd socket belongs to root:docker, so the unprivileged user needs
+        // its group to reach it. Grant it without rebuilding the image by uncommenting
+        // and adapting this line to the group ID of the socket
+        // (`stat -c %g /var/run/docker.sock`), or bake it in with the DOCKER_GID build
+        // argument. Docker Desktop sockets are world-writable and need nothing.
+        // "--group-add=1001",
+    ],
+    // The engine also places these in the ambient set of the container's init process,
+    // so the unprivileged remoteUser holds them without sudo. See the README section
+    // "TUN device and raw sockets".
+    "capAdd": [
+        "NET_ADMIN", // tunnel interfaces: WireGuard TUN setup, netlink route/rule work
+        "NET_RAW", // raw sockets: PMTU/MSS discovery (internal/pmtud/tcp), tcpdump
+        "SYS_PTRACE" // dlv Go debugging
+    ],
+    "securityOpt": [
+        "seccomp=unconfined" // for dlv Go debugging
+    ],
+    "postCreateCommand": "~/.ssh.sh && go mod download && go mod tidy",
+    // Mount the checkout at the SAME absolute path it has on the host. A path handed
+    // to the host engine (`docker run -v $PWD/data:/data`, build contexts) then refers
+    // to the same files inside and outside the container.
+    "workspaceFolder": "${localWorkspaceFolder}",
+    "mounts": [
+        // Application code
+        {
+            "source": "${localWorkspaceFolder}",
+            "target": "${localWorkspaceFolder}",
+            "type": "bind"
+        },
+        // Zsh commands history persistence
+        {
+            "source": "${localEnv:HOME}/.zsh_history",
+            "target": "/home/user/.zsh_history",
+            "type": "bind"
+        },
+        // Git configuration file
+        {
+            "source": "${localEnv:HOME}/.gitconfig",
+            "target": "/home/user/.gitconfig",
+            "type": "bind"
+        },
+        // SSH agent socket forwarded from the host, so the private key
+        // never enters the container. Host side should have the SSH_AUTH_SOCK
+        // environment variable set as the path to the socket.
+        {
+            "source": "${localEnv:SSH_AUTH_SOCK}",
+            "target": "/tmp/ssh-agent.sock",
+            "type": "bind"
+        },
+        // Commented out in favor of using an SSH agent
+        // SSH directory for Linux, OSX and WSL
+        // On Linux and OSX, a symlink /mnt/ssh <-> ~/.ssh is
+        // created in the container. On Windows, files are copied
+        // from /mnt/ssh to ~/.ssh to fix permissions.
+        // {
+        //     "source": "${localEnv:HOME}/.ssh",
+        //     "target": "/mnt/ssh",
+        //     "type": "bind"
+        // },
+        // Known hosts, read from /etc/ssh/ssh_known_hosts by the OpenSSH client by default.
+        // If the user binds mount ~/.ssh <-> /mnt/ssh, this duplicates known_hosts in both
+        // ~/.ssh/known_hosts and /etc/ssh/ssh_known_hosts, which is fine.
+        {
+            "source": "${localEnv:HOME}/.ssh/known_hosts",
+            "target": "/etc/ssh/ssh_known_hosts",
+            "type": "bind"
+        },
+        // Commit signing using SSH.
+        // With gpg.format=ssh git resolves user.signingkey to the public key file
+        // to learn which identity to use, then asks the SSH agent for the signature.
+        // Adapt the public key filename to your public key filename in case it's not
+        // signingkey.pub. Comment out if ~/.ssh/signingkey.pub does not exist.
+        {
+            "source": "${localEnv:HOME}/.ssh/signingkey.pub",
+            "target": "/home/user/.ssh/signingkey.pub",
+            "type": "bind,readonly"
+        },
+        // Commit signatures display: allowed_signers is consulted by `git log`
+        // if log.showSignature is set to true. It contains a list of public keys
+        // and the email addresses.
+        // Comment out if ~/.ssh/allowed_signers does not exist.
+        {
+            "source": "${localEnv:HOME}/.ssh/allowed_signers",
+            "target": "/home/user/.ssh/allowed_signers",
+            "type": "bind,readonly"
+        },
+        // Machine-specific agent context
+        {
+            "source": "${localEnv:HOME}/AGENTS.md",
+            "target": "/home/user/AGENTS.md",
+            "type": "bind"
+        },
+        // Engine: the host's Docker daemon, reached through its own Unix socket and
+        // mounted at the same path, so docker, docker compose and any Docker SDK work
+        // with no DOCKER_HOST. /var/run/docker.sock is where a Linux dockerd listens by
+        // default, and Docker Desktop with WSL integration exposes the same path inside
+        // the distro.
+        {
+            "source": "/var/run/docker.sock",
+            "target": "/var/run/docker.sock",
+            "type": "bind"
+        },
+        // Container registry credentials for Docker.
+        // Comment out if the file does not exist.
+        {
+            "source": "${localEnv:HOME}/.config/containers/auth.json",
+            "target": "/home/user/.config/containers/auth.json",
+            "type": "bind"
+        }
+    ],
+    "customizations": {
+        "vscode": {
+            "extensions": [
+                "golang.go",
+                "eamodio.gitlens", // IDE Git information
+                "davidanson.vscode-markdownlint",
+                "ms-azuretools.vscode-docker", // Docker integration and linting
+                "shardulm94.trailing-spaces", // Show trailing spaces
+                "Gruntfuggly.todo-tree", // Highlights TODO comments
+                "bierner.emojisense", // Emoji sense for markdown
+                "stkb.rewrap", // rewrap comments after n characters on one line
+                "vscode-icons-team.vscode-icons", // Better file extension icons
+                "github.vscode-pull-request-github", // Github interaction
+                "redhat.vscode-yaml", // Kubernetes, Drone syntax highlighting
+                "bajdzis.vscode-database", // Supports connections to mysql or postgres, over SSL, socked
+                "IBM.output-colorizer" // Colorize your output/test logs
+                // "mohsen1.prettify-json", // Prettify JSON data
+                // "zxh404.vscode-proto3", // Supports Proto syntax
+                // "jrebocho.vscode-random", // Generates random values
+                // "alefragnani.Bookmarks", // Manage bookmarks
+                // "quicktype.quicktype", // Paste JSON as code
+                // "spikespaz.vscode-smoothtype", // smooth cursor animation
+            ],
+            "settings": {
+                "files.eol": "\n",
+                "editor.formatOnSave": true,
+                "terminal.integrated.env.linux": {
+                    "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
+                },
+                "go.buildTags": "linux",
+                "go.toolsEnvVars": {
+                    "CGO_ENABLED": "0"
+                },
+                "go.useLanguageServer": true,
+                "go.testEnvVars": {
+                    "CGO_ENABLED": "1"
+                },
+                "go.testFlags": [
+                    "-v",
+                    "-race"
+                ],
+                "go.testTimeout": "10s",
+                "go.coverOnSingleTest": true,
+                "go.coverOnSingleTestFile": true,
+                "go.coverOnTestPackage": true,
+                "go.lintTool": "golangci-lint",
+                "go.lintOnSave": "package",
+                "[go]": {
+                    "editor.codeActionsOnSave": {
+                        "source.organizeImports": "always"
+                    }
+                },
+                "gopls": {
+                    "usePlaceholders": false,
+                    "staticcheck": true,
+                    "ui.diagnostic.analyses": {
+                        "ST1000": false
+                    },
+                    "formatting.gofumpt": true
+                },
+                // Docker settings
+                "remote.extensionKind": {
+                    "ms-azuretools.vscode-docker": "workspace"
+                }
+            }
+        }
+    }
+}

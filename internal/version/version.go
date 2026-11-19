@@ -21,7 +21,7 @@ func GetMessage(ctx context.Context, buildInfo models.BuildInformation,
 		// Find # of commits between current commit and latest commit
 		commitsSince, err := getCommitsSince(ctx, client, buildInfo.Commit)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("getting commits: %w", err)
 		} else if commitsSince == 0 {
 			return fmt.Sprintf("You are running on the bleeding edge of %s!", buildInfo.Version), nil
 		}
@@ -33,7 +33,7 @@ func GetMessage(ctx context.Context, buildInfo models.BuildInformation,
 	}
 	tagName, name, releaseTime, err := getLatestRelease(ctx, client)
 	if err != nil {
-		return "", err
+		return "", fmt.Errorf("getting latest release: %w", err)
 	}
 	if tagName == buildInfo.Version {
 		return fmt.Sprintf("You are running the latest release %s", buildInfo.Version), nil
@@ -45,7 +45,9 @@ func GetMessage(ctx context.Context, buildInfo models.BuildInformation,
 }
 
 func getLatestRelease(ctx context.Context, client *http.Client) (tagName, name string, time time.Time, err error) {
-	releases, err := getGithubReleases(ctx, client)
+	var releases []githubRelease
+	const url = "https://api.github.com/repos/passteque/gluetun/releases"
+	err = getJSON(ctx, client, url, &releases)
 	if err != nil {
 		return "", "", time, err
 	}
@@ -63,7 +65,9 @@ func getLatestRelease(ctx context.Context, client *http.Client) (tagName, name s
 }
 
 func getCommitsSince(ctx context.Context, client *http.Client, commitShort string) (n int, err error) {
-	commits, err := getGithubCommits(ctx, client)
+	const url = "https://api.github.com/repos/passteque/gluetun/commits"
+	var commits []githubCommit
+	err = getJSON(ctx, client, url, &commits)
 	if err != nil {
 		return 0, err
 	}

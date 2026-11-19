@@ -14,7 +14,11 @@ func (u *Unzipper) FetchAndExtract(ctx context.Context, url string) (
 	if err != nil {
 		return nil, err
 	}
-	request.Header.Set("User-Agent", "gluetun")
+	if userAgent, ok := ctx.Value(userAgentContextKey).(string); ok && userAgent != "" {
+		request.Header.Set("User-Agent", userAgent)
+	} else {
+		request.Header.Set("User-Agent", "gluetun")
+	}
 
 	response, err := u.client.Do(request)
 	if err != nil {

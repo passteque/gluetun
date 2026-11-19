@@ -55,9 +55,10 @@ type serverData struct {
 }
 
 type groupData struct {
-	ID    uint32 `json:"id"`
-	Title string `json:"title"` // "Europe", "Standard VPN servers", etc.
-	Type  struct {
+	ID         uint32 `json:"id"`
+	Identifier string `json:"identifier"` // 'legacy_dedicated_ip', 'the_americas', etc.
+	Title      string `json:"title"`      // "Europe", "Standard VPN servers", etc.
+	Type       struct {
 		Identifier string `json:"identifier"` // 'regions', 'legacy_group_category', etc.
 	} `json:"type"`
 }
@@ -154,6 +155,23 @@ func (s *serverData) categories(groups map[uint32]groupData) (categories []strin
 		categories = append(categories, data.Title)
 	}
 	return categories
+}
+
+// isDedicated returns true if the server belongs to the dedicated IP group.
+// Note these servers also advertise the standard openvpn_udp, openvpn_tcp and
+// wireguard_udp technologies, so they cannot be detected with the technology
+// identifiers alone.
+func (s *serverData) isDedicated(groups map[uint32]groupData) (dedicated bool) {
+	for _, groupID := range s.GroupIDs {
+		group, ok := groups[groupID]
+		if !ok {
+			continue
+		}
+		if group.Identifier == "legacy_dedicated_ip" {
+			return true
+		}
+	}
+	return false
 }
 
 // ips returns the list of IP addresses for the server.

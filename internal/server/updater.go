@@ -65,6 +65,7 @@ func (h *updaterHandler) getStatus(w http.ResponseWriter) {
 
 func (h *updaterHandler) setStatus(w http.ResponseWriter, r *http.Request) {
 	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
 	var data statusWrapper
 	if err := decoder.Decode(&data); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -75,6 +76,9 @@ func (h *updaterHandler) setStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+
+	// ctx is the server handler context, so a status transition is carried out
+	// entirely, even if the requesting http connection is closed.
 	outcome, err := h.looper.SetStatus(h.ctx, status)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)

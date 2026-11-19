@@ -1,6 +1,11 @@
 package settings
 
-import gomock "github.com/golang/mock/gomock"
+import (
+	"encoding/binary"
+	"math/rand/v2"
+
+	gomock "go.uber.org/mock/gomock"
+)
 
 type sourceKeyValue struct {
 	key   string
@@ -27,4 +32,12 @@ func newMockSource(ctrl *gomock.Controller, keyValues []sourceKeyValue) *MockSou
 		}
 	}
 	return source
+}
+
+func generate32Bytes() []byte {
+	b := make([]byte, 32)
+	for i := 0; i < len(b); i += 8 {
+		binary.LittleEndian.PutUint64(b[i:], rand.Uint64()) //nolint:gosec
+	}
+	return b
 }

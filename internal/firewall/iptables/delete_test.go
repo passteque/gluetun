@@ -5,8 +5,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 )
 
 func Test_isDeleteMatchInstruction(t *testing.T) {
@@ -149,6 +149,29 @@ func Test_deleteIPTablesRule(t *testing.T) {
 				logger.EXPECT().Debug("found iptables chain rule matching \"-t nat --delete PREROUTING " +
 					"-i tun0 -p tcp --dport 43716 -j REDIRECT --to-ports 5678\" at line number 2")
 				logger.EXPECT().Debug("/sbin/iptables -t nat -D PREROUTING 2")
+				return logger
+			},
+		},
+		"delete_connmark_rule_found_success": {
+			instruction: "-D OUTPUT -m conntrack --ctstate RELATED,ESTABLISHED -m connmark --mark 0x567 -j ACCEPT",
+			makeRunner: func(ctrl *gomock.Controller) *MockCmdRunner {
+				runner := NewMockCmdRunner(ctrl)
+				runner.EXPECT().Run(newCmdMatcherListRules(iptablesBinary, "filter", "OUTPUT")).
+					Return("Chain OUTPUT (policy ACCEPT 0 packets, 0 bytes)\n"+
+						"num   pkts bytes target     prot opt in     out     source               destination         \n"+
+						"1        0     0 ACCEPT     0    --  *       *       0.0.0.0/0            0.0.0.0/0            "+
+						"ctstate RELATED,ESTABLISHED connmark match 0x567\n",
+						nil)
+				runner.EXPECT().Run(newCmdMatcher(iptablesBinary, "^-t$", "^filter$",
+					"^-D$", "^OUTPUT$", "^1$")).Return("", nil)
+				return runner
+			},
+			makeLogger: func(ctrl *gomock.Controller) *MockLogger {
+				logger := NewMockLogger(ctrl)
+				logger.EXPECT().Debug("/sbin/iptables -t filter -L OUTPUT --line-numbers -n -v")
+				logger.EXPECT().Debug("found iptables chain rule matching \"-D OUTPUT -m conntrack " +
+					"--ctstate RELATED,ESTABLISHED -m connmark --mark 0x567 -j ACCEPT\" at line number 1")
+				logger.EXPECT().Debug("/sbin/iptables -t filter -D OUTPUT 1")
 				return logger
 			},
 		},

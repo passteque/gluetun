@@ -1,6 +1,8 @@
 package privatevpn
 
 import (
+	"net/http"
+
 	"github.com/qdm12/gluetun/internal/constants/providers"
 	"github.com/qdm12/gluetun/internal/provider/common"
 	"github.com/qdm12/gluetun/internal/provider/privatevpn/updater"
@@ -13,13 +15,13 @@ type Provider struct {
 	common.Fetcher
 }
 
-func New(storage common.Storage, unzipper common.Unzipper, updaterWarner common.Warner,
+func New(storage common.Storage, client *http.Client, updaterWarner common.Warner,
 	parallelResolver common.ParallelResolver,
 ) *Provider {
 	return &Provider{
 		storage:    storage,
 		connPicker: utils.NewConnectionPicker(),
-		Fetcher:    updater.New(unzipper, updaterWarner, parallelResolver),
+		Fetcher:    updater.New(client, updaterWarner, parallelResolver),
 	}
 }
 

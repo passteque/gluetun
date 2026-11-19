@@ -8,6 +8,7 @@ import (
 	"net/netip"
 	"sort"
 	"strings"
+	"syscall"
 	"time"
 )
 
@@ -82,16 +83,13 @@ func (c *Client) rpc(ctx context.Context, gateway netip.Addr,
 
 		bytesRead, receivedRemoteAddress, err := connection.ReadFromUDP(response)
 		if err != nil {
-			if ctx.Err() != nil {
-				return nil, fmt.Errorf("reading from udp connection: %w", ctx.Err())
+			if fatalErr := handleReadError(ctx, connectionDuration,
+				c.maxRetries, retryCount, err); fatalErr != nil {
+				return nil, fmt.Errorf("reading from udp connection: %w", fatalErr)
 			}
-			var netErr net.Error
-			if errors.As(err, &netErr) && netErr.Timeout() {
-				connectionDuration *= 2
-				failedAttempts = append(failedAttempts, netErr.Error())
-				continue
-			}
-			return nil, fmt.Errorf("reading from udp connection: %w", err)
+			connectionDuration *= 2
+			failedAttempts = append(failedAttempts, err.Error())
+			continue
 		}
 
 		if !receivedRemoteAddress.IP.Equal(gatewayAddress.IP) {
@@ -109,7 +107,7 @@ func (c *Client) rpc(ctx context.Context, gateway netip.Addr,
 	}
 
 	if retryCount == c.maxRetries {
-		return nil, fmt.Errorf("connection timeout: failed attempts: %s", dedupFailedAttempts(failedAttempts))
+		return nil, fmt.Errorf("connection failed: failed attempts: %s", dedupFailedAttempts(failedAttempts))
 	}
 
 	// Opcodes between 0 and 127 are client requests.  Opcodes from 128 to
@@ -122,6 +120,37 @@ func (c *Client) rpc(ctx context.Context, gateway netip.Addr,
 	}
 
 	return response, nil
+}
+
+// handleReadError returns the error to return when the read error is not
+// retryable, waiting for the retry pacing when needed. A read error is
+// retryable when it is a timeout, meaning the gateway did not respond, or a
+// connection refused error, which is the OS translation of an ICMP port
+// unreachable message, meaning nothing was listening on the gateway port at
+// that instant. A timed out read already waited for the connection duration
+// to elapse, so only a refused read requires an explicit wait, to keep the
+// same retry pace.
+func handleReadError(ctx context.Context, connectionDuration time.Duration,
+	maxRetries, retryCount uint, readErr error,
+) (err error) {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	var netErr net.Error
+	isTimeout := errors.As(readErr, &netErr) && netErr.Timeout()
+	isConnectionRefused := errors.Is(readErr, syscall.ECONNREFUSED)
+	if !isTimeout && !isConnectionRefused {
+		return readErr
+	}
+	if !isTimeout && retryCount+1 < maxRetries {
+		timer := time.NewTimer(connectionDuration)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-timer.C:
+		}
+	}
+	return nil
 }
 
 func dedupFailedAttempts(failedAttempts []string) (errorMessage string) {
