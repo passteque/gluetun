@@ -36,8 +36,10 @@ type Loop struct {
 	updateTrigger chan<- settings.PublicIP
 	updatedResult <-chan error
 	runDone       <-chan struct{}
-	// retryStopTrigger tells the run loop to drop the retry it has pending,
-	// the VPN connection going down being what pulls it, see [Loop.ClearData].
+	// retryStopTrigger tells the run loop to drop the retry it has pending, the
+	// VPN connection going down being what pulls it, see [Loop.ClearData]. The
+	// channel is unbuffered, so whoever signals waits for the run loop to be back
+	// in its select rather than leaving a token to be picked up later.
 	retryStopTrigger chan<- struct{}
 	// Mock functions
 	timeNow  func() time.Time
@@ -93,7 +95,7 @@ func (l *Loop) Start(_ context.Context) (_ <-chan error, err error) {
 	l.updateTrigger = updateTrigger
 	updatedResult := make(chan error)
 	l.updatedResult = updatedResult
-	retryStopTrigger := make(chan struct{}, 1)
+	retryStopTrigger := make(chan struct{})
 	l.retryStopTrigger = retryStopTrigger
 
 	go l.run(l.runCtx, runDone, runTrigger, runResult, updateTrigger, updatedResult,
@@ -131,13 +133,6 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 		case fetchCtx = <-runTrigger:
 			// Note fetchCtx is canceled if runCtx is canceled.
 			fetchedResult = runResult
-			// A connection which went down before this one came up can have left a
-			// stop token queued. Draining it here keeps the select from picking it up
-			// after this fetch, which would drop the attempt this fetch fails to book.
-			select {
-			case <-retryStop:
-			default:
-			}
 			// The tunnel came up, so the attempt booked for the failure before it is
 			// superseded, and a fresh connection is a fresh chance: the delays of the
 			// failures to come start over, whether the outage before it ended with a

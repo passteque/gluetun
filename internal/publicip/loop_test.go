@@ -291,8 +291,15 @@ func Test_Loop_ClearData_stopsRetry(t *testing.T) {
 	require.ErrorContains(t, err, failureMessage(firstDelay, 1))
 	expectFetch(t, fixture.fetcher.arrived)
 
-	require.NoError(t, fixture.loop.ClearData())
+	// Cleared from a goroutine of its own: the send asking the loop to drop the
+	// attempt waits for the loop to be back in its select, so a signal lost is
+	// reported by the timeout below rather than by the test hanging there. The
+	// goroutine stays parked when the test fails, which is harmless since the
+	// test binary exits with it.
+	cleared := make(chan error)
+	go func() { cleared <- fixture.loop.ClearData() }()
 	expectWait(t, stopped, "the attempt pending to be dropped")
+	require.NoError(t, <-cleared)
 
 	// Back through the loop select, so the connection going down is all the loop
 	// made of the failure: the timeout of a second fetch would tell the same
