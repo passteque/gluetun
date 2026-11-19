@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"testing"
 
+	"github.com/qdm12/gluetun/internal/testcapabilities"
 	"github.com/qdm12/gluetun/internal/testuser"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -239,7 +240,7 @@ func Test_Write(t *testing.T) {
 
 			if isRoot &&
 				(testCase.withoutChown || testCase.withoutFowner || testCase.withoutDACOverride) {
-				dropCapabilities(t,
+				testcapabilities.Drop(t,
 					testCase.withoutChown, testCase.withoutFowner, testCase.withoutDACOverride)
 			}
 
