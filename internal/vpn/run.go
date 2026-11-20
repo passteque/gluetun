@@ -83,7 +83,6 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 			continue
 		}
 
-		l.backoffTime = defaultBackoffTime
 		l.signalOrSetStatus(constants.Running)
 
 		stayHere := true

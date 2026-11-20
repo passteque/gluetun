@@ -2,6 +2,7 @@ package vpn
 
 import (
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
@@ -46,12 +47,16 @@ type Loop struct {
 	running     chan<- models.LoopStatus
 	userTrigger bool
 	healthDone  <-chan struct{}
-	// Internal constant values
-	backoffTime time.Duration
+	// Backoff configuration and state
+	backoffMu          sync.Mutex
+	backoffTime        time.Duration
+	initialBackoffTime time.Duration
+	maxBackoffTime     time.Duration
 }
 
 const (
-	defaultBackoffTime = 15 * time.Second
+	defaultBackoffTime    = 15 * time.Second
+	defaultMaxBackoffTime = 5 * time.Minute
 )
 
 func NewLoop(vpnSettings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel, vpnInputPorts []uint16,
@@ -76,35 +81,64 @@ func NewLoop(vpnSettings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel
 	healthDone := make(chan struct{})
 	close(healthDone)
 
-	return &Loop{
-		statusManager:    statusManager,
-		state:            state,
-		providers:        providers,
-		storage:          storage,
-		healthSettings:   healthSettings,
-		healthChecker:    healthChecker,
-		healthServer:     healthServer,
-		buildInfo:        buildInfo,
-		versionInfo:      versionInfo,
-		ipv6SupportLevel: ipv6SupportLevel,
-		vpnInputPorts:    vpnInputPorts,
-		boringPoll:       boringPoll,
-		openvpnConf:      openvpnConf,
-		netLinker:        netLinker,
-		fw:               fw,
-		routing:          routing,
-		portForward:      portForward,
-		publicip:         publicip,
-		dnsLooper:        dnsLooper,
-		cmder:            cmder,
-		logger:           logger,
-		client:           client,
-		start:            start,
-		running:          running,
-		stop:             stop,
-		stopped:          stopped,
-		userTrigger:      true,
-		healthDone:       healthDone,
-		backoffTime:      defaultBackoffTime,
+	initialBackoffTime := defaultBackoffTime
+	if healthSettings.RestartDelayInitial != nil {
+		initialBackoffTime = *healthSettings.RestartDelayInitial
 	}
+	maxBackoffTime := defaultMaxBackoffTime
+	if healthSettings.RestartDelayMax != nil {
+		maxBackoffTime = *healthSettings.RestartDelayMax
+	}
+
+	return &Loop{
+		statusManager:      statusManager,
+		state:              state,
+		providers:          providers,
+		storage:            storage,
+		healthSettings:     healthSettings,
+		healthChecker:      healthChecker,
+		healthServer:       healthServer,
+		buildInfo:          buildInfo,
+		versionInfo:        versionInfo,
+		ipv6SupportLevel:   ipv6SupportLevel,
+		vpnInputPorts:      vpnInputPorts,
+		boringPoll:         boringPoll,
+		openvpnConf:        openvpnConf,
+		netLinker:          netLinker,
+		fw:                 fw,
+		routing:            routing,
+		portForward:        portForward,
+		publicip:           publicip,
+		dnsLooper:          dnsLooper,
+		cmder:              cmder,
+		logger:             logger,
+		client:             client,
+		start:              start,
+		running:            running,
+		stop:               stop,
+		stopped:            stopped,
+		userTrigger:        true,
+		healthDone:         healthDone,
+		backoffTime:        initialBackoffTime,
+		initialBackoffTime: initialBackoffTime,
+		maxBackoffTime:     maxBackoffTime,
+	}
+}
+
+func (l *Loop) resetBackoff() {
+	l.backoffMu.Lock()
+	defer l.backoffMu.Unlock()
+	l.backoffTime = l.initialBackoffTime
+}
+
+func (l *Loop) getAndAdvanceBackoff() (backoff time.Duration) {
+	l.backoffMu.Lock()
+	defer l.backoffMu.Unlock()
+	backoff = l.backoffTime
+	nextBackoff := l.backoffTime * 2
+	if nextBackoff > l.maxBackoffTime {
+		nextBackoff = l.maxBackoffTime
+	}
+	l.backoffTime = nextBackoff
+	return backoff
 }
