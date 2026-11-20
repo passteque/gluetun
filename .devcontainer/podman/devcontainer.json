@@ -189,7 +189,7 @@
                 "terminal.integrated.env.linux": {
                     "SSH_AUTH_SOCK": "/tmp/ssh-agent.sock"
                 },
-                "go.buildTags": "",
+                "go.buildTags": "linux",
                 "go.toolsEnvVars": {
                     "CGO_ENABLED": "0"
                 },
