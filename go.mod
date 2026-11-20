@@ -1,6 +1,6 @@
 module github.com/qdm12/gluetun
 
-go 1.25.0
+go 1.26
 
 require (
 	github.com/ProtonMail/go-srp v0.0.7
@@ -10,7 +10,7 @@ require (
 	github.com/klauspost/compress v1.18.1
 	github.com/klauspost/pgzip v1.2.6
 	github.com/pelletier/go-toml/v2 v2.2.4
-	github.com/qdm12/dns/v2 v2.0.0-rc9.0.20260421173011-9de8e7fdbe3a
+	github.com/qdm12/dns/v2 v2.0.0-rc9.0.20261120153408-1227ca907b25
 	github.com/qdm12/gosettings v0.4.4
 	github.com/qdm12/goshutdown v0.3.0
 	github.com/qdm12/gosplash v0.2.0
