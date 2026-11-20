@@ -17,7 +17,7 @@ require (
 	github.com/pquerna/otp v1.5.0
 	github.com/prometheus/client_golang v1.25.0
 	github.com/prometheus/client_model v0.6.3
-	github.com/qdm12/dns/v2 v2.0.0-rc9.0.20260909224732-d83961363ca2
+	github.com/qdm12/dns/v2 v2.0.0-rc9.0.20261120153408-1227ca907b25
 	github.com/qdm12/gluetun-servers v0.4.0
 	github.com/qdm12/goservices v0.1.1-0.20251104135713-6bee97bd4978
 	github.com/qdm12/gosettings v0.4.4

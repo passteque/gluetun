@@ -73,8 +73,8 @@ github.com/prometheus/common v0.72.0 h1:tAYsE+sPJxIncDAobm4H5aQjmox9ZxEIIqPbiffa
 github.com/prometheus/common v0.72.0/go.mod h1:77NWqAQ2tXT7BIK40qjJdw5Acrsrg1TlHAnsQi3i6mk=
 github.com/prometheus/procfs v0.22.0 h1:6q9+/JL9IKAPbCmBrv9n5O5Ty3NKnciV5X7YGw0oics=
 github.com/prometheus/procfs v0.22.0/go.mod h1:CvmFr/GVhIjIvWJZW3tgkODBQMRIf0EyWMQLHCHab58=
-github.com/qdm12/dns/v2 v2.0.0-rc9.0.20260909224732-d83961363ca2 h1:CBHkqMOWf16+VPSnZL8Z0w3vcWRRb2u8OdROlVTLo3o=
-github.com/qdm12/dns/v2 v2.0.0-rc9.0.20260909224732-d83961363ca2/go.mod h1:5xTZWHdRa8+8UOaz2x5dHLjoNmrKw3Ch2sOC+VT1oLU=
+github.com/qdm12/dns/v2 v2.0.0-rc9.0.20261120153408-1227ca907b25 h1:jDcUX4SyS22OPkCrZ2yRJgJqp0PpRFIF7ifvTTjQeHQ=
+github.com/qdm12/dns/v2 v2.0.0-rc9.0.20261120153408-1227ca907b25/go.mod h1:5xTZWHdRa8+8UOaz2x5dHLjoNmrKw3Ch2sOC+VT1oLU=
 github.com/qdm12/gluetun-servers v0.4.0 h1:2tDxPzufx2izjL+j3BlvIpGIyBauvEMSjqBC/wu+55c=
 github.com/qdm12/gluetun-servers v0.4.0/go.mod h1:acttuyHyoFDu6GTbf3kAV+QXeiX8oJeh0MBic67/9z8=
 github.com/qdm12/goservices v0.1.1-0.20251104135713-6bee97bd4978 h1:TRGpCU1l0lNwtogEUSs5U+RFceYxkAJUmrGabno7J5c=
