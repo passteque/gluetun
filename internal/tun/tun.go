@@ -45,12 +45,12 @@ func check(path string) error {
 
 	sys, ok := info.Sys().(*syscall.Stat_t)
 	if !ok {
-		return errors.New("cannot get syscall stat info of TUN file") //nolint:err113
+		return errors.New("cannot get syscall stat info of TUN file")
 	}
 
 	const expectedRdev = 2760 // corresponds to major 10 and minor 200
 	if sys.Rdev != expectedRdev {
-		return fmt.Errorf("TUN file has an unexpected rdev: %d instead of expected %d", //nolint:err113
+		return fmt.Errorf("TUN file has an unexpected rdev: %d instead of expected %d",
 			sys.Rdev, expectedRdev)
 	}
 

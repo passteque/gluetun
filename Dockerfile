@@ -4,7 +4,6 @@ ARG GO_VERSION=1.25
 ARG XCPUTRANSLATE_VERSION=v0.9.0
 ARG GOLANGCI_LINT_VERSION=v2.4.0
 ARG MOCKGEN_VERSION=v1.6.0
-ARG BUILDPLATFORM=linux/amd64
 
 FROM --platform=${BUILDPLATFORM} ghcr.io/qdm12/xcputranslate:${XCPUTRANSLATE_VERSION} AS xcputranslate
 FROM --platform=${BUILDPLATFORM} ghcr.io/qdm12/binpot:golangci-lint-${GOLANGCI_LINT_VERSION} AS golangci-lint
