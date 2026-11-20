@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - master
+      - "v[0-9]+.[0-9]+"
     paths-ignore:
       - .github/workflows/ci.yml
       - cmd/**
