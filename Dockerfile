@@ -1,12 +1,20 @@
 ARG ALPINE_VERSION=3.22
 ARG GO_ALPINE_VERSION=3.22
-ARG GO_VERSION=1.25
+ARG GO_VERSION=1.26
 ARG XCPUTRANSLATE_VERSION=v0.9.0
 ARG GOLANGCI_LINT_VERSION=v2.4.0
 ARG MOCKGEN_VERSION=v1.6.0
 
 FROM --platform=${BUILDPLATFORM} ghcr.io/qdm12/xcputranslate:${XCPUTRANSLATE_VERSION} AS xcputranslate
-FROM --platform=${BUILDPLATFORM} ghcr.io/qdm12/binpot:golangci-lint-${GOLANGCI_LINT_VERSION} AS golangci-lint
+# golangci-lint is built from source instead of pulled from ghcr.io/qdm12/binpot:
+# the prebuilt image is compiled with go1.25, and a linter built with an older Go
+# than the module targets refuses to run at all - "can't load config: the Go
+# language version (go1.25) used to build golangci-lint is lower than the targeted
+# Go version (1.26)". Building it with $GO_VERSION keeps the version pinned.
+FROM --platform=${BUILDPLATFORM} golang:${GO_VERSION}-alpine${GO_ALPINE_VERSION} AS golangci-lint
+ARG GOLANGCI_LINT_VERSION
+ENV CGO_ENABLED=0
+RUN go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@${GOLANGCI_LINT_VERSION}
 FROM --platform=${BUILDPLATFORM} ghcr.io/qdm12/binpot:mockgen-${MOCKGEN_VERSION} AS mockgen
 
 FROM --platform=${BUILDPLATFORM} golang:${GO_VERSION}-alpine${GO_ALPINE_VERSION} AS base
@@ -14,7 +22,7 @@ COPY --from=xcputranslate /xcputranslate /usr/local/bin/xcputranslate
 # Note: findutils needed to have xargs support `-d` flag for mocks stage.
 RUN apk --update add git g++ findutils
 ENV CGO_ENABLED=0
-COPY --from=golangci-lint /bin /go/bin/golangci-lint
+COPY --from=golangci-lint /go/bin/golangci-lint /go/bin/golangci-lint
 COPY --from=mockgen /bin /go/bin/mockgen
 WORKDIR /tmp/gobuild
 COPY go.mod go.sum ./
