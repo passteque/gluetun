@@ -713,7 +713,11 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 				DoAndReturn(func(_ string) {
 					close(crashLogged)
 				})
-			logger.EXPECT().Error(errorContaining{substring: retryError(errPortForward, testCase.delays[3])})
+			fourthFailureLogged := make(chan struct{})
+			logger.EXPECT().Error(errorContaining{substring: retryError(errPortForward, testCase.delays[3])}).
+				DoAndReturn(func(_ string) {
+					close(fourthFailureLogged)
+				})
 
 			// What the successful attempt 3 does, and cleans up after when the
 			// keep alive call fails. The clock is advanced in that call, the
@@ -730,7 +734,14 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 					return errKeepPort
 				})
 			portAllower.EXPECT().RemoveAllowedPort(context.Background(), forwardedPort).Return(nil)
-			logger.EXPECT().Info("clearing port file " + portFilepath)
+			// A crash can be reported just before its goroutine exits, in which
+			// case stopping the previous service logs and clears the file again.
+			extraStop := false
+			logger.EXPECT().Info("stopping").MinTimes(0).MaxTimes(1).
+				Do(func(_ string) { extraStop = true })
+			fileClears := 0
+			logger.EXPECT().Info("clearing port file " + portFilepath).MinTimes(1).MaxTimes(2).
+				Do(func(_ string) { fileClears++ })
 
 			retryTimer := NewMocktimer(ctrl)
 			ticks := make(chan time.Time)
@@ -783,6 +794,7 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 			// 4, instead of restarting the service right away.
 			expectWait(t, crashLogged, "the keep alive failure to be logged")
 			expectTick(t, ticks)
+			expectWait(t, fourthFailureLogged, "the fourth attempt failure to be logged")
 
 			// The update arrives while the retry of the attempt 4 is pending, and
 			// the error of the attempt 5 it triggers goes back to the caller.
@@ -793,6 +805,11 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 			err = loop.Stop()
 			require.NoError(t, err)
 			assert.Equal(t, testCase.delays, armedDelays)
+			expectedFileClears := 1
+			if extraStop {
+				expectedFileClears++
+			}
+			assert.Equal(t, expectedFileClears, fileClears)
 		})
 	}
 }
