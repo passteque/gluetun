@@ -309,12 +309,12 @@ func (a AmneziaWg) validate(vpnProvider string, ipv6Supported bool) error {
 	if *a.JunkPacketCount == 0 {
 		if *a.JunkPacketMin != 0 || *a.JunkPacketMax != 0 {
 			return fmt.Errorf("junk packet count must be set when junk packet min or max is set: "+
-				"jc=%d and jmin=%d and jmax=%d", a.JunkPacketCount, *a.JunkPacketMin, *a.JunkPacketMax)
+				"jc=%d and jmin=%d and jmax=%d", *a.JunkPacketCount, *a.JunkPacketMin, *a.JunkPacketMax)
 		}
 	} else {
 		if *a.JunkPacketMin == 0 || *a.JunkPacketMax == 0 {
 			return fmt.Errorf("junk packet min and max must be set when junk packet count is set: "+
-				"jc=%d and jmin=%d and jmax=%d", a.JunkPacketCount, *a.JunkPacketMin, *a.JunkPacketMax)
+				"jc=%d and jmin=%d and jmax=%d", *a.JunkPacketCount, *a.JunkPacketMin, *a.JunkPacketMax)
 		} else if *a.JunkPacketMin > *a.JunkPacketMax {
 			return fmt.Errorf("junk packet minimum must be lower than or equal to maximum: "+
 				"jmin=%d and jmax=%d", *a.JunkPacketMin, *a.JunkPacketMax)

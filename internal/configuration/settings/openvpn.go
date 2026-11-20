@@ -146,7 +146,7 @@ func (o OpenVPN) validate(vpnProvider string) (err error) {
 	}
 
 	if *o.Verbosity < 0 || *o.Verbosity > 6 {
-		return fmt.Errorf("verbosity value is out of bounds: %d can only be between 0 and 5", o.Verbosity)
+		return fmt.Errorf("verbosity value is out of bounds: %d can only be between 0 and 5", *o.Verbosity)
 	}
 
 	return nil

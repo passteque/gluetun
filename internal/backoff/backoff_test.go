@@ -16,7 +16,6 @@ func Test_State_Failure(t *testing.T) {
 		long         = 20 * time.Second
 		hold         = 40 * time.Second
 		minute       = time.Minute
-		twoMinutes   = 2 * time.Minute
 		fiveAttempts = 3
 	)
 
@@ -63,7 +62,7 @@ func Test_State_Failure(t *testing.T) {
 		},
 		"no_maximum_of_failures_is_a_backoff_which_never_ends": {
 			initial:     short,
-			maximum:     twoMinutes,
+			maximum:     2 * time.Minute,
 			maxFailures: 0,
 			failures:    6,
 			want: []Failure{
@@ -72,7 +71,7 @@ func Test_State_Failure(t *testing.T) {
 				{Delay: long, Attempts: 3, Max: 0, GiveUp: false},
 				{Delay: 40 * time.Second, Attempts: 4, Max: 0, GiveUp: false},
 				{Delay: 80 * time.Second, Attempts: 5, Max: 0, GiveUp: false},
-				{Delay: twoMinutes, Attempts: 6, Max: 0, GiveUp: false},
+				{Delay: 2 * time.Minute, Attempts: 6, Max: 0, GiveUp: false},
 			},
 		},
 		"give_up_once_the_maximum_of_failures_is_reached": {
