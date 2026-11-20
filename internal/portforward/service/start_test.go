@@ -96,6 +96,8 @@ func Test_Service_Start_keepPortCrashReported(t *testing.T) {
 // port call does not prevent the service from being stopped when nobody reads
 // the run error channel of Start anymore, which happens once the port
 // forwarding loop has left the service behind by stopping on a fatal error.
+// The crashed goroutine releases the service before reporting, so the Stop call
+// finds nothing left to clean up and only releases the goroutine.
 func Test_Service_Start_keepPortCrashWithoutRunErrorReader(t *testing.T) {
 	t.Parallel()
 
@@ -108,14 +110,14 @@ func Test_Service_Start_keepPortCrashWithoutRunErrorReader(t *testing.T) {
 	logger.EXPECT().Info("starting").Times(1)
 	logger.EXPECT().Info("port forwarded is 1234").Times(1)
 	logger.EXPECT().Info("writing port file " + portFilePath).Times(1)
-	// Cleared by the crash cleanup, and cleared again by the Stop call.
-	logger.EXPECT().Info("clearing port file " + portFilePath).Times(2)
-	logger.EXPECT().Info("stopping").Times(1)
+	// Cleared by the crash cleanup only. The Stop call finds the service released
+	// by the crashed goroutine, so it neither logs nor cleans up a second time.
+	logger.EXPECT().Info("clearing port file " + portFilePath).Times(1)
 
 	portAllower := NewMockPortAllower(ctrl)
 	portAllower.EXPECT().SetAllowedPort(runCtx, uint16(1234), "tun0").Return(nil).Times(1)
-	// Only the crash cleanup removes the allowed port, since the Stop call
-	// finds the ports already cleared.
+	// Only the crash cleanup removes the allowed port, since the Stop call finds
+	// the service already released.
 	portAllower.EXPECT().RemoveAllowedPort(context.Background(), uint16(1234)).Return(nil).Times(1)
 
 	gateway := netip.MustParseAddr("10.0.0.1")
@@ -148,12 +150,17 @@ func Test_Service_Start_keepPortCrashWithoutRunErrorReader(t *testing.T) {
 	_, err := srv.Start(runCtx)
 	require.NoError(t, err)
 
-	// The crash cleanup clears the port file, which tells the keep port
-	// goroutine has reached its report and released the start stop mutex.
-	require.Eventually(t, func() bool {
-		fileData, readErr := os.ReadFile(portFilePath)
-		return readErr == nil && len(fileData) == 0
-	}, time.Second, time.Millisecond)
+	// The keep port goroutine closes the done channel once it has cleaned the
+	// service up, before it waits to report a failure nobody reads. Reading the
+	// port file would not tell as much, since the cleanup clears it before the
+	// goroutine releases the service.
+	crashDeadline := time.NewTimer(time.Second)
+	defer crashDeadline.Stop()
+	select {
+	case <-srv.keepPortDoneCh:
+	case <-crashDeadline.C:
+		t.Fatal("keep port goroutine did not release the service after crashing")
+	}
 
 	stoppedCh := make(chan error, 1)
 	go func() { stoppedCh <- srv.Stop() }()
@@ -168,4 +175,8 @@ func Test_Service_Start_keepPortCrashWithoutRunErrorReader(t *testing.T) {
 	}
 
 	assert.Empty(t, srv.GetPortsForwarded())
+
+	fileData, readErr := os.ReadFile(portFilePath)
+	assert.NoError(t, readErr)
+	assert.Empty(t, string(fileData))
 }
