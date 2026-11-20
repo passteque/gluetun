@@ -5,6 +5,7 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/qdm12/gluetun/internal/constants"
+	"github.com/qdm12/gluetun/internal/constants/openvpn"
 )
 
 type logLevel uint8
@@ -19,6 +20,9 @@ func processLogLine(s string) (filtered string, level logLevel) {
 	for _, ignored := range []string{
 		"WARNING: you are using user/group/chroot/setcon without persist-tun -- this may cause restarts to fail",
 		"NOTE: UID/GID downgrade will be delayed because of --client, --pull, or --up-delay",
+		// group readable by root on purpose, see writeIfDifferent
+		"WARNING: file '" + openvpn.AuthConf + "' is group or others accessible",
+		"WARNING: file '" + openvpn.AskPassPath + "' is group or others accessible",
 	} {
 		if s == ignored {
 			return "", levelInfo

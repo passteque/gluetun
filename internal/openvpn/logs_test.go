@@ -40,6 +40,16 @@ func Test_processLogLine(t *testing.T) {
 			"",
 			levelInfo,
 		},
+		"openvpn_auth_file_group_accessible_warning_ignored": {
+			"WARNING: file '/etc/openvpn/auth.conf' is group or others accessible",
+			"",
+			levelInfo,
+		},
+		"openvpn_askpass_file_group_accessible_warning_ignored": {
+			"WARNING: file '/etc/openvpn/askpass' is group or others accessible",
+			"",
+			levelInfo,
+		},
 		"openvpn success": {
 			"Initialization Sequence Completed",
 			"Initialization Sequence Completed",
