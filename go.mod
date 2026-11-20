@@ -1,6 +1,6 @@
 module github.com/qdm12/gluetun
 
-go 1.26.0
+go 1.27
 
 require (
 	github.com/ProtonMail/go-srp v0.0.7
