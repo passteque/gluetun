@@ -4,9 +4,6 @@
       "pattern": "^https://console.substack.com/p/console-72$"
     },
     {
-      "pattern": "^https://github.com/passteque/gluetun$"
-    },
-    {
       "pattern": "^https://trendshift.io/repositories/3591$"
     }
   ],
