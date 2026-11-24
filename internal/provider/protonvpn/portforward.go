@@ -13,6 +13,8 @@ import (
 	"github.com/qdm12/gluetun/internal/provider/utils"
 )
 
+var ErrPortForwardedChange = errors.New("external port changed")
+
 // PortForward obtains a VPN server side port forwarded from ProtonVPN gateway.
 func (p *Provider) PortForward(ctx context.Context, objects utils.PortForwardObjects) (
 	internalToExternalPorts map[uint16]uint16, err error,
@@ -86,7 +88,8 @@ func addPortMappingTCPUDP(ctx context.Context, client *natpmp.Client, logger uti
 	for _, protocol := range [...]string{"udp", "tcp"} {
 		protocolStr := strings.ToUpper(protocol)
 		_, assignedInternalPort, assignedExternalPort, assignedLifetime, err = client.AddPortMapping(
-			ctx, gateway, protocol, internalPort, externalPort, lifetime)
+			ctx, gateway, protocol, internalPort, externalPort, lifetime,
+		)
 		if err != nil {
 			return 0, 0, fmt.Errorf("adding %s port mapping: %w", protocolStr, err)
 		}
@@ -96,8 +99,10 @@ func addPortMappingTCPUDP(ctx context.Context, client *natpmp.Client, logger uti
 			return 0, 0, fmt.Errorf("%s internal port requested as %d but received %d",
 				protocolStr, internalPort, assignedInternalPort)
 		} else if externalPort != 0 && externalPort != 1 && externalPort != assignedExternalPort {
-			return 0, 0, fmt.Errorf("%s external port requested as %d but received %d",
-				protocolStr, externalPort, assignedExternalPort)
+			// Only a request for a port already handed out can come back with
+			// another one, which tells the session handing the port out has moved.
+			return 0, 0, fmt.Errorf("%w: %s external port requested as %d but received %d",
+				ErrPortForwardedChange, protocolStr, externalPort, assignedExternalPort)
 		}
 	}
 

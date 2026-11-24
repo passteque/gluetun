@@ -27,6 +27,13 @@ type PortAllower interface {
 		destinationPort uint16) (err error)
 }
 
+// PublicIPRefresher fetches the public IP information of the VPN server again.
+// It is notably used by ProtonVPN when the port forwarded changes, which is often
+// the result of a change in public ip address.
+type PublicIPRefresher interface {
+	RunOnce(ctx context.Context) (err error)
+}
+
 type Logger interface {
 	Debug(s string)
 	Info(s string)

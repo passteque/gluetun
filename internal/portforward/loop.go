@@ -10,6 +10,7 @@ import (
 
 	"github.com/qdm12/gluetun/internal/configuration/settings"
 	"github.com/qdm12/gluetun/internal/portforward/service"
+	"github.com/qdm12/gluetun/internal/provider/protonvpn"
 )
 
 // ErrServiceNotRunning is given back to a [Loop.SetPortsForwarded] call asking for
@@ -32,6 +33,7 @@ type Loop struct {
 	routing     Routing
 	client      *http.Client
 	portAllower PortAllower
+	publicIP    PublicIPRefresher
 	logger      Logger
 	cmder       Cmder
 	// Fixed parameters
@@ -50,7 +52,7 @@ type Loop struct {
 }
 
 func NewLoop(settings settings.PortForwarding, routing Routing,
-	client *http.Client, portAllower PortAllower,
+	client *http.Client, portAllower PortAllower, publicIP PublicIPRefresher,
 	logger Logger, cmder Cmder, uid, gid int,
 ) *Loop {
 	return &Loop{
@@ -68,6 +70,7 @@ func NewLoop(settings settings.PortForwarding, routing Routing,
 		routing:     routing,
 		client:      client,
 		portAllower: portAllower,
+		publicIP:    publicIP,
 		logger:      logger,
 		cmder:       cmder,
 		uid:         uid,
@@ -174,6 +177,11 @@ func (l *Loop) run(runCtx context.Context, runDone chan<- struct{},
 				fmt.Errorf("keeping port forwarded: %w", err),
 				false, updateResult, runErrorCh) {
 				return
+			} else if errors.Is(err, protonvpn.ErrPortForwardedChange) {
+				err := l.publicIP.RunOnce(runCtx)
+				if err != nil && runCtx.Err() == nil {
+					l.logger.Warn("refreshing public IP information: " + err.Error())
+				}
 			}
 			continue
 		case <-retries.after:

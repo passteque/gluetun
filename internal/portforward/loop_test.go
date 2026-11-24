@@ -16,6 +16,7 @@ import (
 	"github.com/qdm12/gluetun/internal/constants/providers"
 	"github.com/qdm12/gluetun/internal/netlink"
 	"github.com/qdm12/gluetun/internal/portforward/service"
+	"github.com/qdm12/gluetun/internal/provider/protonvpn"
 	"github.com/qdm12/gluetun/internal/provider/utils"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -183,7 +184,8 @@ func Test_Loop_failedPortForwardRetry(t *testing.T) {
 				DownCommand:    new(""),
 				ListeningPorts: []uint16{0},
 				PortsCount:     1,
-			}, routing, client, portAllower, logger, nil, os.Getuid(), os.Getgid())
+			}, routing, client, portAllower, PublicIPRefresher(nil),
+				logger, Cmder(nil), os.Getuid(), os.Getgid())
 			// The factory runs on the loop goroutine, so the delay it is called
 			// with is recorded here and compared once the loop is stopped,
 			// rather than asserted from a goroutine the test does not control.
@@ -350,7 +352,8 @@ func Test_Loop_failedPortForwardRetryBackoff(t *testing.T) {
 		DownCommand:    new(""),
 		ListeningPorts: []uint16{0},
 		PortsCount:     1,
-	}, routing, client, portAllower, logger, nil, os.Getuid(), os.Getgid())
+	}, routing, client, portAllower, PublicIPRefresher(nil),
+		logger, Cmder(nil), os.Getuid(), os.Getgid())
 	// The delay the timer is armed with is not the one the loop logs, and a
 	// mismatch would leave the test on the announced ladder while the loop
 	// waits on another one. The loop is the only writer of the slice, and Stop
@@ -457,7 +460,8 @@ func Test_Loop_failedPortForwardRetryGivesUp(t *testing.T) {
 		DownCommand:    new(""),
 		ListeningPorts: []uint16{0},
 		PortsCount:     1,
-	}, routing, client, portAllower, logger, nil, os.Getuid(), os.Getgid())
+	}, routing, client, portAllower, PublicIPRefresher(nil),
+		logger, Cmder(nil), os.Getuid(), os.Getgid())
 	// The delay the timer is armed with is not the one the loop logs, and a
 	// mismatch would leave the test on the announced ladder while the loop waits
 	// on another one. The loop is the only writer of the slice, and Stop waits for
@@ -564,7 +568,8 @@ func Test_Loop_failedPortForwardGiveUpWithoutReader(t *testing.T) {
 		DownCommand:    new(""),
 		ListeningPorts: []uint16{0},
 		PortsCount:     1,
-	}, routing, client, portAllower, logger, nil, os.Getuid(), os.Getgid())
+	}, routing, client, portAllower, PublicIPRefresher(nil),
+		logger, Cmder(nil), os.Getuid(), os.Getgid())
 	loop.newTimer = func(_ time.Duration) timer { return retryTimer }
 	runErrorCh, err := loop.Start(t.Context())
 	require.NoError(t, err)
@@ -748,7 +753,8 @@ func Test_Loop_failedPortForwardRetryDelayReset(t *testing.T) {
 				DownCommand:    new(""),
 				ListeningPorts: []uint16{0},
 				PortsCount:     1,
-			}, routing, client, portAllower, logger, nil, os.Getuid(), os.Getgid())
+			}, routing, client, portAllower, PublicIPRefresher(nil), logger,
+				Cmder(nil), os.Getuid(), os.Getgid())
 			loop.now = clock.Now
 			// The delay the timer is armed with is not the one the loop logs, and
 			// a mismatch would leave the test on the announced ladder while the
@@ -850,7 +856,8 @@ func Test_Loop_UpdateWith(t *testing.T) {
 		DownCommand:    new(""),
 		ListeningPorts: []uint16{0},
 		PortsCount:     1,
-	}, nil, nil, nil, nil, nil, os.Getuid(), os.Getgid())
+	}, Routing(nil), (*http.Client)(nil), PortAllower(nil),
+		PublicIPRefresher(nil), Logger(nil), Cmder(nil), os.Getuid(), os.Getgid())
 
 	_, err := loop.Start(t.Context())
 	require.NoError(t, err)
@@ -863,4 +870,295 @@ func Test_Loop_UpdateWith(t *testing.T) {
 
 	err = loop.UpdateWith(Settings{VPNIsUp: new(true)})
 	assert.ErrorIs(t, err, context.Canceled)
+}
+
+// Test_Loop_publicIPRefresh checks when the loop asks the public IP loop for the
+// public IP information of the VPN server again. The port forwarded is handed out
+// by the session the gateway of the VPN server keeps, and a session which moved
+// hands out another port and has another exit IP: the one the control server
+// answers with, and the one fetched when the tunnel went up. Only a provider
+// comparing the port it asked the gateway to keep with the port the gateway
+// answers with reports [protonvpn.ErrPortForwardedChange], which is what tells a
+// stale answer of issue 3555 apart from a restart of a working port forwarding -
+// the forwarded port is the new one there, the public IP the old one.
+func Test_Loop_publicIPRefresh(t *testing.T) { //nolint:gocognit
+	t.Parallel()
+
+	errPortChanged := fmt.Errorf(
+		"%w: TCP external port requested as 45066 but received 61360",
+		protonvpn.ErrPortForwardedChange,
+	)
+
+	testCases := map[string]struct {
+		// services is the number of services which forward ports: the one the VPN
+		// going up starts, one per crash-driven restart, one per update-driven
+		// restart, and the one the VPN going up again starts. The service the
+		// VPN-going-down update starts forwards no port, and is not counted.
+		services uint8
+		// stopped is the number of services which log being stopped. A service which
+		// crashed has cleaned itself up already, and a disabled service never
+		// started, so neither of them says anything.
+		stopped uint8
+		// crashes is the number of times the keep alive call fails while the tunnel
+		// stays up, each failure followed by a restart the retry timer drives.
+		crashes uint8
+		// keepPortError is what the keep alive call fails with, and is only of
+		// interest when it tells the port forwarded changed.
+		keepPortError error
+		// restartedByUpdate is true when an accepted update restarts the service
+		// which was forwarding ports, as the control server does.
+		restartedByUpdate bool
+		// vpnDownThenUp is true when the VPN goes down and up again at the end.
+		vpnDownThenUp bool
+		// refreshError is what the public IP loop answers with, when it fails.
+		refreshError error
+		// refreshCanceledByStop is true when the loop is stopped while the public IP
+		// information is in flight, which makes the refresher answer with the end of
+		// the run rather than with a failure.
+		refreshCanceledByStop bool
+		// refreshes is the number of times the loop asks for the public IP
+		// information again.
+		refreshes uint8
+	}{
+		"first_service_of_a_tunnel_session": {
+			services: 1,
+			stopped:  1,
+		},
+		"keep_alive_failure_without_a_port_change": {
+			services:      2,
+			stopped:       1,
+			crashes:       1,
+			keepPortError: errors.New("adding TCP port mapping: gateway is not responding"),
+		},
+		"external_port_changed": {
+			services:      2,
+			stopped:       1,
+			crashes:       1,
+			keepPortError: errPortChanged,
+			refreshes:     1,
+		},
+		"external_port_changed_twice": {
+			services:      3,
+			stopped:       1,
+			crashes:       2,
+			keepPortError: errPortChanged,
+			refreshes:     2,
+		},
+		"working_service_restarted_by_the_control_server": {
+			services:          2,
+			stopped:           2,
+			restartedByUpdate: true,
+		},
+		"vpn_going_down_and_up_again": {
+			services:      2,
+			stopped:       2,
+			vpnDownThenUp: true,
+		},
+		"refresh_failure_is_logged": {
+			services:      2,
+			stopped:       1,
+			crashes:       1,
+			keepPortError: errPortChanged,
+			refreshError:  errors.New("no public ip source answered"),
+			refreshes:     1,
+		},
+		"refresh_canceled_with_the_run": {
+			services:              1,
+			crashes:               1,
+			keepPortError:         errPortChanged,
+			refreshes:             1,
+			refreshCanceledByStop: true,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			ctrl := gomock.NewController(t)
+
+			const vpnInterface = "tun0"
+			const forwardedPort = uint16(45066)
+			gateway := netip.MustParseAddr("10.2.0.1")
+			internalIP := netip.MustParseAddr("10.2.0.2")
+			portFilepath := filepath.Join(t.TempDir(), "forwarded_port")
+			client := &http.Client{}
+
+			services := int(testCase.services)
+			crashes := int(testCase.crashes)
+			refreshes := int(testCase.refreshes)
+
+			routing := NewMockRouting(ctrl)
+			routing.EXPECT().VPNLocalGatewayIP(vpnInterface).Return(gateway, nil).Times(services)
+			routing.EXPECT().AssignedIP(vpnInterface, netlink.FamilyV4).Return(internalIP, nil).Times(services)
+			logger := NewMockLogger(ctrl)
+			portAllower := NewMockPortAllower(ctrl)
+			portForwarder := NewMockPortForwarder(ctrl)
+			refresher := NewMockPublicIPRefresher(ctrl)
+			objects := utils.PortForwardObjects{
+				Logger:     logger,
+				Gateway:    gateway,
+				InternalIP: internalIP,
+				Client:     client,
+				PortsCount: 1,
+			}
+
+			// Every signal channel is sized for the exact number of signals expected,
+			// so a sender never blocks on a reader which moved on, and a signal too
+			// many is reported by the mock it comes from rather than by a hang.
+			keepPortStarted := make(chan struct{}, services)
+			crashRequest := make(chan struct{})
+			crashLogged := make(chan struct{}, crashes)
+			refreshed := make(chan struct{}, refreshes)
+
+			logger.EXPECT().Info("starting").Times(services)
+			portForwarder.EXPECT().PortForward(runningContext{}, objects).
+				Return(map[uint16]uint16{forwardedPort: forwardedPort}, nil).
+				Times(services)
+			logger.EXPECT().Info("port forwarded is 45066").Times(services)
+			portAllower.EXPECT().SetAllowedPort(runningContext{}, forwardedPort, vpnInterface).Return(nil).Times(services)
+			logger.EXPECT().Info("writing port file " + portFilepath).Times(services)
+			// The keep alive call is what tells the test the service is up, and it
+			// blocks until the test asks it to fail or the loop stops the service.
+			// Nothing is asked of a service before it started: the call would then be
+			// made with a context canceled already, which the runningContext matcher
+			// refuses, and the service would never be told it can stop.
+			portForwarder.EXPECT().KeepPortForward(runningContext{}, objects).
+				DoAndReturn(func(ctx context.Context, _ utils.PortForwardObjects) error {
+					keepPortStarted <- struct{}{}
+					select {
+					case <-ctx.Done():
+						return ctx.Err()
+					case <-crashRequest:
+						return testCase.keepPortError
+					}
+				}).Times(services)
+			if crashes > 0 {
+				logger.EXPECT().
+					Error(errorContaining{substring: "keeping port forwarded: " + testCase.keepPortError.Error()}).
+					DoAndReturn(func(string) { crashLogged <- struct{}{} }).
+					Times(crashes)
+			}
+			// A service which crashed cleaned up after itself already, and the loop
+			// stops the live service it leaves behind.
+			portAllower.EXPECT().RemoveAllowedPort(context.Background(), forwardedPort).Return(nil).Times(services)
+			logger.EXPECT().Info("clearing port file " + portFilepath).Times(services)
+			logger.EXPECT().Info("stopping").Times(int(testCase.stopped))
+
+			refresher.EXPECT().RunOnce(runningContext{}).
+				DoAndReturn(func(ctx context.Context) error {
+					refreshed <- struct{}{}
+					if testCase.refreshCanceledByStop {
+						<-ctx.Done()
+						return ctx.Err()
+					}
+					return testCase.refreshError
+				}).Times(refreshes)
+			// Sized for the single failure the test drives, and read back before the
+			// loop stops: once the run is over the loop keeps a refresh failure to
+			// itself, and the line would never be logged.
+			warnLogged := make(chan struct{}, 1)
+			if testCase.refreshError != nil {
+				logger.EXPECT().Warn("refreshing public IP information: " + testCase.refreshError.Error()).
+					DoAndReturn(func(string) { warnLogged <- struct{}{} })
+			}
+
+			retryTimer := NewMocktimer(ctrl)
+			ticks := make(chan time.Time)
+			retryTimer.EXPECT().C().Return(ticks).Times(crashes)
+			if testCase.refreshCanceledByStop {
+				// The loop never reads the timer it armed for the crash, since it is
+				// stopped while it waits for the public IP information, and gives the
+				// timer up on the way out.
+				retryTimer.EXPECT().Stop()
+			}
+
+			loop := NewLoop(settings.PortForwarding{
+				Enabled:        new(true),
+				Filepath:       &portFilepath,
+				UpCommand:      new(""),
+				DownCommand:    new(""),
+				ListeningPorts: []uint16{0},
+				PortsCount:     1,
+			}, routing, client, portAllower, refresher, logger, nil, os.Getuid(), os.Getgid())
+			// The retry a crash schedules is driven by the test, so nothing sleeps,
+			// and the delay reached is not what is checked here.
+			loop.newTimer = func(time.Duration) timer { return retryTimer }
+
+			_, err := loop.Start(t.Context())
+			require.NoError(t, err)
+			// Stopped even if an assertion below fails this goroutine and leaves the
+			// run context alive. A second stop is a no-op.
+			t.Cleanup(func() { _ = loop.Stop() })
+
+			vpnUp := Settings{
+				VPNIsUp: new(true),
+				Service: service.Settings{
+					PortForwarder: portForwarder,
+					Interface:     vpnInterface,
+				},
+			}
+			err = loop.UpdateWith(vpnUp)
+			require.NoError(t, err)
+			expectWait(t, keepPortStarted, "the port forwarded to be kept")
+
+			for range crashes {
+				crashRequest <- struct{}{}
+				expectWait(t, crashLogged, "the keep alive failure to be booked")
+				// The port forwarded changed is what the crash report says, and the answer
+				// is asked for right away, before the retry delay is waited on.
+				if refreshes > 0 {
+					expectWait(t, refreshed, "the public IP information to be asked for again")
+					if testCase.refreshError != nil {
+						expectWait(t, warnLogged, "the refresh failure to be logged")
+					}
+				}
+				if testCase.refreshCanceledByStop {
+					break
+				}
+				expectTick(t, ticks)
+				expectWait(t, keepPortStarted, "the port forwarded to be kept")
+			}
+
+			if testCase.refreshCanceledByStop {
+				// The loop is parked on the public IP information, and stopping it is what
+				// releases the call: the restart the crash armed never happens, and nothing
+				// is logged for an answer telling about the shutdown itself.
+				err = loop.Stop()
+				require.NoError(t, err)
+				return
+			}
+
+			if testCase.restartedByUpdate {
+				// The control server asking for the ports again restarts a service which
+				// forwards ports, without the gateway session moving. The update is
+				// validated as the program is up, and the port forwarder name is asked for.
+				portForwarder.EXPECT().Name().Return(providers.Protonvpn)
+				err = loop.UpdateWith(vpnUp)
+				require.NoError(t, err)
+				expectWait(t, keepPortStarted, "the port forwarded to be kept")
+			}
+
+			if testCase.vpnDownThenUp {
+				portForwarder.EXPECT().Name().Return(providers.Protonvpn) // settings validation
+				err = loop.UpdateWith(Settings{
+					VPNIsUp: new(false),
+					Service: service.Settings{
+						PortForwarder: portForwarder,
+						Interface:     vpnInterface,
+					},
+				})
+				require.NoError(t, err)
+				// Back up. The service is the first of a new tunnel session, which the VPN
+				// loop takes care of the public IP information for, so the loop asks for
+				// none. The update is validated as if the program was starting, and the
+				// port forwarder name is not asked for.
+				err = loop.UpdateWith(vpnUp)
+				require.NoError(t, err)
+				expectWait(t, keepPortStarted, "the port forwarded to be kept")
+			}
+
+			err = loop.Stop()
+			require.NoError(t, err)
+		})
+	}
 }

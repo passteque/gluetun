@@ -270,7 +270,8 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	alpineConf := alpine.New()
 	ovpnConf := openvpn.New(
 		logger.New(log.SetComponent("openvpn configurator")),
-		cmder, puid, pgid)
+		cmder, puid, pgid,
+	)
 	ovpnVersion := ovpnConf.Version26
 	if allSettings.VPN.OpenVPN.Version == copenvpn.Openvpn25 {
 		ovpnVersion = ovpnConf.Version25
@@ -367,9 +368,19 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		<-pprofReady
 	}
 
+	publicIPLooper, err := publicip.NewLoop(allSettings.PublicIP, puid, pgid, httpClient,
+		logger.New(log.SetComponent("ip getter")))
+	if err != nil {
+		return fmt.Errorf("creating public ip loop: %w", err)
+	}
+	publicIPRunError, err := publicIPLooper.Start(ctx)
+	if err != nil {
+		return fmt.Errorf("starting public ip loop: %w", err)
+	}
+
 	portForwardLogger := logger.New(log.SetComponent("port forwarding"))
 	portForwardLooper := portforward.NewLoop(allSettings.VPN.Provider.PortForwarding,
-		routingConf, httpClient, firewallConf, portForwardLogger, cmder, puid, pgid)
+		routingConf, httpClient, firewallConf, publicIPLooper, portForwardLogger, cmder, puid, pgid)
 	portForwardRunError, err := portForwardLooper.Start(ctx)
 	if err != nil {
 		return fmt.Errorf("starting port forwarding loop: %w", err)
@@ -383,25 +394,17 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	}
 
 	dnsHandler, dnsCtx, dnsDone := goshutdown.NewGoRoutineHandler(
-		"dns", goroutine.OptionTimeout(defaultShutdownTimeout))
+		"dns", goroutine.OptionTimeout(defaultShutdownTimeout),
+	)
 	// wait for dnsLooper.Restart or its ticker launched with RunRestartTicker
 	go dnsLooper.Run(dnsCtx, dnsDone)
 	otherGroupHandler.Add(dnsHandler)
 
 	dnsTickerHandler, dnsTickerCtx, dnsTickerDone := goshutdown.NewGoRoutineHandler(
-		"dns ticker", goroutine.OptionTimeout(defaultShutdownTimeout))
+		"dns ticker", goroutine.OptionTimeout(defaultShutdownTimeout),
+	)
 	go dnsLooper.RunRestartTicker(dnsTickerCtx, dnsTickerDone)
 	controlGroupHandler.Add(dnsTickerHandler)
-
-	publicIPLooper, err := publicip.NewLoop(allSettings.PublicIP, puid, pgid, httpClient,
-		logger.New(log.SetComponent("ip getter")))
-	if err != nil {
-		return fmt.Errorf("creating public ip loop: %w", err)
-	}
-	publicIPRunError, err := publicIPLooper.Start(ctx)
-	if err != nil {
-		return fmt.Errorf("starting public ip loop: %w", err)
-	}
 
 	socks5Loop := socks5.NewLoop(socks5.Settings{
 		Enabled:      *allSettings.Socks5.Enabled,
@@ -419,7 +422,8 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	healthLogger := logger.New(log.SetComponent("healthcheck"))
 	healthcheckServer := healthcheck.NewServer(allSettings.Health, healthLogger)
 	healthServerHandler, healthServerCtx, healthServerDone := goshutdown.NewGoRoutineHandler(
-		"HTTP health server", goroutine.OptionTimeout(defaultShutdownTimeout))
+		"HTTP health server", goroutine.OptionTimeout(defaultShutdownTimeout),
+	)
 	go healthcheckServer.Run(healthServerCtx, healthServerDone)
 	healthChecker := healthcheck.NewChecker(healthLogger)
 
@@ -448,7 +452,8 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		ovpnConf, netLinker, firewallConf, routingConf, portForwardLooper, cmder, publicIPLooper,
 		dnsLooper, vpnLogger, httpClient, buildInfo, *allSettings.Version.Enabled)
 	vpnHandler, vpnCtx, vpnDone := goshutdown.NewGoRoutineHandler(
-		"vpn", goroutine.OptionTimeout(time.Second))
+		"vpn", goroutine.OptionTimeout(time.Second),
+	)
 	go vpnLooper.Run(vpnCtx, vpnDone)
 
 	metricsServer, err := metrics.New(allSettings.Metrics, logger, vpnLooper, netLinker)
@@ -463,33 +468,39 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	updaterLooper := updater.NewLoop(allSettings.Updater,
 		providers, storage, httpClient, updaterLogger)
 	updaterHandler, updaterCtx, updaterDone := goshutdown.NewGoRoutineHandler(
-		"updater", goroutine.OptionTimeout(defaultShutdownTimeout))
+		"updater", goroutine.OptionTimeout(defaultShutdownTimeout),
+	)
 	// wait for updaterLooper.Restart() or its ticket launched with RunRestartTicker
 	go updaterLooper.Run(updaterCtx, updaterDone)
 	tickersGroupHandler.Add(updaterHandler)
 
 	updaterTickerHandler, updaterTickerCtx, updaterTickerDone := goshutdown.NewGoRoutineHandler(
-		"updater ticker", goroutine.OptionTimeout(defaultShutdownTimeout))
+		"updater ticker", goroutine.OptionTimeout(defaultShutdownTimeout),
+	)
 	go updaterLooper.RunRestartTicker(updaterTickerCtx, updaterTickerDone)
 	controlGroupHandler.Add(updaterTickerHandler)
 
 	httpProxyLooper := httpproxy.NewLoop(
 		logger.New(log.SetComponent("http proxy")),
-		allSettings.HTTPProxy)
+		allSettings.HTTPProxy,
+	)
 	httpProxyHandler, httpProxyCtx, httpProxyDone := goshutdown.NewGoRoutineHandler(
-		"http proxy", goroutine.OptionTimeout(defaultShutdownTimeout))
+		"http proxy", goroutine.OptionTimeout(defaultShutdownTimeout),
+	)
 	go httpProxyLooper.Run(httpProxyCtx, httpProxyDone)
 	otherGroupHandler.Add(httpProxyHandler)
 
 	shadowsocksLooper := shadowsocks.NewLoop(allSettings.Shadowsocks,
 		logger.New(log.SetComponent("shadowsocks")))
 	shadowsocksHandler, shadowsocksCtx, shadowsocksDone := goshutdown.NewGoRoutineHandler(
-		"shadowsocks proxy", goroutine.OptionTimeout(defaultShutdownTimeout))
+		"shadowsocks proxy", goroutine.OptionTimeout(defaultShutdownTimeout),
+	)
 	go shadowsocksLooper.Run(shadowsocksCtx, shadowsocksDone)
 	otherGroupHandler.Add(shadowsocksHandler)
 
 	httpServerHandler, httpServerCtx, httpServerDone := goshutdown.NewGoRoutineHandler(
-		"http server", goroutine.OptionTimeout(defaultShutdownTimeout))
+		"http server", goroutine.OptionTimeout(defaultShutdownTimeout),
+	)
 	httpServer, err := server.New(httpServerCtx, allSettings.ControlServer,
 		logger.New(log.SetComponent("http server")),
 		buildInfo, vpnLooper, portForwardLooper, dnsLooper, updaterLooper, publicIPLooper,
