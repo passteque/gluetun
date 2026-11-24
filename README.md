@@ -4,7 +4,7 @@ Lightweight swiss-army-knife-like VPN client to multiple VPN service providers
 
 ⚠️ This and [gluetun-wiki](https://github.com/qdm12/gluetun-wiki) are the only websites for Gluetun, other websites claiming to be official are scams ⚠️
 
-![Title image](title.svg)
+![Title image](https://raw.githubusercontent.com/passteque/gluetun/master/title.svg)
 
 [![Build status](https://github.com/passteque/gluetun/actions/workflows/ci.yml/badge.svg)](https://github.com/passteque/gluetun/actions/workflows/ci.yml)
 
