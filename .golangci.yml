@@ -18,6 +18,8 @@ run:
 
 linters:
   settings:
+    staticcheck:
+      checks: ["all", "-ST1000"] # turns on ST1003/16/20/21/22
     misspell:
       locale: US
     goconst:
@@ -66,6 +68,10 @@ linters:
           - ireturn
         path: internal\/openvpn\/pkcs8\/descbc\.go
         text: newCipherDESCBCBlock returns interface \(github\.com\/youmark\/pkcs8\.Cipher\)
+      - linters:
+          - staticcheck
+        text: "ST1003: should not use ALL_CAPS in Go names; use CamelCase instead"
+        source: "^\t+(SOCK|AF|IPPROTO)_.+= unix\\.(SOCK|AF|IPPROTO)_.+$"
       - linters:
           - revive
         path: internal\/provider\/(common|utils)\/.+\.go
