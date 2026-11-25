@@ -5,10 +5,10 @@ go 1.27
 require (
 	github.com/ProtonMail/go-srp v0.0.7
 	github.com/amnezia-vpn/amneziawg-go/v3 v3.0.3
-	github.com/breml/rootcerts v0.3.8
+	github.com/breml/rootcerts v0.3.9
 	github.com/fatih/color v1.19.0
 	github.com/jsimonetti/rtnetlink v1.4.2
-	github.com/klauspost/compress v1.20.4
+	github.com/klauspost/compress v1.20.5
 	github.com/klauspost/pgzip v1.3.0
 	github.com/mdlayher/genetlink v1.4.0
 	github.com/mdlayher/netlink v1.11.2
