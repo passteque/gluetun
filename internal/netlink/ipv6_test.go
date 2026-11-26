@@ -46,6 +46,104 @@ func Test_isUnusableRouteType(t *testing.T) {
 	}
 }
 
+func Test_isIPv6SupportEvidence(t *testing.T) {
+	t.Parallel()
+
+	// Linux route types, see include/uapi/linux/rtnetlink.h.
+	const (
+		typeUnicast   uint8 = 1
+		typeLocal     uint8 = 2
+		typeMulticast uint8 = 5
+	)
+
+	testCases := map[string]struct {
+		route    Route
+		expected bool
+	}{
+		"default_route_no_destination": {
+			route:    Route{Type: typeUnicast},
+			expected: true,
+		},
+		"default_route_unspecified_destination": {
+			route: Route{
+				Dst:  netip.MustParsePrefix("::/0"),
+				Type: typeUnicast,
+			},
+			expected: true,
+		},
+		"global_unicast_destination": {
+			route: Route{
+				Dst:  netip.MustParsePrefix("2a01:4f8:1234::/64"),
+				Type: typeUnicast,
+			},
+			expected: true,
+		},
+		"unique_local_destination": {
+			route: Route{
+				Dst:  netip.MustParsePrefix("fd42:bd4c:c56d::/64"),
+				Type: typeUnicast,
+			},
+			expected: true,
+		},
+		"link_local_destination": {
+			route: Route{
+				Dst:  netip.MustParsePrefix("fe80::/64"),
+				Type: typeUnicast,
+			},
+			expected: false,
+		},
+		"link_local_address_destination": {
+			route: Route{
+				Dst:  netip.MustParsePrefix("fe80::42:acff:fe11:2/128"),
+				Type: typeLocal,
+			},
+			expected: false,
+		},
+		"multicast_destination": {
+			route: Route{
+				Dst:  netip.MustParsePrefix("ff00::/8"),
+				Type: typeMulticast,
+			},
+			expected: false,
+		},
+		"loopback_destination": {
+			route: Route{
+				Dst:  netip.MustParsePrefix("::1/128"),
+				Type: typeLocal,
+			},
+			expected: false,
+		},
+		"ipv4_destination": {
+			route: Route{
+				Dst:  netip.MustParsePrefix("172.20.0.0/16"),
+				Type: typeUnicast,
+			},
+			expected: false,
+		},
+		"ipv4_source": {
+			route: Route{
+				Src:  netip.MustParsePrefix("172.20.0.2/32"),
+				Type: typeUnicast,
+			},
+			expected: false,
+		},
+		"unreachable_type": {
+			route: Route{
+				Dst:  netip.MustParsePrefix("2a01:4f8:1234::/64"),
+				Type: routeTypeUnreachable,
+			},
+			expected: false,
+		},
+	}
+
+	for name, testCase := range testCases {
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			assert.Equal(t, testCase.expected, isIPv6SupportEvidence(testCase.route))
+		})
+	}
+}
+
 func isIPv6LocallySupported() bool {
 	dialer := net.Dialer{Timeout: time.Millisecond}
 	_, err := dialer.Dial("tcp6", "[::1]:9999")
