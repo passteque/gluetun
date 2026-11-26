@@ -10,23 +10,8 @@ func (n *NetLink) IsIPv6Supported() (supported bool, err error) {
 		return false, fmt.Errorf("listing IPv6 routes: %w", err)
 	}
 
-	// Check each route for IPv6 due to Podman bug listing IPv4 routes
-	// as IPv6 routes at container start, see:
-	// https://github.com/qdm12/gluetun/issues/1241#issuecomment-1333405949
 	for _, route := range routes {
-		sourceIsIPv6 := route.Src.IsValid() && route.Src.Is6()
-		destinationIsIPv6 := route.Dst.IsValid() && route.Dst.Addr().Is6()
-		// Skip routes that can never deliver packets, in particular
-		// `unreachable default dev lo` routes that some kernels install
-		// in containers without IPv6. The netlink library synthesizes a
-		// `::/0` destination for them, and `::` is the unspecified
-		// address, not the loopback one, so they would otherwise be
-		// wrongly counted as IPv6 support.
-		// See: https://github.com/qdm12/gluetun/issues/3444
-		switch {
-		case !sourceIsIPv6 && !destinationIsIPv6,
-			destinationIsIPv6 && route.Dst.Addr().IsLoopback(),
-			isUnusableRouteType(route.Type):
+		if !isIPv6SupportEvidence(route) {
 			continue
 		}
 
@@ -42,6 +27,48 @@ func (n *NetLink) IsIPv6Supported() (supported bool, err error) {
 	n.debugLogger.Debugf("IPv6 is not supported after searching %d routes",
 		len(routes))
 	return false, nil
+}
+
+// isIPv6SupportEvidence reports whether a route is an evidence that the host
+// can deliver IPv6 packets to a remote host. The kernel adds a link local
+// fe80::/64 route and a ff00::/8 multicast route on every IPv6 enabled
+// interface, and these say nothing about IPv6 connectivity. Configuring IPv6
+// on such a host black-holes IPv6 traffic, instead of making it fail fast.
+// See https://github.com/passteque/gluetun/issues/3561
+func isIPv6SupportEvidence(route Route) bool {
+	sourceIsIPv4 := route.Src.IsValid() && route.Src.Is4()
+	if sourceIsIPv4 {
+		// Due to a Podman bug listing IPv4 routes as IPv6 routes at container
+		// start, see https://github.com/qdm12/gluetun/issues/1241#issuecomment-1333405949
+		return false
+	}
+
+	if isUnusableRouteType(route.Type) {
+		// Skip routes that can never deliver packets, in particular
+		// `unreachable default dev lo` routes that some kernels install
+		// in containers without IPv6. The netlink library synthesizes a
+		// `::/0` destination for them, and `::` is the unspecified
+		// address, not the loopback one, so they would otherwise be
+		// wrongly counted as IPv6 support.
+		// See: https://github.com/qdm12/gluetun/issues/3444
+		return false
+	}
+
+	if !route.Dst.IsValid() {
+		// The default ::/0 route has no destination attribute.
+		return true
+	}
+
+	destination := route.Dst.Addr()
+	switch {
+	case !destination.Is6(),
+		destination.IsLoopback(),
+		destination.IsLinkLocalUnicast(),
+		destination.IsMulticast():
+		return false
+	default:
+		return true
+	}
 }
 
 // isUnusableRouteType reports whether a route of the given type can
