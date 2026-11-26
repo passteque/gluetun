@@ -45,6 +45,9 @@ func (s *Service) Stop() (err error) {
 	// forwarding code support.
 	if s.keepPortCancel != nil {
 		s.keepPortCancel()
+		// The keep port goroutine closes the done channel without waiting for the
+		// start stop mutex held here, otherwise this wait could never be satisfied
+		// by a goroutine crashing at the same time as this call.
 		<-s.keepPortDoneCh
 	}
 

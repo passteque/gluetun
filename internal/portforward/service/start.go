@@ -95,21 +95,26 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 		close(readyCh)
 		err := portForwarder.KeepPortForward(ctx, obj)
 		crashed := ctx.Err() == nil
-		if crashed {
-			s.startStopMutex.Lock()
-			_ = s.cleanup()
-			s.startStopMutex.Unlock()
-		}
-		// The done channel is closed before the report is handed over below. The
-		// port forwarding loop answers that report by stopping the service it
-		// comes from, and that Stop call has to find a service with no keep port
-		// goroutine of its own left to stop. Closing the channel once the report
-		// has been read makes the two race, and the Stop call would clean the
-		// service up a second time, down command included.
+		// The done channel is closed without waiting for the start stop mutex.
+		// Stop holds that mutex for the whole of its call and waits on the channel
+		// while holding it: closing it once the mutex is taken would leave Stop
+		// waiting for a goroutine waiting for the mutex it holds itself, and the
+		// service could never be stopped. From here on the goroutine only reaches
+		// the service through the start stop mutex Stop holds, and gives up on its
+		// own cleanup once Stop has canceled the context, so the service is cleaned
+		// up exactly once, by whoever holds that mutex. Closing the channel before the
+		// report is handed over below also tells the port forwarding loop, which
+		// answers that report by stopping the service, that there is nothing left
+		// for that Stop call to do.
 		close(doneCh)
 		if !crashed { // stopped by Stop call
 			return
 		}
+		s.startStopMutex.Lock()
+		if ctx.Err() == nil { // no Stop call took over while waiting for the mutex
+			_ = s.cleanup()
+		}
+		s.startStopMutex.Unlock()
 
 		// The report is made without the mutexes held, and given up on once the
 		// service is stopped. The port forwarding loop reads this channel while
