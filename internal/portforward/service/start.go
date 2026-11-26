@@ -92,23 +92,32 @@ func (s *Service) Start(ctx context.Context) (runError <-chan error, err error) 
 		obj utils.PortForwardObjects, readyCh chan<- struct{},
 		runError chan<- error, doneCh chan<- struct{},
 	) {
-		defer close(doneCh)
 		close(readyCh)
 		err := portForwarder.KeepPortForward(ctx, obj)
 		crashed := ctx.Err() == nil
+		if crashed {
+			s.startStopMutex.Lock()
+			_ = s.cleanup()
+			s.startStopMutex.Unlock()
+		}
+		// The done channel is closed before the report is handed over below. The
+		// port forwarding loop answers that report by stopping the service it
+		// comes from, and that Stop call has to find a service with no keep port
+		// goroutine of its own left to stop. Closing the channel once the report
+		// has been read makes the two race, and the Stop call would clean the
+		// service up a second time, down command included.
+		close(doneCh)
 		if !crashed { // stopped by Stop call
 			return
 		}
-		s.startStopMutex.Lock()
-		_ = s.cleanup()
-		s.startStopMutex.Unlock()
 
 		// The report is made without the mutexes held, and given up on once the
 		// service is stopped. The port forwarding loop reads this channel while
 		// it runs, but it leaves the service behind when it stops on a fatal
 		// error: a send holding the start stop mutex forever prevents the
 		// service from ever being stopped, since Stop waits for the very
-		// goroutine reporting the crash.
+		// goroutine reporting the crash. Nothing waits on the done channel once it
+		// is closed, so Stop releases this send by canceling the context instead.
 		select {
 		case runError <- err:
 		case <-ctx.Done():
