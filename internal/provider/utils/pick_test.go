@@ -111,8 +111,48 @@ func Test_pickConnection(t *testing.T) {
 				IP: netip.AddrFrom4([4]byte{2, 2, 2, 2}),
 			},
 		},
+		"openvpn_endpoint_hostname_overrides_hostname": {
+			connections: []models.Connection{
+				{Type: vpn.OpenVPN, Hostname: "one", IP: netip.AddrFrom4([4]byte{1, 1, 1, 1})},
+				{Type: vpn.OpenVPN, Hostname: "two", IP: netip.AddrFrom4([4]byte{2, 2, 2, 2})},
+			},
+			selection: settings.ServerSelection{
+				VPN: vpn.OpenVPN,
+				OpenVPN: settings.OpenVPNSelection{
+					EndpointIP:       netip.AddrFrom4([4]byte{9, 9, 9, 9}),
+					EndpointHostname: new("myhost.dyndns.org"),
+				},
+			},
+			connection1: models.Connection{
+				Type: vpn.OpenVPN, Hostname: "myhost.dyndns.org",
+				IP: netip.AddrFrom4([4]byte{9, 9, 9, 9}),
+			},
+			connection2: models.Connection{
+				Type: vpn.OpenVPN, Hostname: "myhost.dyndns.org",
+				IP: netip.AddrFrom4([4]byte{9, 9, 9, 9}),
+			},
+		},
+		"wireguard_endpoint_hostname_overrides_hostname": {
+			connections: []models.Connection{
+				{Type: vpn.Wireguard, Hostname: "one", IP: netip.AddrFrom4([4]byte{1, 1, 1, 1})},
+			},
+			selection: settings.ServerSelection{
+				VPN: vpn.Wireguard,
+				Wireguard: settings.WireguardSelection{
+					EndpointIP:       netip.AddrFrom4([4]byte{1, 1, 1, 1}),
+					EndpointHostname: new("wg.example.com"),
+				},
+			},
+			connection1: models.Connection{
+				Type: vpn.Wireguard, Hostname: "wg.example.com",
+				IP: netip.AddrFrom4([4]byte{1, 1, 1, 1}),
+			},
+			connection2: models.Connection{
+				Type: vpn.Wireguard, Hostname: "wg.example.com",
+				IP: netip.AddrFrom4([4]byte{1, 1, 1, 1}),
+			},
+		},
 	}
-
 	for name, testCase := range testCases {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()

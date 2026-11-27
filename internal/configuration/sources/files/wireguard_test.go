@@ -142,28 +142,35 @@ func Test_parseWireguardPeerSection(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {
-		iniData      string
-		preSharedKey *string
-		publicKey    *string
-		endpointIP   *string
-		endpointPort *string
-		errMessage   string
+		iniData          string
+		preSharedKey     *string
+		publicKey        *string
+		endpointIP       *string
+		endpointHostname *string
+		endpointPort     *string
+		errMessage       string
 	}{
 		"public key set": {
 			iniData: `[Peer]
 PublicKey = QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8=`,
 			publicKey: ptrTo("QOlCgyA/Sn/c/+YNTIEohrjm8IZV+OZ2AUFIoX20sk8="),
 		},
-		"endpoint_only_host": {
+		"endpoint_only_hostname": {
 			iniData: `[Peer]
-Endpoint = x`,
-			endpointIP: ptrTo("x"),
+Endpoint = myhost.dyndns.org`,
+			endpointHostname: ptrTo("myhost.dyndns.org"),
 		},
-		"endpoint_no_port": {
+		"endpoint_hostname_no_port": {
 			iniData: `[Peer]
-Endpoint = x:`,
-			endpointIP:   ptrTo("x"),
-			endpointPort: ptrTo(""),
+Endpoint = myhost.dyndns.org:`,
+			endpointHostname: ptrTo("myhost.dyndns.org"),
+			endpointPort:     ptrTo(""),
+		},
+		"endpoint_hostname_with_port": {
+			iniData: `[Peer]
+Endpoint = myhost.dyndns.org:51820`,
+			endpointHostname: ptrTo("myhost.dyndns.org"),
+			endpointPort:     ptrTo("51820"),
 		},
 		"valid_endpoint": {
 			iniData: `[Peer]
@@ -197,11 +204,12 @@ Endpoint = [2a02:bbbb:aaaa:8075::10]:51820`,
 			require.NoError(t, err)
 
 			preSharedKey, publicKey, endpointIP,
-				endpointPort := parseWireguardPeerSection(iniSection)
+				endpointHostname, endpointPort := parseWireguardPeerSection(iniSection)
 
 			assert.Equal(t, testCase.preSharedKey, preSharedKey)
 			assert.Equal(t, testCase.publicKey, publicKey)
 			assert.Equal(t, testCase.endpointIP, endpointIP)
+			assert.Equal(t, testCase.endpointHostname, endpointHostname)
 			assert.Equal(t, testCase.endpointPort, endpointPort)
 			if testCase.errMessage != "" {
 				assert.EqualError(t, err, testCase.errMessage)

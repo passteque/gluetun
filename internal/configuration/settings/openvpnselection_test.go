@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"net/netip"
 	"testing"
 
 	"github.com/qdm12/gluetun/internal/constants"
@@ -12,10 +13,12 @@ func Test_OpenVPNSelection_validate(t *testing.T) {
 	t.Parallel()
 
 	testCases := map[string]struct {
-		provider   string
-		protocol   string
-		customPort uint16
-		errMessage string
+		provider         string
+		protocol         string
+		customPort       uint16
+		endpointIP       netip.Addr
+		endpointHostname *string
+		errMessage       string
 	}{
 		"purevpn_udp_no_custom_port": {
 			provider: providers.Purevpn,
@@ -39,6 +42,16 @@ func Test_OpenVPNSelection_validate(t *testing.T) {
 			protocol:   constants.TCP,
 			customPort: 8080,
 		},
+		"endpoint_hostname_only": {
+			provider:         providers.Custom,
+			endpointHostname: new("myhost.dyndns.org"),
+		},
+		"endpoint_ip_and_hostname_mutually_exclusive": {
+			provider:         providers.Custom,
+			endpointIP:       netip.AddrFrom4([4]byte{1, 2, 3, 4}),
+			endpointHostname: new("myhost.dyndns.org"),
+			errMessage:       "endpoint IP and endpoint hostname are mutually exclusive",
+		},
 	}
 
 	for name, testCase := range testCases {
@@ -51,6 +64,10 @@ func Test_OpenVPNSelection_validate(t *testing.T) {
 				selection.Protocol = testCase.protocol
 			}
 			selection.CustomPort = new(testCase.customPort)
+			if testCase.endpointIP.IsValid() {
+				selection.EndpointIP = testCase.endpointIP
+			}
+			selection.EndpointHostname = testCase.endpointHostname
 
 			err := selection.validate(testCase.provider)
 

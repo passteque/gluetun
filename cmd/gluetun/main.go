@@ -40,6 +40,7 @@ import (
 	"github.com/qdm12/gluetun/internal/pprof"
 	"github.com/qdm12/gluetun/internal/provider"
 	"github.com/qdm12/gluetun/internal/publicip"
+	"github.com/qdm12/gluetun/internal/restrictednet"
 	"github.com/qdm12/gluetun/internal/routing"
 	"github.com/qdm12/gluetun/internal/server"
 	"github.com/qdm12/gluetun/internal/shadowsocks"
@@ -447,10 +448,34 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 	boringPoll := boringpoll.New(httpClient, boringPollLogger, allSettings.BoringPoll)
 
 	vpnLogger := logger.New(log.SetComponent("vpn"))
+
+	// Create a resolver that can resolve hostnames through the firewall
+	// using DNS over HTTPS with temporary firewall rules. It is used to
+	// resolve endpoint hostnames (e.g. dynamic DNS) before the VPN tunnel
+	// is up. Pick the first IPv4 default route interface, falling back to
+	// the first default route.
+	defaultInterface := defaultRoutes[0].NetInterface
+	for _, defaultRoute := range defaultRoutes {
+		if defaultRoute.Family == netlink.FamilyV4 {
+			defaultInterface = defaultRoute.NetInterface
+			break
+		}
+	}
+	resolver := restrictednet.New(restrictednet.Settings{
+		DefaultInterface: defaultInterface,
+		IPv6Supported:    &ipv6Supported,
+		Firewall:         firewallConf,
+		UpstreamResolvers: []dnsprovider.Provider{
+			dnsprovider.Cloudflare(),
+			dnsprovider.Google(),
+		},
+	})
+
 	vpnLooper := vpn.NewLoop(allSettings.VPN, ipv6SupportLevel, allSettings.Firewall.VPNInputPorts,
 		providers, storage, boringPoll, allSettings.Health, healthChecker, healthcheckServer,
 		ovpnConf, netLinker, firewallConf, routingConf, portForwardLooper, cmder, publicIPLooper,
-		dnsLooper, vpnLogger, httpClient, buildInfo, *allSettings.Version.Enabled)
+		dnsLooper, vpnLogger, httpClient, buildInfo, *allSettings.Version.Enabled,
+		resolver)
 	vpnHandler, vpnCtx, vpnDone := goshutdown.NewGoRoutineHandler(
 		"vpn", goroutine.OptionTimeout(time.Second),
 	)

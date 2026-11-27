@@ -17,7 +17,8 @@ import (
 func setupOpenVPN(ctx context.Context, fw Firewall,
 	openvpnConf OpenVPN, providerConf provider.Provider,
 	settings settings.VPN, ipv6SupportLevel netlink.IPv6SupportLevel, starter Cmder,
-	logger openvpn.Logger) (runner *openvpn.Runner, connection models.Connection, err error,
+	logger openvpn.Logger, resolver Resolver,
+) (runner *openvpn.Runner, connection models.Connection, err error,
 ) {
 	err = tun.Setup()
 	if err != nil {
@@ -25,9 +26,34 @@ func setupOpenVPN(ctx context.Context, fw Firewall,
 	}
 
 	ipv6Internet := ipv6SupportLevel == netlink.IPv6Internet
+
+	// Resolve the endpoint hostname from settings, if set, and inject
+	// the resolved IP as the endpoint IP so the rest of the pipeline
+	// (connection picking, firewall, config) works unchanged.
+	selection := &settings.Provider.ServerSelection
+	if selection.OpenVPN.EndpointHostname != nil && *selection.OpenVPN.EndpointHostname != "" {
+		ip, err := resolveEndpoint(ctx, resolver, *selection.OpenVPN.EndpointHostname,
+			ipv6SupportLevel.IsSupported(), logger)
+		if err != nil {
+			return nil, models.Connection{}, err
+		}
+		selection.OpenVPN.EndpointIP = ip
+	}
+
 	connection, err = providerConf.GetConnection(settings.Provider.ServerSelection, ipv6Internet)
 	if err != nil {
 		return nil, models.Connection{}, fmt.Errorf("finding a valid server connection: %w", err)
+	}
+
+	// Handle a hostname in the remote line of a custom .ovpn file:
+	// the connection has a hostname but no IP, so resolve it now.
+	if !connection.IP.IsValid() && connection.Hostname != "" {
+		ip, err := resolveEndpoint(ctx, resolver, connection.Hostname,
+			ipv6SupportLevel.IsSupported(), logger)
+		if err != nil {
+			return nil, models.Connection{}, err
+		}
+		connection.IP = ip
 	}
 
 	lines := providerConf.OpenVPNConfig(connection, settings.OpenVPN, ipv6SupportLevel.IsSupported())

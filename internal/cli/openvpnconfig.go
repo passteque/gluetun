@@ -3,6 +3,7 @@ package cli
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -73,11 +74,46 @@ func (c *CLI) OpenvpnConfig(logger OpenvpnConfigLogger, reader *reader.Reader,
 	providers := provider.NewProviders(storage, time.Now, warner, client,
 		unzipper, parallelResolver, openvpnFileExtractor, allSettings.Updater)
 	providerConf := providers.Get(allSettings.VPN.Provider.Name)
+
+	// Resolve the endpoint hostname from settings, if set. In CLI mode there
+	// is no firewall, so the system resolver can be used directly.
+	selection := &allSettings.VPN.Provider.ServerSelection
+	if selection.OpenVPN.EndpointHostname != nil && *selection.OpenVPN.EndpointHostname != "" {
+		ips, err := net.DefaultResolver.LookupIPAddr(context.Background(), *selection.OpenVPN.EndpointHostname)
+		if err != nil {
+			return fmt.Errorf("resolving endpoint hostname: %w", err)
+		}
+		if len(ips) == 0 {
+			return fmt.Errorf("resolving endpoint hostname %q: no IP address found", *selection.OpenVPN.EndpointHostname)
+		}
+		addr, ok := netip.AddrFromSlice(ips[0].IP)
+		if !ok {
+			return fmt.Errorf("resolving endpoint hostname %q: invalid IP address", *selection.OpenVPN.EndpointHostname)
+		}
+		selection.OpenVPN.EndpointIP = addr.Unmap()
+	}
+
 	connection, err := providerConf.GetConnection(
 		allSettings.VPN.Provider.ServerSelection, ipv6SupportLevel == netlink.IPv6Internet,
 	)
 	if err != nil {
 		return err
+	}
+
+	// Handle a hostname in the remote line of a custom .ovpn file.
+	if !connection.IP.IsValid() && connection.Hostname != "" {
+		ips, err := net.DefaultResolver.LookupIPAddr(context.Background(), connection.Hostname)
+		if err != nil {
+			return fmt.Errorf("resolving endpoint hostname: %w", err)
+		}
+		if len(ips) == 0 {
+			return fmt.Errorf("resolving endpoint hostname %q: no IP address found", connection.Hostname)
+		}
+		addr, ok := netip.AddrFromSlice(ips[0].IP)
+		if !ok {
+			return fmt.Errorf("resolving endpoint hostname %q: invalid IP address", connection.Hostname)
+		}
+		connection.IP = addr.Unmap()
 	}
 
 	lines := providerConf.OpenVPNConfig(connection,

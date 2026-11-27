@@ -70,6 +70,14 @@ func Test_extractDataFromLines(t *testing.T) {
 				Protocol: constants.TCP,
 			},
 		},
+		"hostname in remote line": {
+			lines: []string{"proto udp", "remote myhost.dyndns.org 1194"},
+			connection: models.Connection{
+				Hostname: "myhost.dyndns.org",
+				Port:     1194,
+				Protocol: constants.UDP,
+			},
+		},
 	}
 
 	for name, testCase := range testCases {
@@ -94,6 +102,7 @@ func Test_extractDataFromLine(t *testing.T) {
 
 	testCases := map[string]struct {
 		line       string
+		hostname   string
 		ip         netip.Addr
 		port       uint16
 		protocol   string
@@ -114,9 +123,11 @@ func Test_extractDataFromLine(t *testing.T) {
 			line:     "proto tcp-client",
 			protocol: constants.TCP,
 		},
-		"extract remote error": {
-			line:       "remote bad",
-			errMessage: "host is not an IP address",
+		"extract remote with hostname": {
+			line:     "remote myhost.dyndns.org 1194 udp",
+			hostname: "myhost.dyndns.org",
+			port:     1194,
+			protocol: constants.UDP,
 		},
 		"extract remote success": {
 			line:     "remote 1.2.3.4 1194 udp",
@@ -138,7 +149,7 @@ func Test_extractDataFromLine(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			ip, port, protocol, err := extractDataFromLine(testCase.line)
+			hostname, ip, port, protocol, err := extractDataFromLine(testCase.line)
 
 			if testCase.errMessage != "" {
 				assert.ErrorContains(t, err, testCase.errMessage)
@@ -149,6 +160,7 @@ func Test_extractDataFromLine(t *testing.T) {
 			assert.Equal(t, testCase.ip, ip)
 			assert.Equal(t, testCase.port, port)
 			assert.Equal(t, testCase.protocol, protocol)
+			assert.Equal(t, testCase.hostname, hostname)
 		})
 	}
 }
@@ -202,6 +214,7 @@ func Test_extractRemote(t *testing.T) {
 
 	testCases := map[string]struct {
 		line     string
+		hostname string
 		ip       netip.Addr
 		port     uint16
 		protocol string
@@ -215,9 +228,15 @@ func Test_extractRemote(t *testing.T) {
 			line: "remote one two three four",
 			err:  errors.New("remote line has not 2 fields as expected: remote one two three four"),
 		},
-		"host is not an IP": {
-			line: "remote somehost.com",
-			err:  errors.New("host is not an IP address: somehost.com"),
+		"hostname host": {
+			line:     "remote somehost.com",
+			hostname: "somehost.com",
+		},
+		"hostname with port": {
+			line:     "remote somehost.com 1194 udp",
+			hostname: "somehost.com",
+			port:     1194,
+			protocol: constants.UDP,
 		},
 		"only IP host": {
 			line: "remote 1.2.3.4",
@@ -260,7 +279,7 @@ func Test_extractRemote(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 
-			ip, port, protocol, err := extractRemote(testCase.line)
+			hostname, ip, port, protocol, err := extractRemote(testCase.line)
 
 			if testCase.err != nil {
 				require.Error(t, err)
@@ -269,6 +288,7 @@ func Test_extractRemote(t *testing.T) {
 				assert.NoError(t, err)
 			}
 
+			assert.Equal(t, testCase.hostname, hostname)
 			assert.Equal(t, testCase.ip, ip)
 			assert.Equal(t, testCase.port, port)
 			assert.Equal(t, testCase.protocol, protocol)

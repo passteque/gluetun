@@ -88,11 +88,14 @@ func pickConnection(connections []models.Connection,
 	}
 
 	var targetIP netip.Addr
+	var endpointHostname *string
 	switch selection.VPN {
 	case vpn.OpenVPN:
 		targetIP = selection.OpenVPN.EndpointIP
+		endpointHostname = selection.OpenVPN.EndpointHostname
 	case vpn.Wireguard, vpn.AmneziaWg:
 		targetIP = selection.Wireguard.EndpointIP
+		endpointHostname = selection.Wireguard.EndpointHostname
 	default:
 		panic("unknown VPN type: " + selection.VPN)
 	}
@@ -100,12 +103,21 @@ func pickConnection(connections []models.Connection,
 
 	if targetIPSet && selection.VPN == vpn.Wireguard {
 		// we need the right public key
-		return getTargetIPConnection(connections, targetIP)
+		connection, err = getTargetIPConnection(connections, targetIP)
+		if err != nil {
+			return connection, err
+		}
+	} else {
+		connection = picker.pickConnection(connections)
+		if targetIPSet {
+			connection.IP = targetIP
+		}
 	}
 
-	connection = picker.pickConnection(connections)
-	if targetIPSet {
-		connection.IP = targetIP
+	// Propagate the endpoint hostname so it can be used for
+	// TLS certificate verification (verify-x509-name).
+	if endpointHostname != nil && *endpointHostname != "" {
+		connection.Hostname = *endpointHostname
 	}
 
 	return connection, nil

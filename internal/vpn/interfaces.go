@@ -118,6 +118,12 @@ type HealthServer interface {
 	SetError(err error)
 }
 
+// Resolver resolves a hostname to IP addresses, working through
+// the firewall (e.g. using DNS over HTTPS with temporary firewall rules).
+type Resolver interface {
+	ResolveName(ctx context.Context, host string) (addresses []netip.Addr, err error)
+}
+
 type Service interface {
 	Start() (runError <-chan error, err error)
 	Stop() error

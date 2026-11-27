@@ -20,19 +20,22 @@ func extractDataFromLines(lines []string) (
 			line = line[:hashSymbolIndex]
 		}
 
-		ip, port, protocol, err := extractDataFromLine(line)
+		hostname, ip, port, protocol, err := extractDataFromLine(line)
 		if err != nil {
 			return connection, fmt.Errorf("on line %d: %w", i+1, err)
 		}
 
+		if hostname != "" && connection.Hostname == "" {
+			connection.Hostname = hostname
+		}
 		connection.UpdateEmptyWith(ip, port, protocol)
 
-		if connection.Protocol != "" && connection.IP.IsValid() {
+		if connection.Protocol != "" && (connection.IP.IsValid() || connection.Hostname != "") {
 			break
 		}
 	}
 
-	if !connection.IP.IsValid() {
+	if !connection.IP.IsValid() && connection.Hostname == "" {
 		return connection, errors.New("remote line not found")
 	}
 
@@ -51,7 +54,7 @@ func extractDataFromLines(lines []string) (
 }
 
 func extractDataFromLine(line string) (
-	ip netip.Addr, port uint16, protocol string, err error,
+	hostname string, ip netip.Addr, port uint16, protocol string, err error,
 ) {
 	line = strings.TrimSpace(line)
 
@@ -59,26 +62,26 @@ func extractDataFromLine(line string) (
 	case strings.HasPrefix(line, "proto "):
 		protocol, err = extractProto(line)
 		if err != nil {
-			return ip, 0, "", fmt.Errorf("extracting protocol from proto line: %w", err)
+			return "", ip, 0, "", fmt.Errorf("extracting protocol from proto line: %w", err)
 		}
-		return ip, 0, protocol, nil
+		return "", ip, 0, protocol, nil
 
 	case strings.HasPrefix(line, "remote "):
-		ip, port, protocol, err = extractRemote(line)
+		hostname, ip, port, protocol, err = extractRemote(line)
 		if err != nil {
-			return ip, 0, "", fmt.Errorf("extracting from remote line: %w", err)
+			return "", ip, 0, "", fmt.Errorf("extracting from remote line: %w", err)
 		}
-		return ip, port, protocol, nil
+		return hostname, ip, port, protocol, nil
 
 	case strings.HasPrefix(line, "port "):
 		port, err = extractPort(line)
 		if err != nil {
-			return ip, 0, "", fmt.Errorf("extracting from port line: %w", err)
+			return "", ip, 0, "", fmt.Errorf("extracting from port line: %w", err)
 		}
-		return ip, port, "", nil
+		return "", ip, port, "", nil
 	}
 
-	return ip, 0, "", nil
+	return "", ip, 0, "", nil
 }
 
 func extractProto(line string) (protocol string, err error) {
@@ -106,30 +109,32 @@ func parseProto(field string) (protocol string, err error) {
 	}
 }
 
-func extractRemote(line string) (ip netip.Addr, port uint16,
+func extractRemote(line string) (hostname string, ip netip.Addr, port uint16,
 	protocol string, err error,
 ) {
 	fields := strings.Fields(line)
 	n := len(fields)
 
 	if n < 2 || n > 4 {
-		return netip.Addr{}, 0, "", fmt.Errorf("remote line has not 2 fields as expected: %s", line)
+		return "", netip.Addr{}, 0, "", fmt.Errorf("remote line has not 2 fields as expected: %s", line)
 	}
 
 	host := fields[1]
 	ip, err = netip.ParseAddr(host)
 	if err != nil {
-		return netip.Addr{}, 0, "", fmt.Errorf("host is not an IP address: %s", host)
-		// TODO resolve hostname once there is an option to allow it through
-		// the firewall before the VPN is up.
+		// Not an IP address: treat as a hostname (e.g. dynamic DNS).
+		// It is resolved later, before the VPN tunnel is up.
+		hostname = host
+	} else {
+		hostname = ""
 	}
 
 	if n > 2 { //nolint:mnd
 		portInt, err := strconv.Atoi(fields[2])
 		if err != nil {
-			return netip.Addr{}, 0, "", fmt.Errorf("port is not valid: %s", line)
+			return "", netip.Addr{}, 0, "", fmt.Errorf("port is not valid: %s", line)
 		} else if portInt < 1 || portInt > 65535 {
-			return netip.Addr{}, 0, "", fmt.Errorf("port is not valid: %d must be between 1 and 65535", portInt)
+			return "", netip.Addr{}, 0, "", fmt.Errorf("port is not valid: %d must be between 1 and 65535", portInt)
 		}
 		port = uint16(portInt)
 	}
@@ -137,11 +142,11 @@ func extractRemote(line string) (ip netip.Addr, port uint16,
 	if n > 3 { //nolint:mnd
 		protocol, err = parseProto(fields[3])
 		if err != nil {
-			return netip.Addr{}, 0, "", fmt.Errorf("parsing protocol from remote line: %w", err)
+			return "", netip.Addr{}, 0, "", fmt.Errorf("parsing protocol from remote line: %w", err)
 		}
 	}
 
-	return ip, port, protocol, nil
+	return hostname, ip, port, protocol, nil
 }
 
 func extractPort(line string) (port uint16, err error) {

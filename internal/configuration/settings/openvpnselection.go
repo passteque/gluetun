@@ -1,6 +1,7 @@
 package settings
 
 import (
+	"errors"
 	"fmt"
 	"net/netip"
 	"strings"
@@ -30,7 +31,13 @@ type OpenVPNSelection struct {
 	// built-in server connection. To indicate it should
 	// not be used, it should be set to [netip.IPv4Unspecified].
 	// It can never be the zero value in the internal state.
+	// It is mutually exclusive with EndpointHostname.
 	EndpointIP netip.Addr `json:"endpoint_ip"`
+	// EndpointHostname is the server endpoint hostname, e.g. a
+	// dynamic DNS hostname. It is resolved to an IP address before
+	// the VPN tunnel is established. It is mutually exclusive with
+	// EndpointIP. It can be nil or empty to indicate it is not used.
+	EndpointHostname *string `json:"endpoint_hostname"`
 	// CustomPort is the OpenVPN server endpoint port.
 	// It can be set to 0 to indicate no custom port should
 	// be used. It cannot be nil in the internal state.
@@ -48,6 +55,13 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 		if err != nil {
 			return fmt.Errorf("configuration file: %w", err)
 		}
+	}
+
+	// Validate EndpointIP and EndpointHostname are mutually exclusive
+	endpointIPSet := o.EndpointIP.IsValid() && !o.EndpointIP.IsUnspecified()
+	endpointHostnameSet := o.EndpointHostname != nil && *o.EndpointHostname != ""
+	if endpointIPSet && endpointHostnameSet {
+		return errors.New("endpoint IP and endpoint hostname are mutually exclusive")
 	}
 
 	err = validate.IsOneOf(o.Protocol, constants.UDP, constants.TCP)
@@ -138,11 +152,12 @@ func (o OpenVPNSelection) validate(vpnProvider string) (err error) {
 
 func (o *OpenVPNSelection) copy() (copied OpenVPNSelection) {
 	return OpenVPNSelection{
-		ConfFile:     gosettings.CopyPointer(o.ConfFile),
-		Protocol:     o.Protocol,
-		EndpointIP:   o.EndpointIP,
-		CustomPort:   gosettings.CopyPointer(o.CustomPort),
-		PIAEncPreset: gosettings.CopyPointer(o.PIAEncPreset),
+		ConfFile:         gosettings.CopyPointer(o.ConfFile),
+		Protocol:         o.Protocol,
+		EndpointIP:       o.EndpointIP,
+		EndpointHostname: gosettings.CopyPointer(o.EndpointHostname),
+		CustomPort:       gosettings.CopyPointer(o.CustomPort),
+		PIAEncPreset:     gosettings.CopyPointer(o.PIAEncPreset),
 	}
 }
 
@@ -151,6 +166,7 @@ func (o *OpenVPNSelection) overrideWith(other OpenVPNSelection) {
 	o.Protocol = gosettings.OverrideWithComparable(o.Protocol, other.Protocol)
 	o.CustomPort = gosettings.OverrideWithPointer(o.CustomPort, other.CustomPort)
 	o.EndpointIP = gosettings.OverrideWithValidator(o.EndpointIP, other.EndpointIP)
+	o.EndpointHostname = gosettings.OverrideWithPointer(o.EndpointHostname, other.EndpointHostname)
 	o.PIAEncPreset = gosettings.OverrideWithPointer(o.PIAEncPreset, other.PIAEncPreset)
 }
 
@@ -158,6 +174,7 @@ func (o *OpenVPNSelection) setDefaults(vpnProvider string) {
 	o.ConfFile = gosettings.DefaultPointer(o.ConfFile, "")
 	o.Protocol = gosettings.DefaultComparable(o.Protocol, constants.UDP)
 	o.EndpointIP = gosettings.DefaultValidator(o.EndpointIP, netip.IPv4Unspecified())
+	o.EndpointHostname = gosettings.DefaultPointer(o.EndpointHostname, "")
 	o.CustomPort = gosettings.DefaultPointer(o.CustomPort, 0)
 
 	var defaultEncPreset string
@@ -177,6 +194,10 @@ func (o OpenVPNSelection) toLinesNode() (node *gotree.Node) {
 
 	if !o.EndpointIP.IsUnspecified() {
 		node.Appendf("Endpoint IP address: %s", o.EndpointIP)
+	}
+
+	if o.EndpointHostname != nil && *o.EndpointHostname != "" {
+		node.Appendf("Endpoint hostname: %s", *o.EndpointHostname)
 	}
 
 	if *o.CustomPort != 0 {
@@ -204,6 +225,8 @@ func (o *OpenVPNSelection) read(r *reader.Reader) (err error) {
 	if err != nil {
 		return err
 	}
+
+	o.EndpointHostname = r.Get("OPENVPN_ENDPOINT_HOSTNAME", reader.ForceLowercase(false))
 
 	o.CustomPort, err = r.Uint16Ptr("OPENVPN_ENDPOINT_PORT",
 		reader.RetroKeys("PORT", "OPENVPN_PORT", "VPN_ENDPOINT_PORT"))

@@ -81,6 +81,8 @@ func (s *Source) Get(key string) (value string, isSet bool) {
 		return strPtrToStringIsSet(s.lazyLoadWireguardConf().PublicKey)
 	case "wireguard_endpoint_ip":
 		return strPtrToStringIsSet(s.lazyLoadWireguardConf().EndpointIP)
+	case "wireguard_endpoint_hostname":
+		return strPtrToStringIsSet(s.lazyLoadWireguardConf().EndpointHostname)
 	case "wireguard_endpoint_port":
 		return strPtrToStringIsSet(s.lazyLoadWireguardConf().EndpointPort)
 	}
@@ -124,6 +126,8 @@ func (s *Source) getAmneziaWg(key string) (value string, isSet, matched bool) {
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Wireguard.PublicKey)
 	case "amneziawg_endpoint_ip":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Wireguard.EndpointIP)
+	case "amneziawg_endpoint_hostname":
+		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Wireguard.EndpointHostname)
 	case "amneziawg_endpoint_port":
 		value, isSet = strPtrToStringIsSet(s.lazyLoadAmneziawgConf().Wireguard.EndpointPort)
 	case "amneziawg_jc":

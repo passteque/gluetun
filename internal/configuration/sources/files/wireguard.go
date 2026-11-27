@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -26,12 +27,13 @@ func (s *Source) lazyLoadWireguardConf() WireguardConfig {
 }
 
 type WireguardConfig struct {
-	PrivateKey   *string
-	PreSharedKey *string
-	Addresses    *string
-	PublicKey    *string
-	EndpointIP   *string
-	EndpointPort *string
+	PrivateKey       *string
+	PreSharedKey     *string
+	Addresses        *string
+	PublicKey        *string
+	EndpointIP       *string
+	EndpointHostname *string
+	EndpointPort     *string
 }
 
 var regexINISectionNotExist = regexp.MustCompile(`^section ".+" does not exist$`)
@@ -56,7 +58,7 @@ func ParseWireguardConf(path string) (config WireguardConfig, err error) {
 	peerSection, err := iniFile.GetSection("Peer")
 	if err == nil {
 		config.PreSharedKey, config.PublicKey, config.EndpointIP,
-			config.EndpointPort = parseWireguardPeerSection(peerSection)
+			config.EndpointHostname, config.EndpointPort = parseWireguardPeerSection(peerSection)
 	} else if !regexINISectionNotExist.MatchString(err.Error()) {
 		// can never happen
 		return WireguardConfig{}, fmt.Errorf("getting peer section: %w", err)
@@ -74,7 +76,7 @@ func parseWireguardInterfaceSection(interfaceSection *ini.Section) (
 }
 
 func parseWireguardPeerSection(peerSection *ini.Section) (
-	preSharedKey, publicKey, endpointIP, endpointPort *string,
+	preSharedKey, publicKey, endpointIP, endpointHostname, endpointPort *string,
 ) {
 	preSharedKey = getINIKeyFromSection(peerSection, "PresharedKey")
 	publicKey = getINIKeyFromSection(peerSection, "PublicKey")
@@ -82,14 +84,18 @@ func parseWireguardPeerSection(peerSection *ini.Section) (
 	if endpoint != nil {
 		host, port, err := net.SplitHostPort(*endpoint)
 		if err == nil {
-			endpointIP = &host
 			endpointPort = &port
 		} else {
-			endpointIP = endpoint
+			host = *endpoint
+		}
+		if _, err := netip.ParseAddr(host); err == nil {
+			endpointIP = &host
+		} else {
+			endpointHostname = &host
 		}
 	}
 
-	return preSharedKey, publicKey, endpointIP, endpointPort
+	return preSharedKey, publicKey, endpointIP, endpointHostname, endpointPort
 }
 
 var regexINIKeyNotExist = regexp.MustCompile(`key ".*" does not exist$`)

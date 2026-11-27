@@ -20,7 +20,13 @@ type WireguardSelection struct {
 	// built-in server connection. To indicate it should
 	// not be used, it should be set to [netip.IPv4Unspecified].
 	// It can never be the zero value in the internal state.
+	// It is mutually exclusive with EndpointHostname.
 	EndpointIP netip.Addr `json:"endpoint_ip"`
+	// EndpointHostname is the server endpoint hostname, e.g. a
+	// dynamic DNS hostname. It is resolved to an IP address before
+	// the VPN tunnel is established. It is mutually exclusive with
+	// EndpointIP. It can be nil or empty to indicate it is not used.
+	EndpointHostname *string `json:"endpoint_hostname"`
 	// EndpointPort is a the server port to use for the VPN server.
 	// It is optional for VPN providers IVPN, Mullvad, Surfshark
 	// and Windscribe, and compulsory for the others.
@@ -37,6 +43,13 @@ type WireguardSelection struct {
 // Validate validates WireguardSelection settings.
 // It should only be ran if the VPN type chosen is Wireguard.
 func (w WireguardSelection) validate(vpnProvider string) (err error) {
+	// Validate EndpointIP and EndpointHostname are mutually exclusive
+	endpointIPSet := w.EndpointIP.IsValid() && !w.EndpointIP.IsUnspecified()
+	endpointHostnameSet := w.EndpointHostname != nil && *w.EndpointHostname != ""
+	if endpointIPSet && endpointHostnameSet {
+		return errors.New("endpoint IP and endpoint hostname are mutually exclusive")
+	}
+
 	// Validate EndpointIP
 	switch vpnProvider {
 	case providers.Airvpn, providers.Fastestvpn, providers.Ivpn,
@@ -44,8 +57,8 @@ func (w WireguardSelection) validate(vpnProvider string) (err error) {
 		providers.Surfshark, providers.Windscribe:
 		// endpoint IP addresses are baked in
 	case providers.Custom:
-		if !w.EndpointIP.IsValid() || w.EndpointIP.IsUnspecified() {
-			return errors.New("endpoint IP is not set")
+		if !endpointIPSet && !endpointHostnameSet {
+			return errors.New("endpoint IP or endpoint hostname is not set")
 		}
 	default: // Providers not supporting Wireguard
 	}
@@ -112,20 +125,23 @@ func (w WireguardSelection) validate(vpnProvider string) (err error) {
 
 func (w *WireguardSelection) copy() (copied WireguardSelection) {
 	return WireguardSelection{
-		EndpointIP:   w.EndpointIP,
-		EndpointPort: gosettings.CopyPointer(w.EndpointPort),
-		PublicKey:    w.PublicKey,
+		EndpointIP:       w.EndpointIP,
+		EndpointHostname: gosettings.CopyPointer(w.EndpointHostname),
+		EndpointPort:     gosettings.CopyPointer(w.EndpointPort),
+		PublicKey:        w.PublicKey,
 	}
 }
 
 func (w *WireguardSelection) overrideWith(other WireguardSelection) {
 	w.EndpointIP = gosettings.OverrideWithValidator(w.EndpointIP, other.EndpointIP)
+	w.EndpointHostname = gosettings.OverrideWithPointer(w.EndpointHostname, other.EndpointHostname)
 	w.EndpointPort = gosettings.OverrideWithPointer(w.EndpointPort, other.EndpointPort)
 	w.PublicKey = gosettings.OverrideWithComparable(w.PublicKey, other.PublicKey)
 }
 
 func (w *WireguardSelection) setDefaults() {
 	w.EndpointIP = gosettings.DefaultValidator(w.EndpointIP, netip.IPv4Unspecified())
+	w.EndpointHostname = gosettings.DefaultPointer(w.EndpointHostname, "")
 	w.EndpointPort = gosettings.DefaultPointer(w.EndpointPort, 0)
 }
 
@@ -138,6 +154,10 @@ func (w WireguardSelection) toLinesNode() (node *gotree.Node) {
 
 	if !w.EndpointIP.IsUnspecified() {
 		node.Appendf("Endpoint IP address: %s", w.EndpointIP)
+	}
+
+	if w.EndpointHostname != nil && *w.EndpointHostname != "" {
+		node.Appendf("Endpoint hostname: %s", *w.EndpointHostname)
 	}
 
 	if *w.EndpointPort != 0 {
@@ -161,6 +181,8 @@ func (w *WireguardSelection) read(r *reader.Reader, amneziaWG bool) (err error) 
 		return fmt.Errorf("%w - note this MUST be an IP address, "+
 			"see https://github.com/qdm12/gluetun/issues/788", err)
 	}
+
+	w.EndpointHostname = r.Get(prefix+"_ENDPOINT_HOSTNAME", reader.ForceLowercase(false))
 
 	w.EndpointPort, err = r.Uint16Ptr(prefix+"_ENDPOINT_PORT", reader.RetroKeys("VPN_ENDPOINT_PORT"))
 	if err != nil {
