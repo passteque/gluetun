@@ -9,6 +9,7 @@ const (
 	Example               = "example"
 	Expressvpn            = "expressvpn"
 	Fastestvpn            = "fastestvpn"
+	GhostPath             = "ghostpath"
 	Giganews              = "giganews"
 	HideMyAss             = "hidemyass"
 	Ipvanish              = "ipvanish"
@@ -36,6 +37,7 @@ func All() []string {
 		Cyberghost,
 		Expressvpn,
 		Fastestvpn,
+		GhostPath,
 		Giganews,
 		HideMyAss,
 		Ipvanish,
