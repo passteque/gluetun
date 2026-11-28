@@ -78,7 +78,7 @@ func Test_Loop_slowHTTPRequestBody(t *testing.T) {
 		Timeout:   clientTimeout,
 	}
 
-	// Stream a POST body across a pause exceeding the old 3s ReadTimeout.
+	// Stream a POST body across a pause exceeding the old 3s default ReadTimeout.
 	const slowBodyPause = 3500 * time.Millisecond
 	firstChunk := []byte("first-upload-chunk-")
 	secondChunk := []byte("second-upload-chunk")
@@ -184,7 +184,7 @@ func Test_Server_Run(t *testing.T) {
 		logger.EXPECT().Info("listening on " + proxyAddress)
 
 		runCtx, runCancel := context.WithCancel(ctx)
-		server := New(runCtx, proxyAddress, logger, false, false, "", "", time.Second)
+		server := New(runCtx, proxyAddress, logger, false, false, "", "", time.Second, 0)
 
 		errorCh := make(chan error)
 		go server.Run(runCtx, errorCh)
@@ -243,7 +243,7 @@ func Test_Server_Run(t *testing.T) {
 
 		const shortReadHeaderTimeout = 50 * time.Millisecond
 		runCtx, runCancel := context.WithCancel(ctx)
-		server := New(runCtx, proxyAddress, logger, false, false, "", "", shortReadHeaderTimeout)
+		server := New(runCtx, proxyAddress, logger, false, false, "", "", shortReadHeaderTimeout, 0)
 
 		errorCh := make(chan error)
 		go server.Run(runCtx, errorCh)

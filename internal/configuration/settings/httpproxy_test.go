@@ -26,6 +26,7 @@ func Test_HTTPProxy_setDefaults(t *testing.T) {
 				Stealth:           new(false),
 				Log:               new(false),
 				ReadHeaderTimeout: time.Second,
+				ReadTimeout:       new(time.Duration(0)),
 			},
 		},
 		"filled_settings": {
@@ -37,6 +38,7 @@ func Test_HTTPProxy_setDefaults(t *testing.T) {
 				Stealth:           new(true),
 				Log:               new(true),
 				ReadHeaderTimeout: customTimeout,
+				ReadTimeout:       new(customTimeout),
 			},
 			expected: HTTPProxy{
 				User:              new("alice"),
@@ -46,6 +48,7 @@ func Test_HTTPProxy_setDefaults(t *testing.T) {
 				Stealth:           new(true),
 				Log:               new(true),
 				ReadHeaderTimeout: customTimeout,
+				ReadTimeout:       new(customTimeout),
 			},
 		},
 	}
@@ -80,6 +83,7 @@ func Test_HTTPProxy_copy(t *testing.T) {
 				Stealth:           new(true),
 				Log:               new(true),
 				ReadHeaderTimeout: customTimeout,
+				ReadTimeout:       new(customTimeout),
 			},
 			expected: HTTPProxy{
 				User:              new("alice"),
@@ -89,6 +93,7 @@ func Test_HTTPProxy_copy(t *testing.T) {
 				Stealth:           new(true),
 				Log:               new(true),
 				ReadHeaderTimeout: customTimeout,
+				ReadTimeout:       new(customTimeout),
 			},
 		},
 	}
@@ -124,6 +129,7 @@ func Test_HTTPProxy_overrideWith(t *testing.T) {
 				Stealth:           new(true),
 				Log:               new(true),
 				ReadHeaderTimeout: customTimeout,
+				ReadTimeout:       new(customTimeout),
 			},
 			expected: HTTPProxy{
 				User:              new("alice"),
@@ -133,6 +139,7 @@ func Test_HTTPProxy_overrideWith(t *testing.T) {
 				Stealth:           new(true),
 				Log:               new(true),
 				ReadHeaderTimeout: customTimeout,
+				ReadTimeout:       new(customTimeout),
 			},
 		},
 		"override_filled_with_empty": {
@@ -144,6 +151,7 @@ func Test_HTTPProxy_overrideWith(t *testing.T) {
 				Stealth:           new(false),
 				Log:               new(false),
 				ReadHeaderTimeout: time.Second,
+				ReadTimeout:       new(time.Second),
 			},
 			expected: HTTPProxy{
 				User:              new("alice"),
@@ -153,6 +161,7 @@ func Test_HTTPProxy_overrideWith(t *testing.T) {
 				Stealth:           new(false),
 				Log:               new(false),
 				ReadHeaderTimeout: time.Second,
+				ReadTimeout:       new(time.Second),
 			},
 		},
 		"override_filled_with_filled": {
@@ -164,6 +173,7 @@ func Test_HTTPProxy_overrideWith(t *testing.T) {
 				Stealth:           new(false),
 				Log:               new(false),
 				ReadHeaderTimeout: time.Second,
+				ReadTimeout:       new(time.Second),
 			},
 			other: HTTPProxy{
 				User:              new("bob"),
@@ -173,6 +183,7 @@ func Test_HTTPProxy_overrideWith(t *testing.T) {
 				Stealth:           new(true),
 				Log:               new(true),
 				ReadHeaderTimeout: customTimeout,
+				ReadTimeout:       new(customTimeout),
 			},
 			expected: HTTPProxy{
 				User:              new("bob"),
@@ -182,6 +193,7 @@ func Test_HTTPProxy_overrideWith(t *testing.T) {
 				Stealth:           new(true),
 				Log:               new(true),
 				ReadHeaderTimeout: customTimeout,
+				ReadTimeout:       new(customTimeout),
 			},
 		},
 	}
@@ -199,6 +211,8 @@ func Test_HTTPProxy_overrideWith(t *testing.T) {
 
 func Test_HTTPProxy_String(t *testing.T) {
 	t.Parallel()
+
+	const customReadTimeout = 5 * time.Second
 
 	testCases := map[string]struct {
 		settings HTTPProxy
@@ -220,6 +234,7 @@ func Test_HTTPProxy_String(t *testing.T) {
 				Stealth:           new(false),
 				Log:               new(true),
 				ReadHeaderTimeout: time.Second,
+				ReadTimeout:       new(time.Duration(0)),
 			},
 			expected: `HTTP proxy settings:
 ├── Enabled: yes
@@ -228,7 +243,29 @@ func Test_HTTPProxy_String(t *testing.T) {
 ├── Password: [set]
 ├── Stealth mode: no
 ├── Log: yes
-└── Read header timeout: 1s`,
+├── Read header timeout: 1s
+└── Read timeout: disabled`,
+		},
+		"enabled_with_read_timeout": {
+			settings: HTTPProxy{
+				User:              new("alice"),
+				Password:          new("secret"),
+				ListeningAddress:  ":8888",
+				Enabled:           new(true),
+				Stealth:           new(false),
+				Log:               new(true),
+				ReadHeaderTimeout: time.Second,
+				ReadTimeout:       new(customReadTimeout),
+			},
+			expected: `HTTP proxy settings:
+├── Enabled: yes
+├── Listening address: :8888
+├── User: alice
+├── Password: [set]
+├── Stealth mode: no
+├── Log: yes
+├── Read header timeout: 1s
+└── Read timeout: 5s`,
 		},
 	}
 

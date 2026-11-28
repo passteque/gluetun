@@ -13,11 +13,12 @@ type Server struct {
 	logger            infoErrorer
 	internalWG        *sync.WaitGroup
 	readHeaderTimeout time.Duration
+	readTimeout       time.Duration
 }
 
 func New(ctx context.Context, address string, logger Logger,
 	stealth, verbose bool, username, password string,
-	readHeaderTimeout time.Duration,
+	readHeaderTimeout, readTimeout time.Duration,
 ) *Server {
 	wg := &sync.WaitGroup{}
 	return &Server{
@@ -26,6 +27,7 @@ func New(ctx context.Context, address string, logger Logger,
 		logger:            logger,
 		internalWG:        wg,
 		readHeaderTimeout: readHeaderTimeout,
+		readTimeout:       readTimeout,
 	}
 }
 
@@ -34,6 +36,7 @@ func (s *Server) Run(ctx context.Context, errorCh chan<- error) {
 		Addr:              s.address,
 		Handler:           s.handler,
 		ReadHeaderTimeout: s.readHeaderTimeout,
+		ReadTimeout:       s.readTimeout,
 	}
 	go func() { //nolint:gosec
 		<-ctx.Done()

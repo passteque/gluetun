@@ -39,6 +39,10 @@ type HTTPProxy struct {
 	// ReadHeaderTimeout is the HTTP header read timeout duration
 	// of the HTTP server. It defaults to 1 second if left unset.
 	ReadHeaderTimeout time.Duration
+	// ReadTimeout is the HTTP read timeout duration
+	// of the HTTP server. A zero value disables it, which is the default.
+	// It cannot be nil in the internal state.
+	ReadTimeout *time.Duration
 }
 
 func (h HTTPProxy) validate() (err error) {
@@ -60,6 +64,7 @@ func (h *HTTPProxy) copy() (copied HTTPProxy) {
 		Stealth:           gosettings.CopyPointer(h.Stealth),
 		Log:               gosettings.CopyPointer(h.Log),
 		ReadHeaderTimeout: h.ReadHeaderTimeout,
+		ReadTimeout:       gosettings.CopyPointer(h.ReadTimeout),
 	}
 }
 
@@ -74,6 +79,7 @@ func (h *HTTPProxy) overrideWith(other HTTPProxy) {
 	h.Stealth = gosettings.OverrideWithPointer(h.Stealth, other.Stealth)
 	h.Log = gosettings.OverrideWithPointer(h.Log, other.Log)
 	h.ReadHeaderTimeout = gosettings.OverrideWithComparable(h.ReadHeaderTimeout, other.ReadHeaderTimeout)
+	h.ReadTimeout = gosettings.OverrideWithPointer(h.ReadTimeout, other.ReadTimeout)
 }
 
 func (h *HTTPProxy) setDefaults() {
@@ -85,6 +91,7 @@ func (h *HTTPProxy) setDefaults() {
 	h.Log = gosettings.DefaultPointer(h.Log, false)
 	const defaultReadHeaderTimeout = time.Second
 	h.ReadHeaderTimeout = gosettings.DefaultComparable(h.ReadHeaderTimeout, defaultReadHeaderTimeout)
+	h.ReadTimeout = gosettings.DefaultPointer(h.ReadTimeout, 0)
 }
 
 func (h HTTPProxy) String() string {
@@ -104,6 +111,11 @@ func (h HTTPProxy) toLinesNode() (node *gotree.Node) {
 	node.Appendf("Stealth mode: %s", gosettings.BoolToYesNo(h.Stealth))
 	node.Appendf("Log: %s", gosettings.BoolToYesNo(h.Log))
 	node.Appendf("Read header timeout: %s", h.ReadHeaderTimeout)
+	if *h.ReadTimeout == 0 {
+		node.Append("Read timeout: disabled")
+	} else {
+		node.Appendf("Read timeout: %s", *h.ReadTimeout)
+	}
 
 	return node
 }
