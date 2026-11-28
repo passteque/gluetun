@@ -23,7 +23,7 @@ func (l *Loop) Run(ctx context.Context, done chan<- struct{}) {
 		settings := l.state.GetSettings()
 		server := New(runCtx, settings.ListeningAddress, l.logger,
 			*settings.Stealth, *settings.Log, *settings.User,
-			*settings.Password, settings.ReadHeaderTimeout, settings.ReadTimeout)
+			*settings.Password, settings.ReadHeaderTimeout)
 
 		errorCh := make(chan error)
 		go server.Run(runCtx, errorCh)
