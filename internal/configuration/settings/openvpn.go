@@ -20,7 +20,7 @@ import (
 // OpenVPN contains settings to configure the OpenVPN client.
 type OpenVPN struct {
 	// Version is the OpenVPN version to run.
-	// It can only be "2.5" or "2.6".
+	// It can only be "2.5" or "2.7"
 	Version string `json:"version"`
 	// User is the OpenVPN authentication username.
 	// It cannot be nil in the internal state if OpenVPN is used.
@@ -91,7 +91,7 @@ var ivpnAccountID = regexp.MustCompile(`^(i|ivpn)\-[a-zA-Z0-9]{4}\-[a-zA-Z0-9]{4
 
 func (o OpenVPN) validate(vpnProvider string) (err error) {
 	// Validate version
-	validVersions := []string{openvpn.Openvpn25, openvpn.Openvpn26}
+	validVersions := []string{openvpn.Openvpn25, openvpn.Openvpn27}
 	if err = validate.IsOneOf(o.Version, validVersions...); err != nil {
 		return fmt.Errorf("version is not valid: %w", err)
 	}
@@ -286,7 +286,7 @@ func (o *OpenVPN) overrideWith(other OpenVPN) {
 }
 
 func (o *OpenVPN) setDefaults(vpnProvider string) {
-	o.Version = gosettings.DefaultComparable(o.Version, openvpn.Openvpn26)
+	o.Version = gosettings.DefaultComparable(o.Version, openvpn.Openvpn27)
 	o.User = gosettings.DefaultPointer(o.User, "")
 	if vpnProvider == providers.Mullvad {
 		o.Password = gosettings.DefaultPointer(o.Password, "m")

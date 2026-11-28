@@ -10,7 +10,7 @@ import (
 
 const (
 	binOpenvpn25 = "openvpn2.5"
-	binOpenvpn26 = "openvpn2.6"
+	binOpenvpn27 = "openvpn2.7"
 )
 
 func start(ctx context.Context, starter CmdStarter, version string, flags []string) (
@@ -20,8 +20,8 @@ func start(ctx context.Context, starter CmdStarter, version string, flags []stri
 	switch version {
 	case openvpn.Openvpn25:
 		bin = binOpenvpn25
-	case openvpn.Openvpn26:
-		bin = binOpenvpn26
+	case openvpn.Openvpn27:
+		bin = binOpenvpn27
 	default:
 		return nil, nil, nil, fmt.Errorf("OpenVPN version is unknown: %s", version)
 	}

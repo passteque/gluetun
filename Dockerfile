@@ -298,7 +298,7 @@ RUN apk add --no-cache --update -l wget && \
     mv /usr/sbin/openvpn /usr/sbin/openvpn2.5 && \
     apk del openvpn && \
     apk add --no-cache --update openvpn ca-certificates iptables iptables-legacy tzdata && \
-    mv /usr/sbin/openvpn /usr/sbin/openvpn2.6 && \
+    mv /usr/sbin/openvpn /usr/sbin/openvpn2.6-2.7 && \
     rm -rf /var/cache/apk/* /etc/openvpn/*.sh /usr/lib/openvpn/plugins/openvpn-plugin-down-root.so && \
     deluser openvpn && \
     mkdir /gluetun

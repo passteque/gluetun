@@ -272,7 +272,7 @@ func _main(ctx context.Context, buildInfo models.BuildInformation,
 		logger.New(log.SetComponent("openvpn configurator")),
 		cmder, puid, pgid,
 	)
-	ovpnVersion := ovpnConf.Version26
+	ovpnVersion := ovpnConf.Version27
 	if allSettings.VPN.OpenVPN.Version == copenvpn.Openvpn25 {
 		ovpnVersion = ovpnConf.Version25
 	}
