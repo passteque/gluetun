@@ -30,7 +30,7 @@ type PublicIP struct {
 
 type PublicIPAPI struct {
 	// Name is the name of the public ip API service.
-	// It can be "cloudflare", "ifconfigco", "ip2location" or "ipinfo".
+	// It can be "cloudflare", "ifconfigco", "internetdata", "ip2location" or "ipinfo".
 	Name string
 	// Token is the token to use for the public ip API service.
 	Token string
